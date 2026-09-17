@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Claude Code — configuración local y worktrees temporales de agentes
+.claude/settings.local.json
+.claude/worktrees/
+
+# Dependencias de desarrollo
+node_modules/
+
+# Material de referencia del juego original: NUNCA debe entrar en el repositorio.
+# Ni el APK, ni un solo sprite, sonido, fuente o texto extraído de él.
+*.ZIP
+*.zip
+*.apk
+referencia/

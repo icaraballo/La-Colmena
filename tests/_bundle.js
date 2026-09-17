@@ -1,0 +1,24 @@
+// Banco de pruebas: carga las reglas del juego en Node.
+//
+// Concatena en UN solo ámbito los ficheros que no tocan el DOM, igual que hace
+// el navegador (son scripts clásicos, no módulos). Ojo: los `const`/`let` de
+// nivel raíz NO se cuelgan del objeto global en un contexto `vm`, así que el
+// footer tiene que exponer uno a uno los nombres que se quieran usar. Si se
+// olvida uno, sale `undefined` y las comprobaciones pasan por vacías en vez de
+// por correctas.
+const fs = require('fs'), vm = require('vm'), path = require('path');
+
+// Sólo el motor: render.js, input.js y app.js necesitan canvas y DOM.
+const FILES = ['constants.js', 'state.js'];
+
+const src = FILES
+  .map(f => fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8'))
+  .join('\n');
+
+const FOOTER = `
+  ({ ROW_WIDTHS, TILE_COUNT, DEAD_LEVEL, BASE_LEVEL, MAX_LEVEL, ADJ, SPIRAL,
+     bonusMultiplier, buildAdjacency,
+     createState, isValidDrag, biggestCoherentArea, commitTurn, fallback, tilesAlive })
+`;
+
+module.exports = vm.runInNewContext(src + FOOTER, {});
