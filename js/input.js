@@ -1,12 +1,22 @@
 // El arrastre es el único verbo del juego, así que tiene que ser impecable.
+//
+// Con TRÁNSITO (DESIGN §3): la cadena es un conjunto conexo, no un camino. El
+// dedo puede volver a pasar por una celda ya elegida para llegar a otra rama, y
+// esa celda no cuenta dos veces. Por eso ya no hay deshacer-por-retroceso: los
+// dos son el mismo gesto y gana el tránsito. Rectificar cuesta poco: levantar el
+// dedo descarta la cadena sin gastar turno.
+//
+//   drag.cells  las celdas elegidas, sin repetir — es lo que se valida
+//   drag.trail  el recorrido del dedo, con repeticiones — sólo para dibujarlo
 
-const drag = { path: [], active: false };
+const drag = { cells: [], trail: [], active: false };
 
-function dragReady(s) { return drag.path.length === s.step; }
+function dragReady(s) {
+  return drag.cells.length > 0 && isValidDrag(s, drag.cells);
+}
 
 // getState es una función, no el estado: al reiniciar la partida se crea un
-// objeto nuevo y un closure sobre el viejo seguiría hablando con la partida
-// anterior.
+// objeto nuevo y un closure sobre el viejo seguiría hablando con la anterior.
 function initInput(canvas, getState, onCommit, redraw) {
   const pos = (e) => {
     const r = canvas.getBoundingClientRect();
@@ -14,28 +24,31 @@ function initInput(canvas, getState, onCommit, redraw) {
             (e.clientY - r.top) * (canvas.height / r.height)];
   };
 
+  // Nivel de la cadena en curso, sin contar la reina (comodín).
+  const nivel = (s) => {
+    const c = drag.cells.find(i => !esReina(s, i));
+    return c === undefined ? -1 : s.height[c];
+  };
+
   const extend = (i) => {
     const s = getState();
-    if (i < 0 || drag.path.length === 0) return;
-    const last = drag.path[drag.path.length - 1];
-    if (i === last) return;
+    if (i < 0 || drag.cells.length === 0) return;
+    const aqui = drag.trail[drag.trail.length - 1];
+    if (i === aqui) return;
+    if (!ADJ[aqui].includes(i)) return;                   // sólo a una vecina
 
-    // Deshacer retrocediendo: si el dedo vuelve sobre la penúltima casilla, se
-    // quita la última. Es estándar en juegos de trazado y su ausencia se nota
-    // como un bug, no como una restricción.
-    if (drag.path.length >= 2 && i === drag.path[drag.path.length - 2]) {
-      drag.path.pop();
+    if (drag.cells.includes(i)) {                         // tránsito
+      drag.trail.push(i);
       redraw();
       return;
     }
+    if (!jugable(s, i)) return;
+    const h = nivel(s);
+    if (!esReina(s, i) && h !== -1 && s.height[i] !== h) return;   // misma altura
+    if (!s.danza && drag.cells.length >= s.step) return;           // ni una de más
 
-    if (drag.path.includes(i)) return;                       // sin repetidos
-    if (!ADJ[last].includes(i)) return;                      // sólo vecinos
-    if (!s.alive[i]) return;
-    if (s.height[i] !== s.height[drag.path[0]]) return;      // misma altura
-    if (drag.path.length >= s.step) return;                  // ni una de más
-
-    drag.path.push(i);
+    drag.cells.push(i);
+    drag.trail.push(i);
     redraw();
   };
 
@@ -43,10 +56,11 @@ function initInput(canvas, getState, onCommit, redraw) {
     const s = getState();
     if (s.gameOver) return;
     const i = tileAt(s, ...pos(e));
-    if (i < 0) return;
+    if (i < 0 || !jugable(s, i)) return;
     canvas.setPointerCapture(e.pointerId);
     drag.active = true;
-    drag.path = [i];
+    drag.cells = [i];
+    drag.trail = [i];
     redraw();
   });
 
@@ -60,11 +74,10 @@ function initInput(canvas, getState, onCommit, redraw) {
     if (!drag.active) return;
     const s = getState();
     drag.active = false;
-    const path = drag.path;
-    drag.path = [];
-    // Una cadena que no mide exactamente el paso exigido simplemente se
-    // descarta: no gasta turno ni penaliza.
-    if (path.length === s.step) onCommit(path);
+    const cells = drag.cells;
+    drag.cells = []; drag.trail = [];
+    // Una cadena inválida simplemente se descarta: no gasta turno ni penaliza.
+    if (isValidDrag(s, cells)) onCommit(cells);
     redraw();
   };
 

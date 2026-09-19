@@ -16,9 +16,12 @@ const src = FILES
   .join('\n');
 
 const FOOTER = `
-  ({ ROW_WIDTHS, TILE_COUNT, DEAD_LEVEL, BASE_LEVEL, MAX_LEVEL, ADJ, SPIRAL,
-     bonusMultiplier, buildAdjacency,
-     createState, isValidDrag, biggestCoherentArea, commitTurn, fallback, tilesAlive })
+  ({ ROW_WIDTHS, TILE_COUNT, ADJ, SPIRAL, bonusMultiplier, buildAdjacency,
+     HUECO, CERA, HUEVO, LARVA, OPERCULADA, MAX_LEVEL, ARRANQUE,
+     MODOS, CONFIG_MODO, HELADA_CADA, ITEM_THRESHOLDS, ITEMS, segundosCosecha,
+     RELOJ_INICIAL, RELOJ_TECHO, PUNTOS_POR_SEGUNDO, SEDA_TURNOS, CALMA_TRAS_VELUTINA,
+     createState, isValidDrag, biggestCoherentArea, commitTurn, fallback, tilesPlayable,
+     jugable, spawnItemIfEarned, usarItem, sumarTiempo, velocidadReloj, tick })
 `;
 
 module.exports = vm.runInNewContext(src + FOOTER, {});

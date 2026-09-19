@@ -1,21 +1,19 @@
-// Dibujo del tablero. Esta es la única capa que conoce el canvas, y es la única
-// que habrá que reescribir cuando el juego tenga tema. El motor no se entera.
-
-// Hexágonos pointy-top (punta arriba) en falso 2.5D: cada nivel de altura
-// desplaza la casilla LIFT px hacia arriba y se dibuja el lateral del prisma
-// debajo, de forma que la topografía se lee de un vistazo.
+// Dibujo del panal. Esta es la única capa que conoce el canvas, y la única que
+// cambia cuando se toque la estética. El motor no se entera.
+//
+// Hexágonos pointy-top en falso 2.5D: cada nivel desplaza la celda LIFT px hacia
+// arriba y se dibuja el lateral del prisma debajo, de forma que la escalera se
+// lee de un vistazo.
 const LIFT = 9;
 
-// Escala de color por altura. Deliberadamente abstracta: no es agua/arena/
-// hierba, es una rampa de frío a cálido. El nivel máximo rompe la rampa con un
-// naranja fuerte porque no es "una altura más", es una jugada distinta.
-const LEVEL_COLORS = {
-  1: '#2c5f7c',
-  2: '#3d8ea8',
-  3: '#57b0a4',
-  4: '#8cc97f',
-  5: '#dcc25c',
-  6: '#e8743f',
+// Rampa de luminosidad 1→4 y un ámbar saturado en el 5 (DESIGN §2). La
+// información va en el brillo, no en el tono: se juzga "¿están a la misma
+// altura?" a toda velocidad y aguanta el daltonismo. El 5 salta a la vista a
+// propósito: es la jugada que quieres ver.
+const LEVEL_COLORS = ['#2B2721', '#6E5A32', '#9C7F3C', '#C8A14A', '#E3C87E', '#F79A1F'];
+
+const ITEM_ICON = {
+  jalea: 'J', propoleo: 'P', danza: 'D', nectar: 'N', humo: 'H', reina: '♛',
 };
 
 const layout = { cx: [], cy: [], R: 0, w: 0 };
@@ -28,10 +26,8 @@ function shade(hex, f) {
   return `rgb(${r},${g},${b})`;
 }
 
-// Calcula el centro de cada casilla para el tamaño actual del canvas.
+// Calcula el centro de cada celda para el tamaño actual del canvas.
 function computeLayout(width, height) {
-  // La fila más ancha tiene 6 casillas y hay 5 filas. Se reserva margen arriba
-  // para que las casillas altas no se salgan por el techo.
   const R = Math.min(width / (6 * Math.sqrt(3) + 1), height / 10.5);
   const w = Math.sqrt(3) * R;
   layout.R = R; layout.w = w;
@@ -47,6 +43,12 @@ function computeLayout(width, height) {
       layout.cy.push(top + r * 1.5 * R);
     }
   });
+}
+
+// Altura en píxeles a la que se dibuja la cara de arriba de una celda.
+function topY(s, i) {
+  const h = s.height[i];
+  return layout.cy[i] - Math.max(0, h - 1) * LIFT;
 }
 
 function hexPath(ctx, x, y, R) {
@@ -74,35 +76,41 @@ function sidePath(ctx, x, y, R, D) {
   ctx.closePath();
 }
 
-// ui = { path: [...], ready: bool }  — ready cuando la cadena mide ya el paso exigido.
-function draw(ctx, s, ui) {
+// ui = { cells, trail, ready, abejas }
+//   ready   la cadena ya es una jugada válida
+//   abejas  partículas de la cosecha: { x, y, t0 } — las lleva app.js
+function draw(ctx, s, ui, now) {
   const { width, height } = ctx.canvas;
   ctx.clearRect(0, 0, width, height);
 
   const R = layout.R;
-  const inPath = new Set(ui.path);
+  const inChain = new Set(ui.cells);
+  const heladas = new Set(s.heladas);
+  const capullos = new Set(s.desastres.filter(d => d.tipo === 'capullo').map(d => d.tile));
 
-  // Orden por índice = de la fila de arriba a la de abajo, que es el orden
-  // correcto para que el 2.5D se solape bien.
+  // Orden por índice = de arriba abajo, que es el que hace solapar bien el 2.5D.
   for (let i = 0; i < TILE_COUNT; i++) {
     const x = layout.cx[i];
-    const base = layout.cy[i];
+    const h = s.height[i];
 
-    if (!s.alive[i]) {
-      ctx.save();
-      ctx.setLineDash([4, 4]);
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-      ctx.lineWidth = 1;
-      hexPath(ctx, x, base, R * 0.92);
-      ctx.stroke();
-      ctx.restore();
+    if (h === HUECO) {
+      hexPath(ctx, x, layout.cy[i], R * 0.94);
+      ctx.fillStyle = LEVEL_COLORS[HUECO];
+      ctx.fill();
+      // La helada se distingue de la celda rota: es lo que se puede recuperar.
+      if (heladas.has(i)) {
+        ctx.strokeStyle = 'rgba(170,210,235,0.55)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([3, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
       continue;
     }
 
-    const h = s.height[i];
     const D = (h - 1) * LIFT;
-    const y = base - D;
-    const color = LEVEL_COLORS[h] || '#555';
+    const y = layout.cy[i] - D;
+    const color = LEVEL_COLORS[h];
 
     if (D > 0) {
       ctx.fillStyle = shade(color, 0.55);
@@ -114,29 +122,72 @@ function draw(ctx, s, ui) {
     hexPath(ctx, x, y, R);
     ctx.fill();
 
-    if (inPath.has(i)) {
+    if (inChain.has(i)) {
       ctx.strokeStyle = ui.ready ? '#ffffff' : 'rgba(255,255,255,0.55)';
       ctx.lineWidth = ui.ready ? 4 : 2.5;
-      ctx.stroke();
     } else {
-      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+      ctx.strokeStyle = 'rgba(0,0,0,0.3)';
       ctx.lineWidth = 1;
-      ctx.stroke();
     }
+    ctx.stroke();
 
-    ctx.fillStyle = h >= 5 ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.85)';
-    ctx.font = `600 ${Math.round(R * 0.7)}px system-ui, sans-serif`;
+    ctx.fillStyle = h >= LARVA ? 'rgba(30,20,5,0.7)' : 'rgba(255,245,225,0.8)';
+    ctx.font = `600 ${Math.round(R * 0.55)}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(String(h), x, y);
+
+    // Seda: la celda está bloqueada unos turnos.
+    if (s.sedaHasta[i] > s.turn) {
+      ctx.save();
+      hexPath(ctx, x, y, R);
+      ctx.clip();
+      ctx.strokeStyle = 'rgba(245,245,245,0.75)';
+      ctx.lineWidth = 1.5;
+      for (let k = -2 * R; k < 2 * R; k += R / 3) {
+        ctx.beginPath();
+        ctx.moveTo(x + k, y - R); ctx.lineTo(x + k + R, y + R);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Capullo de polilla: aviso, eclosiona en el siguiente fallo.
+    if (capullos.has(i)) {
+      ctx.beginPath();
+      ctx.ellipse(x + R * 0.42, y - R * 0.38, R * 0.17, R * 0.26, 0.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#d8d2c4';
+      ctx.fill();
+      ctx.strokeStyle = '#6b6254';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
   }
 
-  // La cadena en curso, dibujada como línea sobre las casillas.
-  if (ui.path.length > 1) {
+  // Ítem: gota de néctar sobre su celda.
+  if (s.item) {
+    const x = layout.cx[s.item.tile];
+    const y = topY(s, s.item.tile) - R * 0.1;
+    const pulso = 1 + 0.08 * Math.sin((now || 0) / 180);
     ctx.beginPath();
-    ui.path.forEach((i, k) => {
-      const x = layout.cx[i];
-      const y = layout.cy[i] - (s.height[i] - 1) * LIFT;
+    ctx.arc(x, y, R * 0.36 * pulso, 0, Math.PI * 2);
+    ctx.fillStyle = s.item.tipo === ITEMS.REINA ? '#b04ad8' : '#ffd23f';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = s.item.tipo === ITEMS.REINA ? '#fff' : '#3a2a00';
+    ctx.font = `700 ${Math.round(R * 0.42)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(ITEM_ICON[s.item.tipo] || '?', x, y + 1);
+  }
+
+  // El recorrido del dedo, con tránsito incluido.
+  if (ui.trail.length > 1) {
+    ctx.beginPath();
+    ui.trail.forEach((i, k) => {
+      const x = layout.cx[i], y = topY(s, i);
       k === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
     ctx.strokeStyle = ui.ready ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)';
@@ -145,17 +196,35 @@ function draw(ctx, s, ui) {
     ctx.lineCap = 'round';
     ctx.stroke();
   }
+
+  // Cosecha: la abeja sale volando.
+  for (const a of ui.abejas) {
+    const t = ((now || 0) - a.t0) / 900;
+    if (t < 0 || t > 1) continue;
+    const x = a.x + Math.sin(t * 9 + a.x) * R * 0.25;
+    const y = a.y - t * R * 3.5;
+    ctx.globalAlpha = 1 - t;
+    ctx.beginPath();
+    ctx.arc(x, y, R * 0.16, 0, Math.PI * 2);
+    ctx.fillStyle = '#F79A1F';
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.beginPath();
+    ctx.ellipse(x - R * 0.12, y - R * 0.12, R * 0.12, R * 0.07, -0.6, 0, Math.PI * 2);
+    ctx.ellipse(x + R * 0.12, y - R * 0.12, R * 0.12, R * 0.07, 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
 }
 
-// Qué casilla hay bajo un punto. Por distancia al centro, no por polígono
-// exacto: en un móvil los hexágonos son pequeños y el dedo es gordo.
+// Qué celda hay bajo un punto. Por distancia al centro, no por polígono exacto:
+// en un móvil los hexágonos son pequeños y el dedo es gordo. Los huecos no
+// cuentan: no son jugables.
 function tileAt(s, px, py) {
   let best = -1, bestD = layout.R * 0.95;
   for (let i = 0; i < TILE_COUNT; i++) {
-    if (!s.alive[i]) continue;
-    const dx = px - layout.cx[i];
-    const dy = py - (layout.cy[i] - (s.height[i] - 1) * LIFT);
-    const d = Math.hypot(dx, dy);
+    if (s.height[i] === HUECO) continue;
+    const d = Math.hypot(px - layout.cx[i], py - topY(s, i));
     if (d < bestD) { bestD = d; best = i; }
   }
   return best;

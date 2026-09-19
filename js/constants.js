@@ -1,6 +1,6 @@
-// Constantes del tablero y de la puntuación.
+// Constantes del tablero, de los modos y de la puntuación. Ver DESIGN.md en el vault.
 //
-// El tablero son 24 hexágonos en filas de 4-5-6-5-4, indexados 0..23 por filas:
+// El tablero es un panal de 24 celdas en filas de 4-5-6-5-4, indexadas 0..23 por filas:
 //
 //         0   1   2   3          fila 0  (4)
 //       4   5   6   7   8        fila 1  (5)
@@ -8,20 +8,32 @@
 //      15  16  17  18  19        fila 3  (5)
 //        20  21  22  23          fila 4  (4)
 //
-// Nombres neutros a propósito: este juego todavía no tiene tema, y cuando lo
-// tenga sólo debe cambiar la capa de dibujo. Nada de nombres del juego original.
+// Los nombres son los del tema propio (la colmena). Nunca los del juego original.
 
 const ROW_WIDTHS = [4, 5, 6, 5, 4];
 const TILE_COUNT = 24;
 
-// Escalera de alturas. 0 = casilla muerta (devorada), 1 = base, 6 = cosechable.
-const DEAD_LEVEL = 0;
-const BASE_LEVEL = 1;
-const MAX_LEVEL = 6;
+// La escalera: el ciclo de cría de una abeja. El hueco NO es jugable: ni se
+// selecciona ni se atraviesa. Sólo lo recuperan un ítem o una cosecha grande.
+const HUECO      = 0;   // celda rota
+const CERA       = 1;
+const HUEVO      = 2;
+const LARVA      = 3;
+const OPERCULADA = 4;
+const MAX_LEVEL  = 5;   // abeja lista: se cosecha
+
+const NOMBRE_NIVEL = ['hueco', 'cera', 'huevo', 'larva', 'operculada', 'abeja'];
+
+// Cupos del arranque: siempre los mismos, en posiciones al azar. Es lo que hace
+// finita la partida (DESIGN §2).
+const ARRANQUE = [
+  { nivel: HUECO, casillas: 12 },
+  { nivel: CERA,  casillas: 8 },
+  { nivel: HUEVO, casillas: 4 },
+];
 
 // Adyacencia precalculada. Verificada contra las máscaras de distancia al borde
-// del binario original: coincidencia exacta. Se usa tabla en vez de aritmética
-// de índices porque es más rápida, exacta y testeable.
+// del binario original: coincidencia exacta.
 const ADJ = [
   /*  0 */ [1, 4, 5],
   /*  1 */ [0, 2, 5, 6],
@@ -49,13 +61,58 @@ const ADJ = [
   /* 23 */ [18, 19, 22],
 ];
 
-// Orden en espiral de fuera hacia dentro en que el vórtice devora el tablero.
-// Es el array RING_TILES del original, verificado.
+// Orden en espiral de fuera hacia dentro en que avanza la helada.
 const SPIRAL = [23, 19, 14, 8, 3, 2, 1, 0, 4, 9, 15, 20, 21, 22,
                 18, 13, 7, 6, 5, 10, 16, 17, 12, 11];
 
+// ---------------------------------------------------------------------------
+// Modos (DESIGN §5). Cada uno con UNA sola fuente de presión. Son configuración,
+// no código distinto: las reglas consultan estas banderas.
+// ---------------------------------------------------------------------------
+const MODOS = { PECOREO: 'pecoreo', INVIERNO: 'invierno', LIBRE: 'libre' };
+
+const CONFIG_MODO = {
+  pecoreo:  { reloj: true,  helada: false, desastres: true,  puntua: true  },
+  invierno: { reloj: false, helada: true,  desastres: false, puntua: true  },
+  libre:    { reloj: false, helada: false, desastres: false, puntua: false },
+};
+
+// Helada (DESIGN §6): cada cuántos fallos avanza, según dificultad.
+const HELADA_CADA = { normal: 2, dura: 1 };
+const HELADA_REMATE = 3;        // con tantas casillas jugables o menos, avanza siempre
+const COSECHA_GRANDE = 4;       // una cosecha de 4+ devuelve helada / limpia amenazas
+
+// Reloj de Pecoreo (DESIGN §9).
+const RELOJ_INICIAL = 90;
+const RELOJ_TECHO = 99;
+const RELOJ_ACELERA_CADA = 10;   // turnos
+const RELOJ_ACELERA = 0.10;      // +10 % de velocidad por tramo
+const NECTAR_SEGUNDOS = 15;
+// Lo que vale un segundo que no cabe bajo el techo. Provisional: DESIGN §9 dice
+// que el exceso cae como puntos, pero no a qué cambio.
+const PUNTOS_POR_SEGUNDO = 50;
+
+// Desastres (DESIGN §7).
+const DESASTRES_MAX_ACTIVOS = 2;
+const SEDA_TURNOS = 2;
+const CALMA_TRAS_VELUTINA = 5;
+
+// Ítems (DESIGN §8). Casillas necesarias a un mismo nivel para que aparezca uno,
+// indexado por nivel-1. Es getMinSpecialCountForThisLevel del original.
+const ITEM_THRESHOLDS = [14, 12, 10, 8, 6];
+const ITEMS = {
+  JALEA:    'jalea',     // todo el panal sube un nivel
+  PROPOLEO: 'propoleo',  // los huecos vuelven a cera
+  DANZA:    'danza',     // la ronda siguiente, arrastre de cualquier longitud
+  NECTAR:   'nectar',    // +15 s (sólo Pecoreo)
+  HUMO:     'humo',      // la helada retrocede una casilla (sólo Invierno)
+  REINA:    'reina',     // comodín: la cadena la atraviesa aunque esté a otro nivel
+};
+
+// Segundos que da una cosecha de L celdas: L·(L+3)/2 (DESIGN §9).
+function segundosCosecha(L) { return L * (L + 3) / 2; }
+
 // Multiplicador por longitud del paso. Tabla del original, desensamblada.
-// L=24 (el tablero entero de una pasada) es el techo teórico: x14.
 function bonusMultiplier(L) {
   if (L <= 5) return 2;
   if (L <= 7) return 3;
@@ -69,9 +126,8 @@ function bonusMultiplier(L) {
   return 0;
 }
 
-// Genera la adyacencia para cualquier tamaño de tablero. No se usa en juego:
-// existe para que los tests comprueben que la tabla ADJ de arriba es correcta,
-// y por si algún día se prueba otro tamaño de tablero.
+// Genera la adyacencia para cualquier tamaño de tablero. Los tests la usan para
+// comprobar ADJ, y servirá el día que se prueben otros tamaños.
 function buildAdjacency(rowWidths) {
   const start = []; let s = 0;
   for (const w of rowWidths) { start.push(s); s += w; }

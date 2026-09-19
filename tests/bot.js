@@ -1,81 +1,188 @@
-// Bot de simulación. `npm run bot [partidas]`
+// Bot de simulación. `npm run bot [partidas] [semilla] [modo]`
 //
-// No es una IA: juega con una heurística tonta (cosechar si puede, si no la
-// meseta más grande) y sirve para una sola cosa, que es la importante: ver la
-// distribución de turnos supervivientes sin jugar mil partidas a mano. Si el
-// 80% se muere antes del turno 15, el paso crece demasiado rápido. Eso son
-// treinta segundos de dato real en vez de tres tardes de intuición.
+//   npm run bot                    1000 partidas de Invierno, semillas 1..1000
+//   npm run bot 5000               5000 partidas
+//   npm run bot 2000 42            2000 partidas desde la semilla 42 (reproducible)
+//   npm run bot 2000 1 pecoreo     el modo contrarreloj
+//   npm run bot 2000 1 invierno dura
+//   npm run bot 2000 1 pecoreo normal 2   Pecoreo a 2 s por turno (por defecto 2,5)
+//
+// No es una IA: juega con una heurística tonta (cosechar si puede, si no la meseta
+// mayor) y sirve para una sola cosa, que es la importante: convertir "me parece que
+// esto es muy difícil" en un número. Si el 80 % se muere antes del turno 15, el paso
+// crece demasiado rápido. Treinta segundos de dato real en vez de tres tardes de
+// intuición.
+//
+// ---------------------------------------------------------------------------
+// POR QUÉ HAY UN RNG AQUÍ DENTRO
+// ---------------------------------------------------------------------------
+// Lo que varía entre partidas no son las decisiones del motor, son las del JUGADOR.
+// Si el bot recorre las casillas en orden de índice juega siempre la misma partida, y
+// mil repeticiones dan mil copias del mismo dato: p10 = mediana = p90 y desviación
+// cero. Eso no es una distribución, es un punto disfrazado. (Pasó de verdad: antes de
+// los cupos de arranque el motor era 100 % determinista y el bot daba 2000 partidas
+// idénticas.)
+//
+// Así que lo aleatorio es el ORDEN en que el bot considera las jugadas. Cada semilla
+// es un jugador distinto con el mismo criterio. Eso sí es una muestra.
+// ---------------------------------------------------------------------------
 const T = require('./_bundle.js');
 
-// Camino simple de longitud L dentro de una meseta homogénea. DFS con
-// backtracking: con 24 nodos es instantáneo y no hace falta nada más listo.
-function findPath(s, L, preferLevel) {
-  const order = [];
+// xorshift32: rápido, reproducible, sin dependencias. Misma semilla, mismos números.
+function rng(seed) {
+  let x = seed >>> 0 || 1;
+  return () => (x ^= x << 13, x ^= x >>> 17, x ^= x << 5, (x >>> 0) / 4294967296);
+}
+function shuffled(arr, R) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = (R() * (i + 1)) | 0; [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+
+// ---------------------------------------------------------------------------
+// Buscar una jugada
+// ---------------------------------------------------------------------------
+// El arrastre permite TRÁNSITO, así que una jugada válida es un CONJUNTO CONEXO de L
+// casillas al mismo nivel — no un camino simple. Por eso esto es un BFS y no el DFS
+// con backtracking de antes: con tránsito no hay que recorrerlas en fila.
+//
+// Si algún día se quitara el tránsito, esto vuelve a ser un DFS y el contador de
+// cuelgues fantasma de abajo dejará de marcar 0.
+function buscarJugada(s, L, nivelPreferido, R) {
+  let inicios = [];
   for (let i = 0; i < T.TILE_COUNT; i++) {
-    if (!s.alive[i] || s.height[i] < T.BASE_LEVEL) continue;
-    if (preferLevel !== undefined && s.height[i] !== preferLevel) continue;
-    order.push(i);
+    if (!jugable(s, i)) continue;
+    if (nivelPreferido !== undefined && s.height[i] !== nivelPreferido) continue;
+    inicios.push(i);
   }
+  inicios = shuffled(inicios, R);
 
-  const path = [];
-  const used = new Uint8Array(T.TILE_COUNT);
-  function dfs(u, h) {
-    path.push(u); used[u] = 1;
-    if (path.length === L) return true;
-    for (const v of T.ADJ[u])
-      if (!used[v] && s.alive[v] && s.height[v] === h && dfs(v, h)) return true;
-    path.pop(); used[u] = 0;
-    return false;
-  }
-
-  for (const start of order) {
-    if (dfs(start, s.height[start])) return path.slice();
-    path.length = 0; used.fill(0);
+  for (const inicio of inicios) {
+    const h = s.height[inicio];
+    const visto = new Uint8Array(T.TILE_COUNT); visto[inicio] = 1;
+    const conjunto = [inicio], cola = [inicio];
+    while (cola.length && conjunto.length < L) {
+      const u = cola.shift();
+      for (const v of shuffled(T.ADJ[u], R)) {
+        if (visto[v] || !jugable(s, v) || s.height[v] !== h) continue;
+        visto[v] = 1; conjunto.push(v); cola.push(v);
+        if (conjunto.length === L) break;
+      }
+    }
+    if (conjunto.length === L) return conjunto;
   }
   return null;
 }
 
-function playOne() {
-  const s = T.createState();
+// Un hueco no es jugable, y una celda con seda tampoco mientras dure.
+function jugable(s, i) {
+  return s.height[i] !== T.HUECO && !(s.sedaHasta && s.sedaHasta[i] > s.turn);
+}
+
+// ---------------------------------------------------------------------------
+// Una partida
+// ---------------------------------------------------------------------------
+function jugarUna(seed, modo, dificultad) {
+  const R = rng(seed);
+  const s = T.createState(modo, dificultad, seed);
+  const st = { pasoMax: 0, cosechas: 0, fallos: 0, fantasmas: 0, mayorCosecha: 0 };
   let guard = 0;
-  s.maxStep = 0; s.harvests = 0; s.fails = 0;
-  while (!s.gameOver && guard++ < 5000) {
-    if (s.step > s.maxStep) s.maxStep = s.step;
-    // Cosechar tiene prioridad: es lo que devuelve terreno llano al tablero.
-    let path = findPath(s, s.step, T.MAX_LEVEL) || findPath(s, s.step);
-    if (!path) { s.fails++; T.fallback(s); continue; }
-    const wasHarvest = s.height[path[0]] === T.MAX_LEVEL;
-    const before = s.step;
-    if (!T.commitTurn(s, path)) { s.fails++; T.fallback(s); continue; }
-    if (wasHarvest) s.harvests++;
-    if (s.step === 1 && before > 1) s.fails++;
+
+  while (!s.gameOver && guard++ < 3000) {
+    if (s.step > st.pasoMax) st.pasoMax = s.step;
+    // El reloj de Pecoreo corre lo que tarde en pensar un humano. Sin esto la
+    // partida contrarreloj no acabaría nunca.
+    T.tick(s, SEG_POR_TURNO);
+    if (s.gameOver) break;
+
+    // Cosechar tiene prioridad: es lo único que devuelve cera llana al panal.
+    const cells = buscarJugada(s, s.step, T.MAX_LEVEL, R) || buscarJugada(s, s.step, undefined, R);
+
+    if (!cells) {
+      // CUELGUE FANTASMA. No hay jugada, pero biggestCoherentArea dice que sí la hay:
+      // el motor cree que el jugador sigue vivo y no le deja fallar, así que un humano
+      // se queda arrastrando el dedo sin que pase nada. DEBE SER SIEMPRE 0.
+      if (T.biggestCoherentArea(s) >= s.step) st.fantasmas++;
+      st.fallos++; T.fallback(s); continue;
+    }
+
+    const esCosecha = s.height[cells[0]] === T.MAX_LEVEL;
+    const pasoAntes = s.step;
+    if (!T.commitTurn(s, cells)) { st.fallos++; T.fallback(s); continue; }
+
+    if (esCosecha) {
+      st.cosechas++;
+      if (cells.length > st.mayorCosecha) st.mayorCosecha = cells.length;
+    }
+    // commitTurn dispara el fallo solo si el siguiente paso ya no cabe.
+    if (s.step === 1 && pasoAntes > 1) st.fallos++;
   }
-  return s;
+
+  if (guard >= 3000) st.colgada = true;
+  return { turn: s.turn, score: s.score, ...st };
 }
 
-const N = Number(process.argv[2]) || 1000;
-const turnos = [], puntos = [], maxPaso = [], cosechas = [], fallos = [];
-for (let n = 0; n < N; n++) {
-  const s = playOne();
-  turnos.push(s.turn); puntos.push(s.score);
-  maxPaso.push(s.maxStep); cosechas.push(s.harvests); fallos.push(s.fails);
+// ---------------------------------------------------------------------------
+// Tirada y estadísticas
+// ---------------------------------------------------------------------------
+const N      = Number(process.argv[2]) || 1000;
+const SEED0  = Number(process.argv[3]) || 1;
+const MODO   = (process.argv[4] || 'invierno').toLowerCase();
+const DIF    = (process.argv[5] || 'normal').toLowerCase();
+const SEG_POR_TURNO = Number(process.argv[6]) || 2.5;
+
+const modoId = T.MODOS[MODO.toUpperCase()];
+if (modoId === undefined) {
+  console.error(`modo desconocido: ${MODO}. Usa: ${Object.keys(T.MODOS).join(', ').toLowerCase()}`);
+  process.exit(1);
 }
 
-const pct = (a, p) => [...a].sort((x, y) => x - y)[Math.floor(a.length * p)];
+const res = [];
+for (let n = 0; n < N; n++) res.push(jugarUna(SEED0 + n, modoId, DIF));
+
+const col   = k => res.map(r => r[k]);
 const media = a => a.reduce((x, y) => x + y, 0) / a.length;
+const pct   = (a, p) => [...a].sort((x, y) => x - y)[Math.floor(a.length * p)];
+const num   = x => Math.round(x).toLocaleString('es-ES');
 
-console.log(`${N} partidas · heurística: cosechar, si no la meseta mayor\n`);
-console.log(`turnos   media ${media(turnos).toFixed(1)}   p10 ${pct(turnos, .10)}   mediana ${pct(turnos, .50)}   p90 ${pct(turnos, .90)}   máx ${Math.max(...turnos)}`);
-console.log(`puntos   media ${Math.round(media(puntos)).toLocaleString('es-ES')}   mediana ${pct(puntos, .50).toLocaleString('es-ES')}   máx ${Math.max(...puntos).toLocaleString('es-ES')}`);
-console.log(`paso máximo alcanzado   media ${media(maxPaso).toFixed(1)}   máx ${Math.max(...maxPaso)}`);
-console.log(`cosechas por partida    media ${media(cosechas).toFixed(1)}`);
-console.log(`fallos (vórtice come)   media ${media(fallos).toFixed(1)}`);
+const turnos = col('turn');
+console.log(`${N} partidas · modo ${MODO} (${DIF}) · semillas ${SEED0}..${SEED0 + N - 1}` +
+            (T.CONFIG_MODO[modoId].reloj ? ` · ${SEG_POR_TURNO} s por turno` : ''));
+console.log(`heurística: cosechar si puede, si no la meseta mayor\n`);
+console.log(`turnos    media ${media(turnos).toFixed(1)}   p10 ${pct(turnos, .10)}   mediana ${pct(turnos, .50)}   p90 ${pct(turnos, .90)}   mín ${Math.min(...turnos)}   máx ${Math.max(...turnos)}`);
+console.log(`puntos    media ${num(media(col('score')))}   mediana ${num(pct(col('score'), .50))}   máx ${num(Math.max(...col('score')))}`);
+console.log(`paso máximo alcanzado   media ${media(col('pasoMax')).toFixed(1)}   máx ${Math.max(...col('pasoMax'))}`);
+console.log(`cosechas por partida    media ${media(col('cosechas')).toFixed(1)}   la mayor fue de ${Math.max(...col('mayorCosecha'))} celdas`);
+console.log(`fallos por partida      media ${media(col('fallos')).toFixed(1)}`);
 
-// Histograma de supervivencia por tramos de 10 turnos.
+// Un turno de cada X es una cosecha. Es el ritmo del juego: cuanto más bajo, más
+// veces pasa lo divertido. Con 5 niveles debería rondar 1 de cada 4.
+const ritmo = media(turnos) / Math.max(1, media(col('cosechas')));
+console.log(`ritmo                   una cosecha cada ${ritmo.toFixed(1)} turnos`);
+
+// --- test de regresión de la regla del arrastre ---
+const fant = col('fantasmas');
+const conFant = fant.filter(x => x > 0).length;
+console.log(`\ncuelgues fantasma       ${media(fant).toFixed(2)} por partida · en el ${(conFant / N * 100).toFixed(1)} % de las partidas · peor caso ${Math.max(...fant)}`);
+if (conFant === 0) {
+  console.log('  ✓ ninguno: cuando el motor dice que hay jugada, la hay.');
+} else {
+  console.log('  ✗ hay posiciones jugables sólo en teoría: el jugador se queda colgado.');
+  console.log('    El arrastre con tránsito debe dejar esto en 0. Ver §3 de DESIGN.md.');
+}
+
+const colgadas = res.filter(r => r.colgada).length;
+if (colgadas) {
+  console.log(`\n⚠ ${colgadas} partidas llegaron al tope de 3000 turnos sin terminar.`);
+  console.log('  Algo no está cerrando la partida: mira la helada (§6) o el reloj (§9).');
+}
+
+// --- histograma de supervivencia ---
 console.log('\nsupervivencia');
 const max = Math.max(...turnos);
-for (let lo = 0; lo <= max; lo += 10) {
-  const n = turnos.filter(t => t >= lo && t < lo + 10).length;
+const tramo = max > 200 ? 20 : 10;
+for (let lo = 0; lo <= max; lo += tramo) {
+  const n = turnos.filter(t => t >= lo && t < lo + tramo).length;
   if (!n) continue;
-  console.log(`  ${String(lo).padStart(3)}-${String(lo + 9).padEnd(3)} ${'#'.repeat(Math.round(n / N * 60)).padEnd(60)} ${(n / N * 100).toFixed(1)}%`);
+  console.log(`  ${String(lo).padStart(4)}-${String(lo + tramo - 1).padEnd(4)} ${'#'.repeat(Math.round(n / N * 60)).padEnd(60)} ${(n / N * 100).toFixed(1)} %`);
 }

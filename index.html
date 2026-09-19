@@ -3,38 +3,65 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-<title>Prototipo · puzzle hexagonal</title>
+<title>La Colmena</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
 body{
-  background:#14181f;color:#e8e6e1;
+  background:#17130e;color:#ede4d3;
   font:14px/1.4 system-ui,-apple-system,sans-serif;
   height:100dvh;display:flex;flex-direction:column;
   padding:env(safe-area-inset-top) 12px env(safe-area-inset-bottom);
   overscroll-behavior:none;touch-action:none;
 }
-header{display:flex;gap:18px;align-items:baseline;flex-wrap:wrap;padding:12px 2px 6px}
-.big{font-size:26px;font-weight:600;letter-spacing:-.02em}
-.lbl{color:#7d8794;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+nav{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:10px 2px 0}
+nav .grupo{display:flex;gap:4px}
+header{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;padding:10px 2px 6px}
+.big{font-size:26px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.big.urgente{color:#ff7a45}
+.lbl{color:#8c7f6a;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
 .stat{display:flex;flex-direction:column;gap:1px}
 .stat .v{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+.ritmo{font-size:12px;color:#ff9f45;margin-left:4px}
 .spacer{flex:1}
 button{
-  background:#232a34;color:#e8e6e1;border:1px solid #333d4a;
-  border-radius:8px;padding:7px 13px;font:inherit;cursor:pointer;
+  background:#2a2218;color:#ede4d3;border:1px solid #43372a;
+  border-radius:8px;padding:6px 12px;font:inherit;cursor:pointer;
 }
-button:hover{background:#2c3542}
-.warn{min-height:18px;font-size:12px;padding:0 2px 6px;color:#7d8794}
-.warn.tight{color:#dcc25c}
-.warn.over{color:#e8743f;font-weight:600}
-#wrap{flex:1;min-height:0;position:relative}
-canvas{display:block;touch-action:none}
-footer{color:#5c6775;font-size:11px;padding:8px 2px 12px}
+button:hover{background:#352b1f}
+button.on{background:#F79A1F;color:#231500;border-color:#F79A1F;font-weight:600}
+.warn{min-height:18px;font-size:12px;padding:0 2px 2px;color:#8c7f6a}
+.warn.tight{color:#E3C87E}
+.warn.bueno{color:#9fd67a}
+.warn.over{color:#F79A1F;font-weight:600}
+.log{min-height:18px;font-size:12px;padding:0 2px 4px;color:#c9b99c}
+.item{min-height:16px;font-size:12px;padding:0 2px;color:#ffd23f}
+#wrap{flex:1;min-height:0;min-width:0;position:relative;overflow:hidden}
+canvas{display:block;touch-action:none;position:absolute;left:0;top:0}
+footer{color:#6d6150;font-size:11px;padding:8px 2px 12px;display:flex;gap:12px;flex-wrap:wrap}
 </style>
 </head>
 <body>
 
+<nav>
+  <div class="grupo">
+    <button data-modo="pecoreo">Pecoreo</button>
+    <button data-modo="invierno">Invierno</button>
+    <button data-modo="libre">Panal libre</button>
+  </div>
+  <div class="grupo" id="dificultad">
+    <button data-dif="normal">Normal</button>
+    <button data-dif="dura">Dura</button>
+  </div>
+  <div class="spacer"></div>
+  <button id="restart">Nueva partida</button>
+</nav>
+
 <header>
+  <div class="stat" id="reloj-stat">
+    <span class="lbl">Reloj</span>
+    <span><span class="big" id="reloj">90</span><span class="ritmo" id="ritmo"></span></span>
+  </div>
   <div class="stat">
     <span class="lbl">Paso</span>
     <span class="big" id="step">1</span>
@@ -52,24 +79,34 @@ footer{color:#5c6775;font-size:11px;padding:8px 2px 12px}
     <span class="v" id="turn">0</span>
   </div>
   <div class="stat">
-    <span class="lbl">Casillas</span>
-    <span class="v" id="alive">24</span>
+    <span class="lbl">Celdas</span>
+    <span class="v" id="alive">12</span>
   </div>
   <div class="stat">
     <span class="lbl">Meseta</span>
-    <span class="v" id="area">24</span>
+    <span class="v" id="area">0</span>
   </div>
-  <div class="spacer"></div>
-  <button id="restart">Nueva partida</button>
+  <div class="stat" id="helada-stat">
+    <span class="lbl">Helada</span>
+    <span class="v" id="helada">0/2</span>
+  </div>
+  <div class="stat" id="fallos-stat">
+    <span class="lbl">Fallos seguidos</span>
+    <span class="v" id="fallos">0</span>
+  </div>
 </header>
 
 <div class="warn" id="warn"></div>
+<div class="log" id="log"></div>
+<div class="item" id="item"></div>
 
 <div id="wrap"><canvas id="board"></canvas></div>
 
 <footer>
-  Arrastra sobre <b id="hint">tantas casillas contiguas como indique el paso</b>, todas a la misma altura.
-  Cada turno hay que arrastrar una más. Al llegar a 6, arrástralas para cosechar: vuelven a 1.
+  <span>Arrastra sobre tantas celdas conectadas como indique el paso, todas al mismo nivel
+  (puedes volver a pasar por una celda). Cada turno, una más. Al llegar a 5 (abeja),
+  arrástralas para cosechar: vuelven a cera. Pasa la cadena por una gota para recoger el ítem.</span>
+  <span id="seed"></span>
 </footer>
 
 <script src="js/constants.js"></script>
