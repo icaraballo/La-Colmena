@@ -74,10 +74,10 @@ function buscarJugada(s, L, nivelPreferido, R) {
   return null;
 }
 
-// Un hueco no es jugable, y una celda con seda tampoco mientras dure.
-function jugable(s, i) {
-  return s.height[i] !== T.HUECO && !(s.sedaHasta && s.sedaHasta[i] > s.turn);
-}
+// La definición del motor, no una copia: una celda rota no es jugable y una
+// con seda tampoco mientras dure; el agua sí. Si el bot tuviera su propia regla
+// mediría un juego distinto del que se juega.
+function jugable(s, i) { return T.jugable(s, i); }
 
 // ---------------------------------------------------------------------------
 // Una partida

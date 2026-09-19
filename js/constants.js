@@ -13,21 +13,24 @@
 const ROW_WIDTHS = [4, 5, 6, 5, 4];
 const TILE_COUNT = 24;
 
-// La escalera: el ciclo de cría de una abeja. El hueco NO es jugable: ni se
-// selecciona ni se atraviesa. Sólo lo recuperan un ítem o una cosecha grande.
-const HUECO      = 0;   // celda rota
+// La escalera: el ciclo de cría de una abeja, con el AGUA debajo. El agua es un
+// escalón más: se arrastra como cualquier nivel y sube a cera (como el agua del
+// original, que subía a arena). Las celdas ROTAS no están en la escalera: van en
+// s.roto[], son irreversibles y desaparecen del panal (ver state.js).
+const AGUA       = 0;   // celda vacía: JUGABLE, sube a cera
 const CERA       = 1;
 const HUEVO      = 2;
 const LARVA      = 3;
 const OPERCULADA = 4;
 const MAX_LEVEL  = 5;   // abeja lista: se cosecha
 
-const NOMBRE_NIVEL = ['hueco', 'cera', 'huevo', 'larva', 'operculada', 'abeja'];
+const NOMBRE_NIVEL = ['agua', 'cera', 'huevo', 'larva', 'operculada', 'abeja'];
 
-// Cupos del arranque: siempre los mismos, en posiciones al azar. Es lo que hace
-// finita la partida (DESIGN §2).
+// Cupos del arranque: siempre los mismos, en posiciones al azar (DESIGN §2).
+// El agua es jugable: la partida no la hace finita el arranque sino la helada,
+// que rompe celdas para siempre.
 const ARRANQUE = [
-  { nivel: HUECO, casillas: 12 },
+  { nivel: AGUA,  casillas: 12 },
   { nivel: CERA,  casillas: 8 },
   { nivel: HUEVO, casillas: 4 },
 ];
@@ -78,9 +81,12 @@ const CONFIG_MODO = {
 };
 
 // Helada (DESIGN §6): cada cuántos fallos avanza, según dificultad.
-const HELADA_CADA = { normal: 2, dura: 1 };
+// Con el agua jugable (v3) la partida no terminaba con "cada 2"; la palanca 2 del
+// cambio agua/celda rota la baja a cada fallo. Hoy normal y dura son iguales:
+// la dificultad está pendiente de rediseñar.
+const HELADA_CADA = { normal: 1, dura: 1 };
 const HELADA_REMATE = 3;        // con tantas casillas jugables o menos, avanza siempre
-const COSECHA_GRANDE = 4;       // una cosecha de 4+ devuelve helada / limpia amenazas
+const COSECHA_GRANDE = 4;       // una cosecha de 4+ limpia amenazas (Pecoreo)
 
 // Reloj de Pecoreo (DESIGN §9).
 const RELOJ_INICIAL = 90;
@@ -102,10 +108,10 @@ const CALMA_TRAS_VELUTINA = 5;
 const ITEM_THRESHOLDS = [14, 12, 10, 8, 6];
 const ITEMS = {
   JALEA:    'jalea',     // todo el panal sube un nivel
-  PROPOLEO: 'propoleo',  // los huecos vuelven a cera
+  PROPOLEO: 'propoleo',  // el agua sube a cera
   DANZA:    'danza',     // la ronda siguiente, arrastre de cualquier longitud
   NECTAR:   'nectar',    // +15 s (sólo Pecoreo)
-  HUMO:     'humo',      // la helada retrocede una casilla (sólo Invierno)
+  HUMO:     'humo',      // la helada retrocede una celda — hoy NO sale (ver itemsUtiles)
   REINA:    'reina',     // comodín: la cadena la atraviesa aunque esté a otro nivel
 };
 

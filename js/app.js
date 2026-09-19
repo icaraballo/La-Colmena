@@ -2,7 +2,7 @@
 
 const NOMBRE_ITEM = {
   jalea: 'Jalea real — todo el panal sube un nivel',
-  propoleo: 'Propóleo — los huecos vuelven a cera',
+  propoleo: 'Propóleo — toda el agua sube a cera',
   danza: 'Danza de la exploradora — el próximo arrastre, de la longitud que quieras',
   nectar: `Néctar — +${NECTAR_SEGUNDOS} s`,
   humo: 'Humo del apicultor — la helada retrocede una celda',
@@ -79,11 +79,11 @@ function contar(eventos) {
   const txt = [];
   for (const e of eventos) {
     if (e.type === 'usa') txt.push(`✦ ${NOMBRE_ITEM[e.tipo].split(' — ')[0]}`);
-    if (e.type === 'deshiela') txt.push('La cosecha empuja la helada: una celda vuelve a cera');
+    if (e.type === 'deshiela') txt.push('La cosecha empuja la helada: una celda vuelve como agua');
     if (e.type === 'limpia') txt.push(e.desastre === 'capullo' ? 'La cosecha elimina el capullo' : 'La cosecha retira la seda');
     if (e.type === 'fallback') {
       txt.push('Fallo: el paso vuelve a 1');
-      if (e.eaten !== undefined) txt.push('la helada se come una celda');
+      if (e.eaten !== undefined) txt.push('la helada destruye una celda');
       const d = e.desastre;
       if (d && d.tipo === 'varroa') txt.push('varroa: una celda baja a cera');
       if (d && d.tipo === 'polilla') txt.push('polilla: aparece un capullo (eclosiona si vuelves a fallar)');
@@ -100,7 +100,7 @@ function onCommit(cells) {
   if (S.last.type === 'harvest') {
     const t = performance.now();
     cells.forEach((i, k) => abejas.push({
-      x: layout.cx[i], y: layout.cy[i] - (antes[i] - 1) * LIFT, t0: t + k * 60,
+      x: layout.cx[i], y: layout.cy[i] - Math.max(0, antes[i] - 1) * LIFT, t0: t + k * 60,
     }));
   }
   contar(S.eventos);

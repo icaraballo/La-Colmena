@@ -10,7 +10,9 @@ const LIFT = 9;
 // información va en el brillo, no en el tono: se juzga "¿están a la misma
 // altura?" a toda velocidad y aguanta el daltonismo. El 5 salta a la vista a
 // propósito: es la jugada que quieres ver.
-const LEVEL_COLORS = ['#2B2721', '#6E5A32', '#9C7F3C', '#C8A14A', '#E3C87E', '#F79A1F'];
+// El 0 (agua) sale de la rampa ámbar a propósito: no es "un nivel más oscuro",
+// es otra cosa, y tiene que leerse como jugable de un vistazo.
+const LEVEL_COLORS = ['#2E4756', '#6E5A32', '#9C7F3C', '#C8A14A', '#E3C87E', '#F79A1F'];
 
 const ITEM_ICON = {
   jalea: 'J', propoleo: 'P', danza: 'D', nectar: 'N', humo: 'H', reina: '♛',
@@ -85,30 +87,17 @@ function draw(ctx, s, ui, now) {
 
   const R = layout.R;
   const inChain = new Set(ui.cells);
-  const heladas = new Set(s.heladas);
   const capullos = new Set(s.desastres.filter(d => d.tipo === 'capullo').map(d => d.tile));
 
   // Orden por índice = de arriba abajo, que es el que hace solapar bien el 2.5D.
   for (let i = 0; i < TILE_COUNT; i++) {
+    // Celda rota: no existe. Ni hexágono ni borde. El panal encoge de verdad y se
+    // ve que encoge.
+    if (s.roto[i]) continue;
+
     const x = layout.cx[i];
     const h = s.height[i];
-
-    if (h === HUECO) {
-      hexPath(ctx, x, layout.cy[i], R * 0.94);
-      ctx.fillStyle = LEVEL_COLORS[HUECO];
-      ctx.fill();
-      // La helada se distingue de la celda rota: es lo que se puede recuperar.
-      if (heladas.has(i)) {
-        ctx.strokeStyle = 'rgba(170,210,235,0.55)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([3, 3]);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
-      continue;
-    }
-
-    const D = (h - 1) * LIFT;
+    const D = Math.max(0, h - 1) * LIFT;   // el agua se dibuja a ras, sin prisma
     const y = layout.cy[i] - D;
     const color = LEVEL_COLORS[h];
 
@@ -218,12 +207,12 @@ function draw(ctx, s, ui, now) {
 }
 
 // Qué celda hay bajo un punto. Por distancia al centro, no por polígono exacto:
-// en un móvil los hexágonos son pequeños y el dedo es gordo. Los huecos no
-// cuentan: no son jugables.
+// en un móvil los hexágonos son pequeños y el dedo es gordo. Las celdas rotas no
+// cuentan (no existen); el agua sí, es jugable.
 function tileAt(s, px, py) {
   let best = -1, bestD = layout.R * 0.95;
   for (let i = 0; i < TILE_COUNT; i++) {
-    if (s.height[i] === HUECO) continue;
+    if (s.roto[i]) continue;
     const d = Math.hypot(px - layout.cx[i], py - topY(s, i));
     if (d < bestD) { bestD = d; best = i; }
   }

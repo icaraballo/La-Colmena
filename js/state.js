@@ -12,7 +12,8 @@
 function createState(modo = MODOS.INVIERNO, dificultad = 'normal', seed = 1) {
   const s = {
     // --- tablero ---
-    height:    new Uint8Array(TILE_COUNT),
+    height:    new Uint8Array(TILE_COUNT),   // 0 agua … 5 abeja
+    roto:      new Uint8Array(TILE_COUNT),   // 1 = destruida por la helada: fuera del panal
     sedaHasta: new Int32Array(TILE_COUNT),   // bloqueada mientras sedaHasta > turn
     item:      null,                          // { tile, tipo } — néctar sobre una celda
 
@@ -47,7 +48,7 @@ function createState(modo = MODOS.INVIERNO, dificultad = 'normal', seed = 1) {
     eventos: [],
   };
 
-  // Cupos fijos (12 huecos, 8 cera, 4 huevo), posiciones al azar.
+  // Cupos fijos (12 agua, 8 cera, 4 huevo), posiciones al azar.
   const reparto = [];
   for (const { nivel, casillas } of ARRANQUE)
     for (let k = 0; k < casillas; k++) reparto.push(nivel);
@@ -78,16 +79,16 @@ function barajar(s, arr) {
 // ---------------------------------------------------------------------------
 // Qué celdas se pueden tocar
 // ---------------------------------------------------------------------------
-// Un hueco no es jugable, y una celda con seda tampoco mientras dure. Esto es
-// una regla crítica: si los huecos se pudieran arrastrar, el panal se regenera
-// más rápido de lo que la helada se lo come y la partida no acaba (DESIGN §2).
+// Jugable = existe y no está bloqueada por seda. El AGUA SÍ es jugable: se
+// arrastra como cualquier nivel y sube a cera. Lo que no se puede tocar nunca es
+// una celda rota, y eso es lo que mantiene finita la partida (DESIGN §2).
 function jugable(s, i) {
-  return s.height[i] !== HUECO && !(s.sedaHasta[i] > s.turn);
+  return !s.roto[i] && !(s.sedaHasta[i] > s.turn);
 }
 
 function tilesPlayable(s) {
   let n = 0;
-  for (let i = 0; i < TILE_COUNT; i++) if (s.height[i] !== HUECO) n++;
+  for (let i = 0; i < TILE_COUNT; i++) if (!s.roto[i]) n++;
   return n;
 }
 
@@ -186,13 +187,14 @@ function commitTurn(s, cells) {
     s.streak++;
     s.failStreak = 0;
 
-    if (L >= COSECHA_GRANDE) {
-      if (cfg.helada) devolverHelada(s);
-      if (cfg.desastres) limpiarAmenaza(s);
-    }
+    // En Invierno la cosecha grande ya NO devuelve celdas rotas: con el agua
+    // jugable la partida no terminaba (palanca 1 del cambio agua/celda rota).
+    if (L >= COSECHA_GRANDE && cfg.desastres) limpiarAmenaza(s);
   } else {
     for (const i of cells) s.height[i] = h + 1;
-    if (cfg.puntua) s.score += 10 * L * L * bonusMultiplier(L);
+    // Subir agua es jugada de terreno, no de construcción: gasta turno y hace
+    // crecer el paso, pero no da puntos.
+    if (cfg.puntua && h !== AGUA) s.score += 10 * L * L * bonusMultiplier(L);
   }
 
   s.turn++;
@@ -236,28 +238,32 @@ function fallback(s) {
 // Helada (DESIGN §6)
 // ---------------------------------------------------------------------------
 // Avanza cada 2 fallos (cada 1 en dura), y siempre si quedan 3 jugables o menos.
-// Se come la primera celda de la espiral que no sea ya hueco.
+// Rompe la primera celda de la espiral que no esté ya rota, sea del nivel que sea.
 function avanzarHelada(s) {
   s.heladaCnt++;
   const toca = s.heladaCnt >= HELADA_CADA[s.dificultad] || tilesPlayable(s) <= HELADA_REMATE;
   if (!toca) return undefined;
   s.heladaCnt = 0;
 
-  const tile = SPIRAL.find(i => s.height[i] !== HUECO);
+  const tile = SPIRAL.find(i => !s.roto[i]);
   if (tile === undefined) return undefined;
-  s.height[tile] = HUECO;
+  s.roto[tile] = 1;
+  s.height[tile] = AGUA;      // irrelevante mientras esté rota, pero deja el array limpio
   s.sedaHasta[tile] = 0;
   s.heladas.push(tile);
   if (s.item && s.item.tile === tile) s.item = null;
   return tile;
 }
 
-// La última celda helada vuelve a cera. Cosecha grande o humo del apicultor.
+// La última celda rota por la helada vuelve al panal, como AGUA: recuperas el
+// suelo, no el trabajo. Desde la v3 nada la llama (la cosecha grande dejó de
+// hacerlo y el humo no sale); se conserva para cuando se rediseñe el humo.
 function devolverHelada(s) {
   while (s.heladas.length) {
     const tile = s.heladas.pop();
-    if (s.height[tile] !== HUECO) continue;   // ya no está helada: se salta
-    s.height[tile] = CERA;
+    if (!s.roto[tile]) continue;              // ya se recuperó: se salta
+    s.roto[tile] = 0;
+    s.height[tile] = AGUA;
     s.eventos.push({ type: 'deshiela', tile });
     return tile;
   }
@@ -266,7 +272,7 @@ function devolverHelada(s) {
 
 // ---------------------------------------------------------------------------
 // Desastres (DESIGN §7): castigos escalonados por fallos seguidos, nunca al azar.
-// Ninguno convierte celdas en hueco: eso es exclusivo de la helada.
+// Ninguno rompe celdas (eso es exclusivo de la helada) ni actúa sobre el agua.
 // ---------------------------------------------------------------------------
 function dispararDesastre(s) {
   if (s.turn < s.calmaHasta) return null;
@@ -295,7 +301,7 @@ function varroa(s) {
 function polilla(s) {
   const cand = [];
   for (let i = 0; i < TILE_COUNT; i++)
-    if (s.height[i] !== HUECO && !s.desastres.some(d => d.tile === i)) cand.push(i);
+    if (!s.roto[i] && s.height[i] >= CERA && !s.desastres.some(d => d.tile === i)) cand.push(i);
   const tile = elegir(s, cand);
   if (tile === undefined) return null;
   s.desastres.push({ tipo: 'capullo', tile });
@@ -305,7 +311,7 @@ function polilla(s) {
 // El capullo suelta seda sobre sus vecinas: bloqueadas SEDA_TURNOS turnos.
 function eclosionar(s, capullo) {
   s.desastres.splice(s.desastres.indexOf(capullo), 1);
-  const tiles = ADJ[capullo.tile].filter(v => s.height[v] !== HUECO);
+  const tiles = ADJ[capullo.tile].filter(v => !s.roto[v] && s.height[v] >= CERA);
   const hasta = s.turn + SEDA_TURNOS;
   for (const v of tiles) s.sedaHasta[v] = hasta;
   s.desastres.push({ tipo: 'seda', tiles, hasta });
@@ -318,7 +324,7 @@ function velutina(s) {
   for (let i = 0; i < TILE_COUNT; i++) if (s.height[i] > CERA) cand.push(i);
   const centro = elegir(s, cand);
   if (centro === undefined) return null;
-  const zona = [centro, ...barajar(s, ADJ[centro].filter(v => s.height[v] !== HUECO))]
+  const zona = [centro, ...barajar(s, ADJ[centro].filter(v => !s.roto[v] && s.height[v] >= CERA))]
     .slice(0, 3 + randInt(s, 2));
   for (const i of zona) s.height[i] = CERA;
   s.calmaHasta = s.turn + CALMA_TRAS_VELUTINA;
@@ -368,19 +374,21 @@ function spawnItemIfEarned(s) {
 function itemsUtiles(s) {
   const cfg = CONFIG_MODO[s.modo];
   const out = [ITEMS.DANZA, ITEMS.REINA];
-  let hayHueco = false, haySubible = false;
+  let hayAgua = false, haySubible = false;
   for (let i = 0; i < TILE_COUNT; i++) {
-    if (s.height[i] === HUECO) hayHueco = true;
+    if (s.roto[i]) continue;
+    if (s.height[i] === AGUA) hayAgua = true;
     else if (s.height[i] < MAX_LEVEL) haySubible = true;
   }
   if (haySubible) out.push(ITEMS.JALEA);
-  // El propóleo NO sale en Invierno: reconstruiría los 12 huecos del arranque,
-  // el panal quedaría entero y la partida no terminaría (medido: un 5 % de las
-  // partidas se iban a 3000 turnos con un solo propóleo al principio). Es el
-  // espejo del humo, que sólo sale en Invierno.
-  if (hayHueco && !cfg.helada) out.push(ITEMS.PROPOLEO);
+  // El propóleo ya puede salir en Invierno: sube el agua a cera, que el jugador
+  // puede hacer a mano de todas formas, y NO resucita celdas rotas. Deja de ser
+  // el atajo que hacía infinita la partida (v2); ahora sólo ahorra turnos.
+  if (hayAgua) out.push(ITEMS.PROPOLEO);
   if (cfg.reloj) out.push(ITEMS.NECTAR);
-  if (cfg.helada && s.heladas.some(t => s.height[t] === HUECO)) out.push(ITEMS.HUMO);
+  // El humo no sale desde la v3: deshacía la helada, y la celda rota es ahora
+  // estrictamente permanente (palanca 1). Queda pendiente de rediseñar.
+  // if (cfg.helada && s.heladas.some(t => s.roto[t])) out.push(ITEMS.HUMO);
   return out;
 }
 
@@ -390,10 +398,12 @@ function usarItem(s, tipo) {
   switch (tipo) {
     case ITEMS.JALEA:
       for (let i = 0; i < TILE_COUNT; i++)
-        if (s.height[i] !== HUECO && s.height[i] < MAX_LEVEL) s.height[i]++;
+        // "Raise all land tiles": sube la tierra, no el agua.
+        if (!s.roto[i] && s.height[i] >= CERA && s.height[i] < MAX_LEVEL) s.height[i]++;
       break;
     case ITEMS.PROPOLEO:
-      for (let i = 0; i < TILE_COUNT; i++) if (s.height[i] === HUECO) s.height[i] = CERA;
+      // "Raise all water tiles": el agua sube a cera. Las rotas no vuelven.
+      for (let i = 0; i < TILE_COUNT; i++) if (!s.roto[i] && s.height[i] === AGUA) s.height[i] = CERA;
       break;
     case ITEMS.DANZA:
       s.danza = true;

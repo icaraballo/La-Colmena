@@ -10,7 +10,8 @@ ha reimplementado desde cero y el tema es propio.
 
 ## Cómo se juega
 
-El panal es el ciclo de cría de una abeja: **cera → huevo → larva → operculada → abeja**.
+El panal es el ciclo de cría de una abeja, con el agua debajo:
+**agua → cera → huevo → larva → operculada → abeja**.
 
 1. **Homogeneidad**: arrastras sobre un grupo de celdas conectadas que estén *todas al
    mismo nivel*, y suben un nivel. Puedes volver a pasar por una celda ya elegida para
@@ -22,14 +23,16 @@ Cuando las celdas llegan a abeja (nivel 5) se **cosechan**: la abeja sale voland
 celda vuelve a cera. Si el siguiente paso no cabe en ningún sitio, fallas: el paso vuelve
 a 1 y se pierde la racha.
 
-Los huecos (celdas rotas) no se pueden jugar. La partida empieza con 12.
+El **agua** (azul) se juega como cualquier nivel y sube a cera, pero no da puntos. La
+partida empieza con 12 celdas de agua. Las **celdas rotas** desaparecen del panal para
+siempre: sólo las crea la helada.
 
 ### Modos
 
 - **Pecoreo**: contrarreloj de 90 s. Cosechar da tiempo. Si fallas seguido llegan los
   desastres: varroa, polilla (capullo y después seda) y velutina.
-- **Invierno**: sin reloj. Cada 2 fallos la helada se come una celda desde el borde.
-  Las cosechas de 4 o más la hacen retroceder.
+- **Invierno**: sin reloj. En cada fallo la helada rompe una celda del borde, para
+  siempre. Sin panal, se acabó.
 - **Panal libre**: sin presión y sin puntos, para probar.
 
 Los **ítems** aparecen como gotas cuando hay muchas celdas al mismo nivel, y se recogen

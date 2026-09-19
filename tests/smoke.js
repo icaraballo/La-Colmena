@@ -16,7 +16,11 @@ function tablero(modo, nivel, excepciones = {}, dificultad = 'normal') {
   for (const [i, h] of Object.entries(excepciones)) s.height[i] = h;
   return s;
 }
-const contar = (s, h) => [...s.height].filter(x => x === h).length;
+// Celdas a un nivel, sin contar las rotas (una rota guarda height = 0 por limpieza).
+const contar = (s, h) => [...s.height].filter((x, i) => x === h && !s.roto[i]).length;
+const rotas = (s) => [...s.roto].filter(Boolean).length;
+// Rompe celdas a mano, como haría la helada.
+function romper(s, ...tiles) { for (const t of tiles) { s.roto[t] = 1; s.height[t] = T.AGUA; } return s; }
 
 // --- geometría (§2) ------------------------------------------------------------
 eq(T.TILE_COUNT, 24, 'el panal tiene 24 celdas');
@@ -26,7 +30,7 @@ for (let i = 0; i < 24; i++)
   for (const v of T.ADJ[i]) ok(T.ADJ[v].includes(i), `adyacencia simétrica ${i}-${v}`);
 eq(new Set(T.SPIRAL).size, 24, 'la espiral recorre las 24 celdas sin repetir');
 eq(T.MAX_LEVEL, 5, 'cinco niveles jugables');
-eq(T.HUECO, 0, 'el hueco es el nivel 0');
+eq(T.AGUA, 0, 'el agua es el nivel 0');
 
 // --- arranque (§2) ---------------------------------------------------------------
 for (let seed = 1; seed <= 50; seed++) {
@@ -64,14 +68,27 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   ok(!T.isValidDrag(y, [11, 5, 0, 12, 13, 16, 4]), 'una celda de otro nivel la invalida');
 }
 
-// --- huecos (§2) -------------------------------------------------------------------
+// --- agua y celdas rotas (§2) ---------------------------------------------------------
 {
-  const s = tablero('libre', 1, { 1: 0 });
+  const s = tablero('invierno', 0);
   s.step = 3;
-  ok(!T.isValidDrag(s, [0, 1, 2]), 'no se puede pasar por un hueco');
-  ok(!T.isValidDrag(s, [1]), 'un hueco no se selecciona');
-  s.height.fill(0); s.height[5] = 2;
-  eq(T.biggestCoherentArea(s), 1, 'los huecos no cuentan como meseta');
+  ok(T.isValidDrag(s, [0, 1, 2]), 'una cadena de agua de longitud step es válida');
+  eq(T.biggestCoherentArea(s), 24, 'el agua cuenta como meseta');
+  T.commitTurn(s, [0, 1, 2]);
+  eq(s.height[0], T.CERA, 'arrastrar agua la deja en cera');
+  eq(s.score, 0, 'subir agua no da puntos');
+  eq(s.turn, 1, '…pero sí gasta turno');
+  eq(s.step, 4, '…y sí hace crecer el paso');
+}
+{
+  const s = romper(tablero('libre', 1), 1);
+  s.step = 3;
+  ok(!T.jugable(s, 1), 'una celda rota nunca es jugable, aunque su nivel sea 0');
+  ok(!T.isValidDrag(s, [0, 1, 2]), 'no se puede pasar por una celda rota');
+  ok(!T.isValidDrag(s, [1]), 'una celda rota no se selecciona');
+  eq(T.tilesPlayable(s), 23, 'las rotas no cuentan como panal');
+  const u = romper(tablero('libre', 0), ...Array.from({ length: 23 }, (_, i) => i + 1));
+  eq(T.biggestCoherentArea(u), 1, 'las rotas no cuentan como meseta');
 }
 
 // --- el turno (§4) -------------------------------------------------------------------
@@ -89,7 +106,7 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   const s = tablero('invierno', 1, { 0: 5, 1: 5 });
   s.step = 2;
   T.commitTurn(s, [0, 1]);
-  eq(s.height[0], 1, 'cosechar devuelve a cera, no a hueco');
+  eq(s.height[0], 1, 'cosechar devuelve a cera, no a agua');
   eq(s.streak, 1, 'la cosecha suma racha');
   eq(s.score, 10 * 4 * 2, 'puntos de cosecha: 10·L²·bonus·(1+racha)');
   eq(s.last.type, 'harvest', 'se registra como cosecha');
@@ -97,48 +114,44 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
 
 // --- fallo y helada (§4, §6) ---------------------------------------------------------
 {
-  // Cuatro celdas sueltas (más de 3, para que no salte el remate): tras subir
-  // la 0, ningún par de vecinas comparte nivel y el paso 2 no cabe.
+  // Cuatro celdas sueltas en un panal roto: tras subir la 0, ningún par de
+  // vecinas comparte nivel y el paso 2 no cabe.
   const s = tablero('invierno', 0, { 0: 1, 23: 2, 20: 3, 3: 4 });
+  for (let i = 0; i < 24; i++) if (![0, 23, 20, 3].includes(i)) romper(s, i);
   T.commitTurn(s, [0]);
   eq(s.step, 1, 'si el siguiente paso no cabe, fallo: el paso vuelve a 1');
   eq(s.failStreak, 1, 'cuenta un fallo seguido');
-  eq(s.heladaCnt, 1, 'en normal, el primer fallo sólo carga la helada');
-  eq(contar(s, 0), 20, '…y no se come nada todavía');
+  eq(s.turn, 1, 'el fallo no cuenta turno');
 }
 {
   const s = tablero('invierno', 2);
-  s.heladaCnt = 1;
   T.fallback(s);
-  eq(s.height[T.SPIRAL[0]], 0, 'al segundo fallo la helada se come la primera de la espiral');
-  eq(s.heladaCnt, 0, 'y el contador vuelve a 0');
-  T.fallback(s); T.fallback(s);
-  eq(s.height[T.SPIRAL[1]], 0, 'la helada salta las que ya son hueco');
+  eq(s.roto[T.SPIRAL[0]], 1, 'la helada rompe la primera celda de la espiral en cada fallo');
+  eq(T.tilesPlayable(s), 23, 'y el panal pierde una celda');
+  eq(s.heladaCnt, 0, 'el contador vuelve a 0');
+  T.fallback(s);
+  eq(s.roto[T.SPIRAL[1]], 1, 'la helada salta las celdas ya rotas');
+  s.height[T.SPIRAL[2]] = T.AGUA;
+  T.fallback(s);
+  eq(s.roto[T.SPIRAL[2]], 1, 'la helada también rompe el agua');
 }
 {
   const s = tablero('invierno', 2, {}, 'dura');
   T.fallback(s);
-  eq(contar(s, 0), 1, 'en dura la helada avanza en cada fallo');
-}
-{
-  const s = tablero('invierno', 0, { 11: 2, 12: 2, 17: 2 });
-  T.fallback(s);
-  eq(contar(s, 0), 22, 'con 3 celdas o menos la helada avanza siempre (remate)');
+  eq(rotas(s), 1, 'en dura la helada avanza en cada fallo');
 }
 {
   const s = tablero('invierno', 1, { 5: 5, 6: 5, 11: 5, 12: 5 });
-  s.heladaCnt = 1; T.fallback(s);
-  const helada = T.SPIRAL[0];
-  eq(s.height[helada], 0, 'preparación: una celda helada');
+  T.fallback(s);
+  const rota = T.SPIRAL[0];
   s.step = 4;
   T.commitTurn(s, [5, 6, 11, 12]);
-  eq(s.height[helada], 1, 'una cosecha de 4+ devuelve la última celda helada a cera');
+  eq(s.roto[rota], 1, 'la cosecha de 4+ ya NO devuelve celdas rotas (v3, palanca 1)');
 }
 {
-  const s = tablero('invierno', 0, { 11: 1 });
-  s.heladaCnt = 1;
+  const s = romper(tablero('invierno', 1), ...Array.from({ length: 23 }, (_, i) => i + 1));
   T.fallback(s);
-  ok(s.gameOver, 'Invierno termina cuando no queda ninguna celda');
+  ok(s.gameOver, 'Invierno termina cuando las 24 celdas están rotas');
 }
 
 // --- desastres (§7) ------------------------------------------------------------------
@@ -160,7 +173,10 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   ok(n >= 3 && n <= 4, 'la velutina barre 3-4 celdas');
   T.fallback(s);
   eq(s.last.desastre, null, 'tras la velutina hay calma');
-  eq(contar(s, 0), 0, 'ningún desastre crea huecos');
+  eq(rotas(s), 0, 'ningún desastre rompe celdas');
+  const a = tablero('pecoreo', 0);
+  for (let k = 0; k < 6; k++) T.fallback(a);
+  eq(contar(a, 0), 24, 'los desastres no actúan sobre el agua');
 }
 {
   const s = tablero('pecoreo', 2);
@@ -186,10 +202,10 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   const t = tablero('invierno', 1);
   ok(T.spawnItemIfEarned(t) !== null, 'con 14 de cera sale un ítem');
   for (let seed = 1; seed <= 200; seed++) {
-    const u = tablero('invierno', 1); u.rng = seed;
+    const u = tablero('invierno', 1); u.rng = (seed * 2654435761) >>> 0 || 1;
     const it = T.spawnItemIfEarned(u);
     ok(it.tipo !== 'propoleo' && it.tipo !== 'nectar' && it.tipo !== 'humo',
-       `semilla ${seed}: en Invierno sin heladas no salen propóleo, néctar ni humo`);
+       `semilla ${seed}: en Invierno sin agua no salen propóleo, néctar ni humo`);
   }
 }
 {
@@ -197,14 +213,22 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   s.item = { tile: 0, tipo: 'jalea' };
   T.commitTurn(s, [0]);
   eq(s.last.item, 'jalea', 'al pasar la cadena por el ítem se recoge');
-  eq(s.height[1], 2, 'jalea: todo el panal sube');
-  eq(s.height[3], 0, 'jalea: los huecos no suben');
+  eq(s.height[1], 2, 'jalea: toda la tierra sube');
+  eq(s.height[3], 0, 'jalea: el agua no sube');
 }
 {
-  const s = tablero('pecoreo', 1, { 3: 0, 4: 0 });
+  const s = romper(tablero('invierno', 1, { 3: 0, 4: 0 }), 23);
   s.item = { tile: 0, tipo: 'propoleo' };
   T.commitTurn(s, [0]);
-  eq(contar(s, 0), 0, 'propóleo: los huecos vuelven a cera');
+  eq(contar(s, 0), 0, 'propóleo: toda el agua sube a cera');
+  eq(s.roto[23], 1, 'propóleo: no resucita celdas rotas');
+  const u = tablero('invierno', 1, { 3: 0 });
+  let sale = false;
+  for (let seed = 1; seed <= 200 && !sale; seed++) {
+    u.item = null; u.rng = (seed * 2654435761) >>> 0 || 1;
+    if (T.spawnItemIfEarned(u).tipo === 'propoleo') sale = true;
+  }
+  ok(sale, 'el propóleo ya sale en Invierno si hay agua');
 }
 {
   const s = tablero('libre', 1);
@@ -224,11 +248,19 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   eq(s.reloj, 65, 'néctar: +15 s');
 }
 {
+  // El humo no se ofrece desde la v3, pero si se usa sigue haciendo su efecto.
   const s = tablero('invierno', 1);
-  s.heladaCnt = 1; T.fallback(s);
+  T.fallback(s);
+  const rota = T.SPIRAL[0];
+  for (let seed = 1; seed <= 100; seed++) {
+    s.item = null; s.rng = (seed * 2654435761) >>> 0 || 1;
+    const it = T.spawnItemIfEarned(s);
+    ok(!it || it.tipo !== 'humo', `semilla ${seed}: el humo no sale (v3)`);
+  }
   s.item = { tile: 5, tipo: 'humo' };
   T.commitTurn(s, [5]);
-  eq(contar(s, 0), 0, 'humo: la helada retrocede una celda');
+  eq(s.roto[rota], 0, 'humo: la celda rota vuelve al panal');
+  eq(s.height[rota], T.AGUA, '…como agua, no como cera');
 }
 {
   const s = tablero('libre', 1, { 1: 4 });
