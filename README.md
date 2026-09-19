@@ -1,5 +1,7 @@
 # La Colmena
 
+**Jugar**: https://icaraballo.github.io/La-Colmena/
+
 Puzzle de panal hexagonal por niveles, en desarrollo. **Inspirado en la mecánica** de un
 puzzle móvil de 2012 (_Rocket Island_, handy-games.com GmbH, hoy THQ Nordic Mobile). Las
 reglas de un juego no son registrables; los assets y la ambientación sí, y aquí no hay ni
@@ -36,7 +38,7 @@ pasando la cadena por encima.
 ## Estructura
 
 Vanilla JS, sin framework ni bundler: el navegador carga `js/*.js` como scripts clásicos.
-Basta con abrir `index.html`.
+Basta con abrir `index.html`, o jugar en el enlace de arriba (GitHub Pages sirve la rama `main`).
 
 ```
 index.html      HTML + CSS
