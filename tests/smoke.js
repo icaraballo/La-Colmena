@@ -9,9 +9,12 @@ function ok(cond, msg) {
 }
 function eq(a, b, msg) { ok(a === b, `${msg} (esperado ${b}, obtenido ${a})`); }
 
-// Tablero hecho a mano: todas las celdas a `nivel`, y luego las excepciones.
+// Tablero hecho a mano: panal ENTERO (sin las celdas rotas del arranque, que
+// desde la v4 dependen del modo y de la dificultad), todas las celdas a `nivel`,
+// y luego las excepciones. Las pruebas que quieran celdas rotas usan romper().
 function tablero(modo, nivel, excepciones = {}, dificultad = 'normal') {
   const s = T.createState(modo, dificultad, 7);
+  s.roto.fill(0);
   s.height.fill(nivel);
   for (const [i, h] of Object.entries(excepciones)) s.height[i] = h;
   return s;
@@ -33,10 +36,22 @@ eq(T.MAX_LEVEL, 5, 'cinco niveles jugables');
 eq(T.AGUA, 0, 'el agua es el nivel 0');
 
 // --- arranque (§2) ---------------------------------------------------------------
-for (let seed = 1; seed <= 50; seed++) {
-  const s = T.createState(T.MODOS.INVIERNO, 'normal', seed);
-  ok(contar(s, 0) === 12 && contar(s, 1) === 8 && contar(s, 2) === 4,
-     `semilla ${seed}: cupos 12/8/4 garantizados`);
+// Los cupos son 12 agua / 8 cera / 4 huevo, y las celdas rotas del arranque
+// (v4, T-19) salen del cupo de AGUA: el reparto sigue sumando 24.
+for (const [modo, dif, rotasEsperadas] of [
+  ['invierno', 'normal', 6], ['invierno', 'dura', 9],
+  ['pecoreo',  'normal', 0], ['pecoreo',  'dura', 3],
+  ['libre',    'normal', 0],
+]) {
+  eq(T.ROTAS_ARRANQUE[modo][dif], rotasEsperadas, `${modo} ${dif}: ${rotasEsperadas} rotas de tabla`);
+  for (let seed = 1; seed <= 20; seed++) {
+    const s = T.createState(modo, dif, seed);
+    ok(rotas(s) === rotasEsperadas
+       && contar(s, 0) === 12 - rotasEsperadas
+       && contar(s, 1) === 8 && contar(s, 2) === 4
+       && rotas(s) + contar(s, 0) + contar(s, 1) + contar(s, 2) === 24,
+       `${modo} ${dif}, semilla ${seed}: cupos ${rotasEsperadas} rotas/${12 - rotasEsperadas} agua/8/4`);
+  }
 }
 {
   const a = T.createState('invierno', 'normal', 42), b = T.createState('invierno', 'normal', 42);
@@ -106,10 +121,13 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   const s = tablero('invierno', 1, { 0: 5, 1: 5 });
   s.step = 2;
   T.commitTurn(s, [0, 1]);
-  eq(s.height[0], 1, 'cosechar devuelve a cera, no a agua');
+  eq(s.height[0], T.AGUA, 'cosechar devuelve la celda a agua (v4), no a cera');
+  eq(s.height[1], T.AGUA, '…las L celdas, no sólo la primera');
+  eq(T.COSECHA_DEVUELVE, T.AGUA, 'la constante dice lo mismo que el motor');
   eq(s.streak, 1, 'la cosecha suma racha');
   eq(s.score, 10 * 4 * 2, 'puntos de cosecha: 10·L²·bonus·(1+racha)');
   eq(s.last.type, 'harvest', 'se registra como cosecha');
+  ok(T.biggestCoherentArea(s) >= 2, 'y deja una meseta llana de L celdas');
 }
 
 // --- fallo y helada (§4, §6) ---------------------------------------------------------
@@ -192,7 +210,59 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   s.step = 4;
   T.commitTurn(s, [5, 6, 11, 12]);
   eq(s.desastres.length, 0, 'una cosecha de 4+ elimina el capullo');
-  eq(s.failStreak, 0, 'cosechar reinicia los fallos seguidos');
+  eq(s.failStreak, 0, 'la cosecha de 4+ reinicia los fallos seguidos');
+}
+{
+  // v4 (T-23, variante B): la cosecha PEQUEÑA ya no reinicia el termómetro. Con
+  // la regla vieja la escalera de DESIGN §7 no se subía nunca: se cosecha cada
+  // ~4 turnos y el contador no llegaba a 2.
+  const s = tablero('pecoreo', 1, { 5: 5, 6: 5 });
+  s.failStreak = 3;
+  s.step = 2;
+  ok(T.commitTurn(s, [5, 6]), 'se cosechan 2 celdas');
+  eq(s.failStreak, 3, 'una cosecha de menos de 4 NO baja el termómetro');
+  eq(s.streak, 1, '…pero sí suma racha');
+  eq(T.COSECHA_GRANDE, 4, 'el umbral de cosecha grande es 4');
+}
+{
+  // v4: la varroa va a por la celda más alta, no por una al azar.
+  const s = tablero('pecoreo', 1, { 7: 4, 18: 2 });
+  T.fallback(s);
+  eq(s.last.desastre.tipo, 'varroa', '1.er fallo: varroa');
+  eq(s.height[7], 1, 'la varroa se lleva la celda MÁS ALTA');
+  eq(s.height[18], 2, '…y deja en paz a las demás');
+  const llano = tablero('pecoreo', 1);
+  T.fallback(llano);
+  eq(llano.last.desastre, null, 'con todo a cera la varroa no tiene a quién morder');
+}
+
+// --- el propóleo necesita agua de verdad (v4, QA CR-01) --------------------------------
+{
+  const poca = tablero('invierno', 1, { 0: 0, 1: 0 });
+  ok(!T.itemsUtiles(poca).includes('propoleo'), 'con 2 celdas de agua NO se ofrece propóleo');
+  const bastante = tablero('invierno', 1, { 0: 0, 1: 0, 2: 0 });
+  ok(T.itemsUtiles(bastante).includes('propoleo'), 'con 3 sí');
+  const seca = tablero('invierno', 1);
+  ok(!T.itemsUtiles(seca).includes('propoleo'), 'sin agua, nunca');
+  eq(T.PROPOLEO_MIN_AGUA, 3, 'el mínimo de agua del propóleo es 3');
+  ok(!T.itemsUtiles(tablero('invierno', 1)).includes('nectar'), 'el néctar no sale sin reloj');
+  ok(T.itemsUtiles(tablero('pecoreo', 1)).includes('nectar'), '…y sí con reloj');
+  ok(!T.itemsUtiles(tablero('invierno', 1)).includes('humo'), 'el humo no sale (v3, pendiente T-21)');
+}
+
+// --- umbral de ítems proporcional al panal vivo (v4, T-26) -----------------------------
+{
+  const entero = tablero('invierno', 0);
+  eq(T.umbralItem(entero, 1), 14, 'panal de 24: el umbral es el del original (14 de cera)');
+  eq(T.umbralItem(entero, 5), 6, '…y 6 de abeja');
+  const mordido = tablero('invierno', 0);
+  romper(mordido, 0, 1, 2, 3, 4, 5);
+  eq(T.tilesPlayable(mordido), 18, 'panal de 18 vivas');
+  eq(T.umbralItem(mordido, 1), 11, 'con 18 vivas el umbral de cera baja a 11, no sigue en 14');
+  const resto = tablero('invierno', 0);
+  for (let i = 0; i < 20; i++) romper(resto, i);
+  eq(T.umbralItem(resto, 1), 3, 'con 4 vivas el umbral se queda en el suelo de 3');
+  ok(T.umbralItem(resto, 1) <= T.tilesPlayable(resto), '…y el suelo nunca pide más celdas de las que hay');
 }
 
 // --- ítems (§8) -----------------------------------------------------------------------
@@ -222,7 +292,8 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   T.commitTurn(s, [0]);
   eq(contar(s, 0), 0, 'propóleo: toda el agua sube a cera');
   eq(s.roto[23], 1, 'propóleo: no resucita celdas rotas');
-  const u = tablero('invierno', 1, { 3: 0 });
+  // v4: hace falta PROPOLEO_MIN_AGUA celdas de agua, no una suelta (CR-01).
+  const u = tablero('invierno', 1, { 3: 0, 4: 0, 5: 0 });
   let sale = false;
   for (let seed = 1; seed <= 200 && !sale; seed++) {
     u.item = null; u.rng = (seed * 2654435761) >>> 0 || 1;

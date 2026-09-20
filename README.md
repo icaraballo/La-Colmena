@@ -20,20 +20,25 @@ El panal es el ciclo de cría de una abeja, con el agua debajo:
    anterior.
 
 Cuando las celdas llegan a abeja (nivel 5) se **cosechan**: la abeja sale volando y la
-celda vuelve a cera. Si el siguiente paso no cabe en ningún sitio, fallas: el paso vuelve
-a 1 y se pierde la racha.
+celda se vacía, vuelve a agua. Si el siguiente paso no cabe en ningún sitio, fallas: el
+paso vuelve a 1 y se pierde la racha.
 
-El **agua** (azul) se juega como cualquier nivel y sube a cera, pero no da puntos. La
-partida empieza con 12 celdas de agua. Las **celdas rotas** desaparecen del panal para
-siempre: sólo las crea la helada.
+El **agua** (azul) se juega como cualquier nivel y sube a cera, pero no da puntos. Las
+**celdas rotas** desaparecen del panal para siempre: las crea la helada, y algunas vienen
+ya en el arranque según el modo y la dificultad —son la palanca que decide lo larga y lo
+dura que es la partida—.
 
 ### Modos
 
-- **Pecoreo**: contrarreloj de 90 s. Cosechar da tiempo. Si fallas seguido llegan los
-  desastres: varroa, polilla (capullo y después seda) y velutina.
+- **Contrarreloj** (*pecoreo*): reloj de 90 s que acelera. Cosechar da tiempo. Si fallas
+  seguido llegan los desastres: varroa, polilla (capullo y después seda) y velutina. Sólo
+  una cosecha de 4 celdas o más baja ese termómetro.
 - **Invierno**: sin reloj. En cada fallo la helada rompe una celda del borde, para
   siempre. Sin panal, se acabó.
 - **Panal libre**: sin presión y sin puntos, para probar.
+
+Los dos primeros tienen **normal** y **dura**, que se diferencian en cuántas celdas rotas
+trae el arranque.
 
 Los **ítems** aparecen como gotas cuando hay muchas celdas al mismo nivel, y se recogen
 pasando la cadena por encima.

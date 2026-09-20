@@ -48,11 +48,18 @@ function createState(modo = MODOS.INVIERNO, dificultad = 'normal', seed = 1) {
     eventos: [],
   };
 
-  // Cupos fijos (12 agua, 8 cera, 4 huevo), posiciones al azar.
+  // Cupos fijos (12 agua, 8 cera, 4 huevo), posiciones al azar. Las celdas rotas
+  // del arranque (T-19) salen del cupo de agua: el reparto sigue sumando 24.
+  let porRomper = (ROTAS_ARRANQUE[modo] || {})[dificultad] || 0;
   const reparto = [];
   for (const { nivel, casillas } of ARRANQUE)
-    for (let k = 0; k < casillas; k++) reparto.push(nivel);
-  barajar(s, reparto).forEach((h, i) => { s.height[i] = h; });
+    for (let k = 0; k < casillas; k++) {
+      if (nivel === AGUA && porRomper > 0) { reparto.push(ROTA); porRomper--; }
+      else reparto.push(nivel);
+    }
+  barajar(s, reparto).forEach((h, i) => {
+    if (h === ROTA) { s.roto[i] = 1; s.height[i] = AGUA; } else { s.height[i] = h; }
+  });
 
   return s;
 }
@@ -179,13 +186,19 @@ function commitTurn(s, cells) {
   const cogido = (s.item && cells.includes(s.item.tile)) ? s.item.tipo : null;
 
   if (harvest) {
-    // La abeja sale a pecorear y la celda vuelve a cera: cosechar no destruye
-    // nada, devuelve una meseta llana de exactamente L celdas.
-    for (const i of cells) s.height[i] = CERA;
+    // La abeja sale a pecorear y la celda se vacía: cosechar no destruye nada,
+    // devuelve una meseta llana de exactamente L celdas. Desde la v4 vuelve a
+    // AGUA, no a cera (COSECHA_DEVUELVE): la celda queda a cero, que es como se
+    // lee jugando. Cuesta un turno más por ciclo y ese turno no puntúa.
+    for (const i of cells) s.height[i] = COSECHA_DEVUELVE;
     if (cfg.puntua) s.score += Math.round(10 * L * L * bonusMultiplier(L) * (1 + s.streak));
     if (cfg.reloj) sumarTiempo(s, segundosCosecha(L) + s.streak);   // la racha: +1 s acumulativo
     s.streak++;
-    s.failStreak = 0;
+    // Sólo la COSECHA GRANDE baja el termómetro de los desastres. Con la cosecha
+    // normal reiniciándolo (hasta la v3), la escalera de DESIGN §7 no se subía
+    // nunca: el 91 % de los desastres eran varroa y la velutina salía 11 veces
+    // en 2000 partidas. Ver Balance § v3, "Lo que destapó el playtest".
+    if (L >= COSECHA_GRANDE) s.failStreak = 0;
 
     // En Invierno la cosecha grande ya NO devuelve celdas rotas: con el agua
     // jugable la partida no terminaba (palanca 1 del cambio agua/celda rota).
@@ -287,10 +300,14 @@ function dispararDesastre(s) {
   return varroa(s);   // 1.er fallo, o el peldaño que tocaba no ha podido darse
 }
 
-// Una celda baja a cera.
+// Una celda baja a cera. Desde la v4 va a por la MÁS ALTA, no por una al azar:
+// el ácaro ataca a la cría. Pasa de costar ~2 niveles a ~4 y, sobre todo, se
+// lee: ves caer tu mejor celda en vez de una cualquiera.
 function varroa(s) {
+  let alto = CERA;
+  for (let i = 0; i < TILE_COUNT; i++) if (!s.roto[i] && s.height[i] > alto) alto = s.height[i];
   const cand = [];
-  for (let i = 0; i < TILE_COUNT; i++) if (s.height[i] > CERA) cand.push(i);
+  for (let i = 0; i < TILE_COUNT; i++) if (!s.roto[i] && s.height[i] === alto && alto > CERA) cand.push(i);
   const tile = elegir(s, cand);
   if (tile === undefined) return null;
   s.height[tile] = CERA;
@@ -350,13 +367,24 @@ function caducarSeda(s) {
 // ---------------------------------------------------------------------------
 // Aparecen al soltar el dedo si hay suficientes celdas a un mismo nivel, y sólo
 // los que servirían de algo en ese momento. Uno sobre el tablero como mucho.
+// Celdas necesarias al nivel h para ganarse un ítem, escalado al panal VIVO.
+// La tabla del original supone 24 celdas; con celdas rotas el umbral absoluto se
+// vuelve inalcanzable y los ítems desaparecen (medido: 27 % de las partidas sin
+// ninguno con 6 rotas, 69 % con 9). El ítem sigue siendo premio por aplanar lo
+// que hay, que es lo que el umbral quiere decir.
+function umbralItem(s, h) {
+  let vivas = 0;
+  for (let i = 0; i < TILE_COUNT; i++) if (!s.roto[i]) vivas++;
+  return Math.max(ITEM_UMBRAL_MIN, Math.ceil(ITEM_THRESHOLDS[h - 1] * vivas / TILE_COUNT));
+}
+
 function spawnItemIfEarned(s) {
   if (s.item || s.gameOver) return null;
 
   const cuenta = new Array(MAX_LEVEL + 1).fill(0);
   for (let i = 0; i < TILE_COUNT; i++) if (jugable(s, i)) cuenta[s.height[i]]++;
   let ganado = false;
-  for (let h = CERA; h <= MAX_LEVEL; h++) if (cuenta[h] >= ITEM_THRESHOLDS[h - 1]) ganado = true;
+  for (let h = CERA; h <= MAX_LEVEL; h++) if (cuenta[h] >= umbralItem(s, h)) ganado = true;
   if (!ganado) return null;
 
   const tipo = elegir(s, itemsUtiles(s));
@@ -374,17 +402,19 @@ function spawnItemIfEarned(s) {
 function itemsUtiles(s) {
   const cfg = CONFIG_MODO[s.modo];
   const out = [ITEMS.DANZA, ITEMS.REINA];
-  let hayAgua = false, haySubible = false;
+  let agua = 0, haySubible = false;
   for (let i = 0; i < TILE_COUNT; i++) {
     if (s.roto[i]) continue;
-    if (s.height[i] === AGUA) hayAgua = true;
+    if (s.height[i] === AGUA) agua++;
     else if (s.height[i] < MAX_LEVEL) haySubible = true;
   }
   if (haySubible) out.push(ITEMS.JALEA);
   // El propóleo ya puede salir en Invierno: sube el agua a cera, que el jugador
   // puede hacer a mano de todas formas, y NO resucita celdas rotas. Deja de ser
   // el atajo que hacía infinita la partida (v2); ahora sólo ahorra turnos.
-  if (hayAgua) out.push(ITEMS.PROPOLEO);
+  // No basta con que haya agua: tiene que haber la suficiente para que subirla
+  // sea un premio y no algo que el jugador haría a mano en un turno (CR-01).
+  if (agua >= PROPOLEO_MIN_AGUA) out.push(ITEMS.PROPOLEO);
   if (cfg.reloj) out.push(ITEMS.NECTAR);
   // El humo no sale desde la v3: deshacía la helada, y la celda rota es ahora
   // estrictamente permanente (palanca 1). Queda pendiente de rediseñar.

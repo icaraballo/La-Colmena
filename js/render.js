@@ -14,9 +14,8 @@ const LIFT = 9;
 // es otra cosa, y tiene que leerse como jugable de un vistazo.
 const LEVEL_COLORS = ['#2E4756', '#6E5A32', '#9C7F3C', '#C8A14A', '#E3C87E', '#F79A1F'];
 
-const ITEM_ICON = {
-  jalea: 'J', propoleo: 'P', danza: 'D', nectar: 'N', humo: 'H', reina: '♛',
-};
+// El símbolo de cada ítem vive en ITEM_INFO (constants.js), junto al nombre y
+// lo que hace, para que la gota y la leyenda del HUD no puedan discrepar.
 
 const layout = { cx: [], cy: [], R: 0, w: 0 };
 
@@ -169,7 +168,7 @@ function draw(ctx, s, ui, now) {
     ctx.font = `700 ${Math.round(R * 0.42)}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(ITEM_ICON[s.item.tipo] || '?', x, y + 1);
+    ctx.fillText((ITEM_INFO[s.item.tipo] || {}).simbolo || '?', x, y + 1);
   }
 
   // El recorrido del dedo, con tránsito incluido.

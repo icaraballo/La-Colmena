@@ -19,6 +19,8 @@ const FOOTER = `
   ({ ROW_WIDTHS, TILE_COUNT, ADJ, SPIRAL, bonusMultiplier, buildAdjacency,
      AGUA, CERA, HUEVO, LARVA, OPERCULADA, MAX_LEVEL, ARRANQUE,
      MODOS, CONFIG_MODO, HELADA_CADA, ITEM_THRESHOLDS, ITEMS, segundosCosecha,
+     ROTAS_ARRANQUE, COSECHA_DEVUELVE, COSECHA_GRANDE, umbralItem,
+     PROPOLEO_MIN_AGUA, itemsUtiles,
      RELOJ_INICIAL, RELOJ_TECHO, PUNTOS_POR_SEGUNDO, SEDA_TURNOS, CALMA_TRAS_VELUTINA,
      createState, isValidDrag, biggestCoherentArea, commitTurn, fallback, tilesPlayable,
      jugable, spawnItemIfEarned, usarItem, sumarTiempo, velocidadReloj, tick })

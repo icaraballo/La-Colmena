@@ -1,13 +1,10 @@
 // Arranque, HUD y bucle de dibujo.
 
-const NOMBRE_ITEM = {
-  jalea: 'Jalea real — todo el panal sube un nivel',
-  propoleo: 'Propóleo — toda el agua sube a cera',
-  danza: 'Danza de la exploradora — el próximo arrastre, de la longitud que quieras',
-  nectar: `Néctar — +${NECTAR_SEGUNDOS} s`,
-  humo: 'Humo del apicultor — la helada retrocede una celda',
-  reina: 'La reina — pasa la cadena por ella aunque esté a otro nivel',
-};
+// El nombre y lo que hace cada ítem salen de ITEM_INFO (constants.js), que es
+// también de donde render.js saca el símbolo de la gota. Antes había dos mapas
+// sueltos y podían discrepar.
+const NOMBRE_ITEM = Object.fromEntries(
+  Object.entries(ITEM_INFO).map(([k, v]) => [k, `${v.nombre} — ${v.que}`]));
 
 const partida = { modo: MODOS.INVIERNO, dificultad: 'normal' };
 let S = nuevaPartida();
@@ -31,6 +28,39 @@ function setText(id, v) {
   if (el.textContent !== String(v)) el.textContent = v;
 }
 
+// Leyenda de ítems: los cinco que existen hoy, siempre a la vista (QA CR-02).
+// Se reconstruye al cambiar de modo, porque el néctar sólo existe con reloj.
+function pintarLeyenda() {
+  const cfg = CONFIG_MODO[S.modo];
+  const el = document.getElementById('leyenda');
+  el.innerHTML = '';
+  for (const tipo of ITEMS_VISIBLES) {
+    const info = ITEM_INFO[tipo];
+    if (info.soloConReloj && !cfg.reloj) continue;
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (tipo === ITEMS.REINA ? ' reina' : '');
+    chip.dataset.item = tipo;
+    chip.title = `${info.nombre}: ${info.que}`;
+    chip.innerHTML = `<span class="sim"></span><span class="nom"></span><span class="que"></span>`;
+    chip.querySelector('.sim').textContent = info.simbolo;
+    chip.querySelector('.nom').textContent = info.nombre;
+    chip.querySelector('.que').textContent = info.que;
+    el.appendChild(chip);
+  }
+}
+
+// Lo que hay encima de la mesa ahora mismo. Sin esto los desastres sólo se
+// anunciaban en una línea de texto que se borraba al turno siguiente.
+function textoAmenazas() {
+  if (S.turn < S.calmaHasta) return `calma ${S.calmaHasta - S.turn}t`;
+  const partes = [];
+  for (const d of S.desastres) {
+    if (d.tipo === 'capullo') partes.push('capullo');
+    if (d.tipo === 'seda') partes.push(`seda ${Math.max(0, d.hasta - S.turn)}t`);
+  }
+  return partes.length ? partes.join(' · ') : '—';
+}
+
 function updateHud() {
   const cfg = CONFIG_MODO[S.modo];
   const biggest = biggestCoherentArea(S);
@@ -52,6 +82,12 @@ function updateHud() {
   if (cfg.helada) setText('helada', `${S.heladaCnt}/${HELADA_CADA[S.dificultad]}`);
   document.getElementById('fallos-stat').hidden = !cfg.desastres;
   if (cfg.desastres) setText('fallos', S.failStreak);
+  document.getElementById('amenazas-stat').hidden = !cfg.desastres;
+  if (cfg.desastres) setText('amenazas', textoAmenazas());
+
+  // El ítem que está en el tablero se resalta en la leyenda.
+  document.querySelectorAll('#leyenda .chip').forEach(c =>
+    c.classList.toggle('activo', !!S.item && c.dataset.item === S.item.tipo));
 
   // Aviso: el juego sabe antes que tú que vas a fallar. Aprovecharlo.
   const warn = document.getElementById('warn');
@@ -137,7 +173,10 @@ function restart() {
     b.classList.toggle('on', b.dataset.modo === partida.modo));
   document.querySelectorAll('[data-dif]').forEach(b =>
     b.classList.toggle('on', b.dataset.dif === partida.dificultad));
-  document.getElementById('dificultad').hidden = partida.modo !== MODOS.INVIERNO;
+  // La dificultad son las celdas rotas del arranque (T-20), así que tiene
+  // sentido en los dos modos con partida: sólo Panal libre se queda fuera.
+  document.getElementById('dificultad').hidden = !CONFIG_MODO[partida.modo].puntua;
+  pintarLeyenda();
   redraw();
 }
 

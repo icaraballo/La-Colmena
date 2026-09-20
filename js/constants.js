@@ -26,6 +26,16 @@ const MAX_LEVEL  = 5;   // abeja lista: se cosecha
 
 const NOMBRE_NIVEL = ['agua', 'cera', 'huevo', 'larva', 'operculada', 'abeja'];
 
+// Desde la v4, cosechar devuelve la celda a AGUA, no a cera: la celda queda
+// vacía y limpia, como la deja la obrera antes de que la reina vuelva a poner.
+// Se leía como incoherente que una celda recién cosechada no volviera "a cero"
+// (playtest del 20-09). Medido: acorta la partida en vez de alargarla.
+const COSECHA_DEVUELVE = AGUA;
+
+// Marca interna del reparto del arranque: "aquí va una celda rota". No es un
+// nivel de la escalera — las rotas viven en s.roto[], fuera del panal.
+const ROTA = -1;
+
 // Cupos del arranque: siempre los mismos, en posiciones al azar (DESIGN §2).
 // El agua es jugable: la partida no la hace finita el arranque sino la helada,
 // que rompe celdas para siempre.
@@ -34,6 +44,24 @@ const ARRANQUE = [
   { nivel: CERA,  casillas: 8 },
   { nivel: HUEVO, casillas: 4 },
 ];
+
+// Celdas ROTAS en el arranque (T-19 y T-20). Es la palanca de duración Y de
+// dificultad a la vez: reducen el panal vivo del que salen tanto las mesetas
+// como, en contrarreloj, los segundos. Salen del cupo de AGUA, así que el
+// reparto sigue sumando 24.
+//
+// Medido con el bot (mediana de turnos, con el resto de la v4 aplicada):
+//   invierno  0→106   3→80   4→72   6→57   9→39
+//   pecoreo   0→98    3→70   4→61   6→48   9→40
+//
+// Invierno arranca ya mordido por el frío; el contrarreloj arranca entero y se
+// acorta solo con el resto de los cambios de la v4. Ojo: subir de 6 empeora el
+// ritmo de cosechas (4,6 con 6 rotas, 5,0 con 9; el objetivo es ~4).
+const ROTAS_ARRANQUE = {
+  invierno: { normal: 6, dura: 9 },
+  pecoreo:  { normal: 0, dura: 3 },
+  libre:    { normal: 0, dura: 0 },
+};
 
 // Adyacencia precalculada. Verificada contra las máscaras de distancia al borde
 // del binario original: coincidencia exacta.
@@ -104,15 +132,53 @@ const SEDA_TURNOS = 2;
 const CALMA_TRAS_VELUTINA = 5;
 
 // Ítems (DESIGN §8). Casillas necesarias a un mismo nivel para que aparezca uno,
-// indexado por nivel-1. Es getMinSpecialCountForThisLevel del original.
+// indexado por nivel-1. Es getMinSpecialCountForThisLevel del original, y está
+// calibrado para un panal de 24. Desde la v4 se escala al panal VIVO: con 6
+// celdas rotas pedir 14 de cera sobre 18 es pedir lo imposible, y el 27 % de las
+// partidas no veía un solo ítem (69 % con 9 rotas). Ver umbralItem() en state.js.
 const ITEM_THRESHOLDS = [14, 12, 10, 8, 6];
+const ITEM_UMBRAL_MIN = 3;   // suelo: por muy pequeño que quede el panal
+
+// Agua mínima para que se ofrezca el propóleo. DESIGN §8 dice que nunca se
+// ofrece un ítem que no serviría de nada, y hasta la v3 bastaba UNA celda de
+// agua: el ítem salía, subía una celda del color menos visible de la rampa y se
+// leía como roto (QA CR-01). Subir 1-2 celdas es algo que el jugador hace a
+// mano en un turno; por debajo de esto el propóleo no es un premio.
+const PROPOLEO_MIN_AGUA = 3;
 const ITEMS = {
   JALEA:    'jalea',     // todo el panal sube un nivel
   PROPOLEO: 'propoleo',  // el agua sube a cera
   DANZA:    'danza',     // la ronda siguiente, arrastre de cualquier longitud
-  NECTAR:   'nectar',    // +15 s (sólo Pecoreo)
+  NECTAR:   'nectar',    // +15 s (sólo contrarreloj)
   HUMO:     'humo',      // la helada retrocede una celda — hoy NO sale (ver itemsUtiles)
   REINA:    'reina',     // comodín: la cadena la atraviesa aunque esté a otro nivel
+};
+
+// Catálogo de ítems para la interfaz: el símbolo que se dibuja en la gota, el
+// nombre y qué hace. Única fuente: lo usan render.js (la gota) y app.js (la
+// leyenda). Hasta la v3 la gota sólo llevaba una letra y no había leyenda en
+// ninguna parte, así que se recogían a ciegas (QA CR-02) — y DESIGN §8 dice que
+// a veces NO compensa recogerlos, decisión imposible sin saber cuál es.
+// `soloConReloj` marca los que no existen fuera del contrarreloj.
+const ITEM_INFO = {
+  jalea:    { simbolo: 'J', nombre: 'Jalea real', que: 'toda la tierra sube un nivel' },
+  propoleo: { simbolo: 'P', nombre: 'Propóleo',   que: 'el agua sube a cera' },
+  danza:    { simbolo: 'D', nombre: 'Danza',      que: 'el próximo arrastre, de la longitud que quieras' },
+  nectar:   { simbolo: 'N', nombre: 'Néctar',     que: `+${NECTAR_SEGUNDOS} s`, soloConReloj: true },
+  humo:     { simbolo: 'H', nombre: 'Humo',       que: 'la helada retrocede una celda' },
+  reina:    { simbolo: '♛', nombre: 'La reina',   que: 'la cadena la atraviesa aunque esté a otro nivel' },
+};
+
+// Los que se le enseñan al jugador. El humo no está: no sale desde la v3 y
+// anunciarlo sería mentir (pendiente de rediseño, T-21).
+const ITEMS_VISIBLES = ['jalea', 'propoleo', 'danza', 'nectar', 'reina'];
+
+// El nombre del modo en pantalla. «Pecoreo» no se intuye como contrarreloj
+// (playtest del 20-09, T-24); el identificador del código no cambia.
+const NOMBRE_MODO = {
+  pecoreo:  'Contrarreloj',
+  invierno: 'Invierno',
+  libre:    'Panal libre',
 };
 
 // Segundos que da una cosecha de L celdas: L·(L+3)/2 (DESIGN §9).
