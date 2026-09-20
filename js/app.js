@@ -43,10 +43,32 @@ function avisar(tipo, tiles) {
 }
 let ultimoFrame = 0;
 
-// Semilla a la vista para poder reproducir una partida rara.
-function nuevaPartida() {
-  const seed = (Date.now() ^ (Math.random() * 0x7fffffff)) >>> 0;
+// Semilla a la vista para poder reproducir una partida rara. Desde la v6 se
+// puede además **escribir**: misma semilla, mismo panal (T-29).
+function nuevaPartida(semilla) {
+  const seed = semilla !== undefined ? semilla
+             : (Date.now() ^ (Math.random() * 0x7fffffff)) >>> 0;
   return createState(partida.modo, partida.dificultad, seed);
+}
+
+// Copiar al portapapeles. `navigator.clipboard` sólo existe en contexto seguro
+// (el juego se sirve por https), así que hay un plan B con un textarea suelto.
+async function copiarTexto(txt) {
+  try {
+    await navigator.clipboard.writeText(txt);
+    return true;
+  } catch {
+    try {
+      const t = document.createElement('textarea');
+      t.value = txt;
+      t.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(t);
+      t.select();
+      const ok = document.execCommand('copy');
+      t.remove();
+      return ok;
+    } catch { return false; }
+  }
 }
 
 function redraw(now = performance.now()) {
@@ -108,6 +130,50 @@ function panelDificultad(modo) {
     fila.appendChild(b);
   }
   caja.appendChild(titulo); caja.appendChild(fila);
+  return caja;
+}
+
+// La semilla: copiar la de ahora o jugar otra. Es lo que le faltaba a QA para
+// poder reproducir un bug raro, y de paso deja rejugar una partida que salió
+// buena (T-29).
+function panelSemilla() {
+  const caja = document.createElement('div');
+  const t = document.createElement('b');
+  t.textContent = 'Semilla';
+  const input = document.createElement('input');
+  input.value = String(S.seed);
+  input.inputMode = 'numeric';
+  input.setAttribute('aria-label', 'Semilla de la partida');
+  const fila = document.createElement('div');
+  fila.className = 'difs';
+
+  const jugar = document.createElement('button');
+  jugar.textContent = 'Jugar';
+  const copiar = document.createElement('button');
+  copiar.textContent = 'Copiar';
+  const nota = document.createElement('span');
+  nota.className = 'nota';
+  nota.textContent = 'Misma semilla, mismo panal. Se juega en el modo y la dificultad de ahora.';
+
+  jugar.addEventListener('click', () => {
+    // Una semilla es un entero sin signo de 32 bits: lo que createState espera.
+    const n = Number(input.value.trim());
+    if (!Number.isInteger(n) || n < 0 || n > 0xffffffff) {
+      nota.textContent = 'Eso no es una semilla: tiene que ser un número entero.';
+      input.focus();
+      return;
+    }
+    cerrarPop();
+    restart(n >>> 0);
+  });
+  copiar.addEventListener('click', async () => {
+    copiar.textContent = await copiarTexto(input.value.trim()) ? '¡Copiada!' : 'No se pudo';
+    setTimeout(() => { copiar.textContent = 'Copiar'; }, 1200);
+  });
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') jugar.click(); });
+
+  fila.appendChild(jugar); fila.appendChild(copiar);
+  caja.appendChild(t); caja.appendChild(input); caja.appendChild(fila); caja.appendChild(nota);
   return caja;
 }
 
@@ -270,6 +336,13 @@ function updateHud() {
   });
   // Y el desastre que tocaría si fallas ahora: el jugador ve el peldaño antes de
   // pisarlo, que es lo que hace que la escalera signifique algo.
+  //
+  // Con 0 fallos seguidos el peldaño es la varroa, así que su ficha sale marcada
+  // desde el turno 0 y no se apaga nunca. Eso se leía como «la varroa está
+  // activa» (playtest del 20-09): el aviso decía «toca» sin decir *cuándo*. De
+  // ahí las dos cosas de abajo — el texto dice «si fallas», y con el contador a
+  // cero el resaltado es tenue (`previo`), porque avisa de lo que pasaría, no de
+  // un peligro en marcha.
   const capullo = S.desastres.some(d => d.tipo === 'capullo');
   const n = S.failStreak;
   const siguiente = S.turn < S.calmaHasta ? null
@@ -277,11 +350,12 @@ function updateHud() {
   document.querySelectorAll('#leyenda-des .chip').forEach(c => {
     const act = c.dataset.des === siguiente;
     c.classList.toggle('activo', act);
+    c.classList.toggle('previo', act && n === 0);
     const d = S.desastres.find(x => x.tipo === c.dataset.des ||
       (c.dataset.des === 'seda' && x.tipo === 'seda') ||
       (c.dataset.des === 'polilla' && x.tipo === 'capullo'));
     c.querySelector('.cuenta').textContent =
-      d && d.hasta ? `${Math.max(0, d.hasta - S.turn)}t` : (act ? '◀ toca' : '');
+      d && d.hasta ? `${Math.max(0, d.hasta - S.turn)}t` : (act ? 'si fallas' : '');
   });
 
   // Una sola línea para todo lo que antes eran tres (v6), por orden de
@@ -375,8 +449,8 @@ function resize() {
   redraw();
 }
 
-function restart() {
-  S = nuevaPartida();
+function restart(semilla) {
+  S = nuevaPartida(semilla);
   finPintado = false;
   destellos.length = 0;
   document.getElementById('fin').hidden = true;
@@ -395,7 +469,7 @@ window.addEventListener('DOMContentLoaded', () => {
   ctx = canvas.getContext('2d');
   initInput(canvas, () => S, onCommit, redraw);
   setText('version', VERSION);
-  document.getElementById('fin-otra').addEventListener('click', restart);
+  document.getElementById('fin-otra').addEventListener('click', () => restart());
 
   // Tocar un modo siempre acaba en partida nueva de ese modo. Si hay dificultad
   // que elegir, con el panel de por medio; Panal libre arranca directo.
@@ -416,14 +490,44 @@ window.addEventListener('DOMContentLoaded', () => {
   }, true);
   document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarPop(); });
 
+  // La ayuda explica los tres modos, porque cada uno castiga el fallo a su
+  // manera y eso no se deduce jugando; el del modo en curso va resaltado.
   const ayuda = document.getElementById('ayuda');
-  document.getElementById('ayuda-btn').addEventListener('click', () => {
-    cerrarPop(); ayuda.hidden = false;
+  function abrirAyuda() {
+    document.querySelectorAll('#ayuda .m').forEach(m =>
+      m.classList.toggle('actual', m.dataset.ayuda === partida.modo));
+    cerrarPop();
+    ayuda.hidden = false;
+    ayuda.querySelector('.caja').scrollTop = 0;
+  }
+  document.getElementById('ayuda-btn').addEventListener('click', abrirAyuda);
+  function cerrarAyuda() { ayuda.hidden = true; marcarAyudaVista(); }
+  document.getElementById('ayuda-cerrar').addEventListener('click', cerrarAyuda);
+  // Tocar fuera de la caja también cierra: en el móvil es el gesto que se hace
+  // sin pensar, y si no hace nada parece que se ha quedado colgado.
+  ayuda.addEventListener('click', e => { if (e.target === ayuda) cerrarAyuda(); });
+  if (!ayudaVista()) abrirAyuda();
+
+  // La semilla: el botón abre el panel; la del pie se copia al tocarla.
+  document.getElementById('semilla-btn').addEventListener('click', e => {
+    const b = e.currentTarget;
+    if (popAncla === b) { cerrarPop(); return; }
+    cerrarPop(); abrirPop(b, panelSemilla());
   });
-  document.getElementById('ayuda-cerrar').addEventListener('click', () => {
-    ayuda.hidden = true; marcarAyudaVista();
+  const seed = document.getElementById('seed');
+  async function copiarSemilla() {
+    if (!await copiarTexto(String(S.seed))) return;
+    seed.classList.add('copiada');
+    seed.textContent = `semilla ${S.seed} · ¡copiada!`;
+    setTimeout(() => {
+      seed.classList.remove('copiada');
+      seed.textContent = `semilla ${S.seed}`;
+    }, 1200);
+  }
+  seed.addEventListener('click', copiarSemilla);
+  seed.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copiarSemilla(); }
   });
-  if (!ayudaVista()) ayuda.hidden = false;
 
   window.addEventListener('resize', () => { cerrarPop(); resize(); });
   restart();

@@ -79,6 +79,12 @@ header{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;padding:8px 2px
 .chip.malo .sim{background:#c2503a;color:#fff}
 .chip.malo.activo{border-color:#ff7a45;background:#2f201a}
 .chip.malo.activo .nom{color:#ff7a45}
+/* `previo`: el peldaño que tocaría si fallas, con el contador de fallos a cero.
+   Es un aviso, no un peligro en marcha, y marcado igual que el peligro real se
+   leía como «la varroa está activa» (playtest del 20-09). */
+.chip.malo.activo.previo{border-color:#4a2a24;background:transparent}
+.chip.malo.activo.previo .nom{color:#8c7f6a}
+.chip.malo.activo.previo .cuenta{color:#6d6150;font-weight:400}
 .chip .cuenta{color:#ffd23f;font-weight:700;font-variant-numeric:tabular-nums}
 .chip.malo .cuenta{color:#ff7a45}
 @media (max-width:620px){
@@ -91,6 +97,15 @@ header{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;padding:8px 2px
   .chip.activo .nom{display:inline}
 }
 
+/* El botón de la semilla: en el móvil sólo la almohadilla, porque los tres
+   modos más él no caben con texto en 360 px. Las dos reglas son excluyentes a
+   propósito: con un `display:none` suelto y una media query de la misma
+   especificidad, gana la que esté más abajo en el fichero y el botón sale
+   vacío — pasó al montarlo. */
+#semilla-btn .ico{font-weight:700}
+@media (max-width:620px){ #semilla-btn .txt{display:none} }
+@media (min-width:621px){ #semilla-btn .ico{display:none} }
+
 /* Panel flotante: la dificultad de un modo, o qué hace un ítem. Va en position
    fixed para no depender del flujo — así no le quita alto al tablero. */
 #pop{
@@ -102,6 +117,17 @@ header{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;padding:8px 2px
 #pop b{color:#ede4d3;display:block;margin-bottom:2px}
 #pop .difs{display:flex;gap:5px;padding:0}
 #pop button{padding:5px 12px;font-size:13px}
+#pop .nota{display:block;margin-top:6px;color:#6d6150;font-size:11px}
+#pop input{
+  width:100%;margin:2px 0 6px;padding:6px 8px;font:inherit;font-size:14px;
+  background:#12100C;color:#ede4d3;border:1px solid #43372a;border-radius:7px;
+  font-variant-numeric:tabular-nums;
+}
+#pop input:focus{outline:none;border-color:#F79A1F}
+
+footer .sem{cursor:pointer}
+footer .sem:hover{color:#c9b99c}
+footer .sem.copiada{color:#9fd67a}
 
 /* Fin de partida y ayuda: se pintan encima del tablero, no lo sustituyen. */
 .encima{
@@ -115,9 +141,33 @@ header{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;padding:8px 2px
 #fin .record.nuevo{color:#9fd67a;font-weight:600}
 #fin .detalle{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin:14px 0 18px;font-size:12px;color:#8c7f6a}
 #fin .detalle b{display:block;font-size:16px;color:#ede4d3;font-weight:600;font-variant-numeric:tabular-nums}
-#ayuda .caja{text-align:left;overflow-y:auto;max-height:100%;overflow-wrap:break-word}
-#ayuda p{font-size:13px;color:#c9b99c;margin-bottom:14px}
+/* El texto se desplaza; el botón de cerrar NO entra en el scroll, para que esté
+   siempre a mano y no se superponga a nada.
+   `touch-action: pan-y` es imprescindible: el <body> lleva `touch-action: none`
+   para que arrastrar el panal no haga scroll, y sin esto la ayuda no se podría
+   desplazar con el dedo. */
+/* El track del grid se dimensiona por contenido, así que sin acotarlo aquí el
+   `max-height:100%` de la caja se resuelve contra un track de 974 px dentro de
+   un hueco de 490 y no limita nada: el botón de cerrar se queda fuera. */
+#ayuda{grid-template-rows:minmax(0,1fr)}
+#ayuda .caja{text-align:left;max-height:100%;display:flex;flex-direction:column}
+#ayuda .scroll{
+  flex:1 1 auto;min-height:0;          /* sin esto crece con el texto y el botón se sale */
+  overflow-y:auto;overflow-wrap:break-word;
+  touch-action:pan-y;overscroll-behavior:contain;
+}
+#ayuda-cerrar{align-self:flex-start;margin-top:12px;flex:none}
+#ayuda p{font-size:13px;color:#c9b99c;margin-bottom:10px}
 #ayuda h2{font-size:15px;font-weight:600;margin-bottom:8px;color:#ede4d3}
+/* Un bloque por modo: cada uno castiga el fallo a su manera y eso no se deduce
+   jugando. El del modo en curso va resaltado. */
+#ayuda .m{border-left:2px solid #33291d;padding:2px 0 2px 10px;margin:0 0 12px}
+#ayuda .m.actual{border-left-color:#F79A1F}
+#ayuda .m h3{font-size:13px;font-weight:600;color:#c9b99c;margin-bottom:6px}
+#ayuda .m.actual h3{color:#F79A1F}
+#ayuda .m p{font-size:12px;margin-bottom:8px}
+#ayuda .m p:last-child{margin-bottom:0}
+#ayuda button{margin-top:4px}
 
 #wrap{flex:1;min-height:0;min-width:0;position:relative;overflow:hidden}
 canvas{display:block;touch-action:none;position:absolute;left:0;top:0}
@@ -138,6 +188,7 @@ footer .sem{font-variant-numeric:tabular-nums}
   <button data-modo="contrarreloj">Contrarreloj</button>
   <button data-modo="invierno">Invierno</button>
   <button data-modo="libre">Panal libre</button>
+  <button id="semilla-btn" aria-label="Semilla"><span class="ico">#</span><span class="txt">Semilla</span></button>
 </nav>
 
 <header>
@@ -177,13 +228,46 @@ footer .sem{font-variant-numeric:tabular-nums}
   </div>
   <div id="ayuda" class="encima" hidden>
     <div class="caja">
+      <div class="scroll">
       <h2>Cómo se juega</h2>
       <p>Arrastra sobre tantas celdas conectadas como indique el <b>paso</b>, todas al mismo
       nivel (puedes volver a pasar por una celda). Cada turno, una más.</p>
       <p>El <b>agua</b> (azul, 0) también se juega: sube a cera, pero no da puntos. Al llegar
       a 5 (abeja), arrástralas para <b>cosechar</b>: la celda se vacía y vuelve a agua.</p>
-      <p>Pasa la cadena por una <b>gota</b> para recoger el ítem. Toca cualquier ficha de las
-      leyendas para ver qué hace.</p>
+      <p>Si el paso no cabe en ninguna parte es un <b>fallo</b>: vuelve a 1 y pierdes la
+      racha. Cada modo castiga el fallo a su manera.</p>
+      <p>Pasa la cadena por una <b>gota</b> para recoger el ítem; se evaporan a los 2 turnos.
+      Toca cualquier ficha de las leyendas para ver qué hace.</p>
+
+      <div class="m" data-ayuda="contrarreloj">
+        <h3>Contrarreloj</h3>
+        <p>Reloj de <b>90 s</b> que no empieza a correr hasta tu primer arrastre. Cada cosecha
+        da segundos —más cuanto más larga, y la racha suma—, pero el reloj tiene un techo de
+        <b>99 s</b>: lo que pase de ahí <b>se convierte en puntos</b>, así que cosechar con el
+        reloj lleno nunca se desperdicia.</p>
+        <p>Cada 10 turnos el reloj <b>acelera</b>: +10 % en normal, +20 % en difícil.</p>
+        <p>Fallar seguido sube la escalera de <b>desastres</b>: varroa → polilla → seda →
+        velutina. La leyenda marca el que te tocaría si fallas ahora. Sólo una cosecha de
+        <b>4 celdas o más</b> limpia las amenazas y devuelve el contador a cero.</p>
+      </div>
+
+      <div class="m" data-ayuda="invierno">
+        <h3>Invierno</h3>
+        <p>Sin reloj y sin desastres: aquí la única presión es el <b>frío</b>. En cada fallo
+        la helada rompe celdas del borde <b>para siempre</b>: 1 en normal, 2 en difícil. Una
+        celda rota desaparece del panal y no vuelve.</p>
+        <p>El <b>humo</b> es el único ítem que recupera algo: devuelve como agua la última
+        celda rota. Una, y el suelo, no el trabajo.</p>
+        <p>Se acaba cuando no queda panal.</p>
+      </div>
+
+      <div class="m" data-ayuda="libre">
+        <h3>Panal libre</h3>
+        <p>Sin reloj, sin helada, sin desastres y <b>sin puntos</b>. Está para practicar la
+        mecánica sin que nada te muerda. Se acaba cuando no hay ninguna jugada posible.</p>
+      </div>
+
+      </div>
       <button id="ayuda-cerrar">Entendido</button>
     </div>
   </div>
@@ -191,7 +275,7 @@ footer .sem{font-variant-numeric:tabular-nums}
 
 <footer>
   <button id="ayuda-btn">¿Cómo se juega?</button>
-  <span class="sem" id="seed"></span>
+  <span class="sem" id="seed" role="button" tabindex="0" title="Tócala para copiarla"></span>
   <span id="version"></span>
 </footer>
 
