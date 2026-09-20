@@ -152,14 +152,35 @@ function draw(ctx, s, ui, now) {
     }
   }
 
-  // Ítem: gota de néctar sobre su celda.
+  // Destellos: lo que acaba de pasar, marcado sobre las celdas afectadas durante
+  // un segundo. Hasta la v4 la varroa, la velutina y la helada sólo existían en
+  // una línea de texto del HUD, así que un cambio en el tablero no tenía causa
+  // visible (T-16).
+  for (const d of (ui.destellos || [])) {
+    const k = Math.min(1, ((now || 0) - d.t0) / 900);
+    if (k < 0 || k >= 1) continue;
+    ctx.save();
+    ctx.globalAlpha = (1 - k) * 0.9;
+    ctx.strokeStyle = d.color;
+    ctx.lineWidth = 3 * (1 - k) + 1;
+    for (const i of d.tiles) {
+      if (layout.cx[i] === undefined) continue;
+      hexPath(ctx, layout.cx[i], topY(s, i), R * (1 + 0.25 * k));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Ítem: gota de néctar sobre su celda. Parpadea en su último turno: si no lo
+  // coges ahora, se evapora (v5).
   if (s.item) {
     const x = layout.cx[s.item.tile];
     const y = topY(s, s.item.tile) - R * 0.1;
-    const pulso = 1 + 0.08 * Math.sin((now || 0) / 180);
+    const ultimo = (s.item.caduca - s.turn) <= 1;
+    const pulso = 1 + (ultimo ? 0.20 : 0.08) * Math.sin((now || 0) / (ultimo ? 90 : 180));
     ctx.beginPath();
     ctx.arc(x, y, R * 0.36 * pulso, 0, Math.PI * 2);
-    ctx.fillStyle = s.item.tipo === ITEMS.REINA ? '#b04ad8' : '#ffd23f';
+    ctx.fillStyle = s.item.tipo === ITEMS.REINA ? '#b04ad8' : (ultimo ? '#ff9f45' : '#ffd23f');
     ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,0.5)';
     ctx.lineWidth = 2;

@@ -24,9 +24,8 @@ celda se vacía, vuelve a agua. Si el siguiente paso no cabe en ningún sitio, f
 paso vuelve a 1 y se pierde la racha.
 
 El **agua** (azul) se juega como cualquier nivel y sube a cera, pero no da puntos. Las
-**celdas rotas** desaparecen del panal para siempre: las crea la helada, y algunas vienen
-ya en el arranque según el modo y la dificultad —son la palanca que decide lo larga y lo
-dura que es la partida—.
+**celdas rotas** desaparecen del panal para siempre: sólo las crea la helada. El panal
+**empieza siempre entero**: lo que se pierde es consecuencia de haber fallado.
 
 ### Modos
 
@@ -37,11 +36,13 @@ dura que es la partida—.
   siempre. Sin panal, se acabó.
 - **Panal libre**: sin presión y sin puntos, para probar.
 
-Los dos primeros tienen **normal** y **dura**, que se diferencian en cuántas celdas rotas
-trae el arranque.
+Los dos primeros tienen **normal** y **dura**. Cada uno escala su propia presión: en
+Invierno, cuántas celdas se lleva la helada por fallo (1 o 2); en contrarreloj, cuánto
+acelera el reloj (+10 % o +20 % cada 10 turnos).
 
 Los **ítems** aparecen como gotas cuando hay muchas celdas al mismo nivel, y se recogen
-pasando la cadena por encima.
+pasando la cadena por encima. **Se evaporan a los dos turnos**, así que hay que decidir si
+merece la pena romper la meseta para llegar.
 
 ## Estructura
 

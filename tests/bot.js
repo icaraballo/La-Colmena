@@ -48,30 +48,62 @@ function shuffled(arr, R) {
 //
 // Si algún día se quitara el tránsito, esto vuelve a ser un DFS y el contador de
 // cuelgues fantasma de abajo dejará de marcar 0.
-function buscarJugada(s, L, nivelPreferido, R) {
+// `forzar`: una celda que la jugada TIENE que incluir (para ir a por un ítem).
+// La REINA es comodín: entra en la cadena esté al nivel que esté, igual que en
+// el motor. Sin esto el bot no encontraría jugadas que biggestCoherentArea sí
+// cuenta, y el contador de cuelgues fantasma se dispararía por su culpa y no por
+// la del motor.
+function buscarJugada(s, L, nivelPreferido, R, forzar) {
+  const reina = (s.item && s.item.tipo === T.ITEMS.REINA && jugable(s, s.item.tile))
+    ? s.item.tile : -1;
+  // Una celda sirve al nivel h si está a ese nivel, o si es la reina.
+  const de = (i, h) => jugable(s, i) && (s.height[i] === h || i === reina);
+
+  // Niveles que hay que probar y desde dónde empezar el flood-fill.
   let inicios = [];
-  for (let i = 0; i < T.TILE_COUNT; i++) {
-    if (!jugable(s, i)) continue;
-    if (nivelPreferido !== undefined && s.height[i] !== nivelPreferido) continue;
-    inicios.push(i);
+  if (forzar !== undefined) {
+    if (!jugable(s, forzar)) return null;
+    inicios = [forzar];
+  } else {
+    for (let i = 0; i < T.TILE_COUNT; i++) if (jugable(s, i)) inicios.push(i);
+    inicios = shuffled(inicios, R);
   }
-  inicios = shuffled(inicios, R);
 
   for (const inicio of inicios) {
-    const h = s.height[inicio];
-    const visto = new Uint8Array(T.TILE_COUNT); visto[inicio] = 1;
-    const conjunto = [inicio], cola = [inicio];
-    while (cola.length && conjunto.length < L) {
-      const u = cola.shift();
-      for (const v of shuffled(T.ADJ[u], R)) {
-        if (visto[v] || !jugable(s, v) || s.height[v] !== h) continue;
-        visto[v] = 1; conjunto.push(v); cola.push(v);
-        if (conjunto.length === L) break;
+    // Desde la reina, el nivel de la cadena lo marcan sus vecinas; desde
+    // cualquier otra celda, ella misma.
+    const niveles = inicio === reina
+      ? [...new Set(T.ADJ[inicio].filter(v => jugable(s, v)).map(v => s.height[v]))]
+      : [s.height[inicio]];
+    for (const h of shuffled(niveles, R)) {
+      if (nivelPreferido !== undefined && h !== nivelPreferido) continue;
+      const visto = new Uint8Array(T.TILE_COUNT); visto[inicio] = 1;
+      const conjunto = [inicio], cola = [inicio];
+      while (cola.length && conjunto.length < L) {
+        const u = cola.shift();
+        for (const v of shuffled(T.ADJ[u], R)) {
+          if (visto[v] || !de(v, h)) continue;
+          visto[v] = 1; conjunto.push(v); cola.push(v);
+          if (conjunto.length === L) break;
+        }
       }
+      if (conjunto.length === L) return conjunto;
     }
-    if (conjunto.length === L) return conjunto;
   }
   return null;
+}
+
+// Qué juega el bot este turno, por orden de preferencia. Cosechar manda: es lo
+// único que devuelve suelo llano. Dentro de cada opción, se recoge el ítem si
+// cae de camino — el bot NO rompe una meseta ni renuncia a una cosecha por ir a
+// buscarlo, así que esto es el suelo de lo que haría un humano, no el techo.
+function elegirJugada(s, R) {
+  const it = s.item ? s.item.tile : undefined;
+  return (it !== undefined && buscarJugada(s, s.step, T.MAX_LEVEL, R, it))
+      || buscarJugada(s, s.step, T.MAX_LEVEL, R)
+      || (it !== undefined && buscarJugada(s, s.step, undefined, R, it))
+      || buscarJugada(s, s.step, undefined, R)
+      || null;
 }
 
 // La definición del motor, no una copia: una celda rota no es jugable y una
@@ -85,7 +117,7 @@ function jugable(s, i) { return T.jugable(s, i); }
 function jugarUna(seed, modo, dificultad) {
   const R = rng(seed);
   const s = T.createState(modo, dificultad, seed);
-  const st = { pasoMax: 0, cosechas: 0, fallos: 0, fantasmas: 0, mayorCosecha: 0 };
+  const st = { pasoMax: 0, cosechas: 0, fallos: 0, fantasmas: 0, mayorCosecha: 0, items: 0, caducados: 0 };
   let guard = 0;
 
   while (!s.gameOver && guard++ < 3000) {
@@ -95,8 +127,9 @@ function jugarUna(seed, modo, dificultad) {
     T.tick(s, SEG_POR_TURNO);
     if (s.gameOver) break;
 
-    // Cosechar tiene prioridad: es lo único que devuelve cera llana al panal.
-    const cells = buscarJugada(s, s.step, T.MAX_LEVEL, R) || buscarJugada(s, s.step, undefined, R);
+    // Cosechar tiene prioridad: es lo único que devuelve suelo llano al panal.
+    // Desde la v5 el bot también recoge el ítem si le cae de camino.
+    const cells = elegirJugada(s, R);
 
     if (!cells) {
       // CUELGUE FANTASMA. No hay jugada, pero biggestCoherentArea dice que sí la hay:
@@ -107,9 +140,12 @@ function jugarUna(seed, modo, dificultad) {
     }
 
     const esCosecha = s.height[cells[0]] === T.MAX_LEVEL;
+    const llevabaItem = !!(s.item && cells.includes(s.item.tile));
     const pasoAntes = s.step;
     if (!T.commitTurn(s, cells)) { st.fallos++; T.fallback(s); continue; }
 
+    if (llevabaItem) st.items++;
+    for (const e of s.eventos) if (e.type === 'caduca') st.caducados++;
     if (esCosecha) {
       st.cosechas++;
       if (cells.length > st.mayorCosecha) st.mayorCosecha = cells.length;
@@ -154,6 +190,7 @@ console.log(`puntos    media ${num(media(col('score')))}   mediana ${num(pct(col
 console.log(`paso máximo alcanzado   media ${media(col('pasoMax')).toFixed(1)}   máx ${Math.max(...col('pasoMax'))}`);
 console.log(`cosechas por partida    media ${media(col('cosechas')).toFixed(1)}   la mayor fue de ${Math.max(...col('mayorCosecha'))} celdas`);
 console.log(`fallos por partida      media ${media(col('fallos')).toFixed(1)}`);
+console.log(`ítems recogidos         media ${media(col('items')).toFixed(1)}   ·   evaporados sin recoger ${media(col('caducados')).toFixed(1)}`);
 
 // Un turno de cada X es una cosecha. Es el ritmo del juego: cuanto más bajo, más
 // veces pasa lo divertido. Con 5 niveles debería rondar 1 de cada 4.

@@ -57,9 +57,13 @@ const ARRANQUE = [
 // Invierno arranca ya mordido por el frío; el contrarreloj arranca entero y se
 // acorta solo con el resto de los cambios de la v4. Ojo: subir de 6 empeora el
 // ritmo de cosechas (4,6 con 6 rotas, 5,0 con 9; el objetivo es ~4).
+// Desde la v5 **el panal empieza siempre entero** en todos los modos: la
+// dificultad es consecuencia de fallar (HELADA_MUERDE, RELOJ_ACELERA), no una
+// condición de salida. El mecanismo se conserva a 0 porque es la palanca que van
+// a necesitar los modos de panal distinto y el de celdas bloqueadas.
 const ROTAS_ARRANQUE = {
-  invierno: { normal: 6, dura: 9 },
-  pecoreo:  { normal: 0, dura: 3 },
+  invierno: { normal: 0, dura: 0 },
+  pecoreo:  { normal: 0, dura: 0 },
   libre:    { normal: 0, dura: 0 },
 };
 
@@ -108,11 +112,18 @@ const CONFIG_MODO = {
   libre:    { reloj: false, helada: false, desastres: false, puntua: false },
 };
 
-// Helada (DESIGN §6): cada cuántos fallos avanza, según dificultad.
-// Con el agua jugable (v3) la partida no terminaba con "cada 2"; la palanca 2 del
-// cambio agua/celda rota la baja a cada fallo. Hoy normal y dura son iguales:
-// la dificultad está pendiente de rediseñar.
+// Helada (DESIGN §6): avanza en CADA fallo desde la v3 (la palanca 2 del cambio
+// agua/celda rota). HELADA_CADA se queda en 1 para las dos dificultades: lo que
+// las separa es cuántas celdas muerde.
 const HELADA_CADA = { normal: 1, dura: 1 };
+
+// Cuántas celdas rompe la helada en cada fallo. **Es la dificultad de Invierno**
+// desde la v5: el panal empieza SIEMPRE entero y lo que se pierde es consecuencia
+// de haber fallado, no una condición de salida. Hasta la v4 la dificultad eran
+// celdas ya rotas en el arranque, y eso imponía parte de la dificultad antes de
+// jugar — justo lo contrario de lo que el juego dice ser.
+// Medido (2000 partidas, mediana de turnos): muerde 1 → 108 · 2 → 55 · 3 → 37.
+const HELADA_MUERDE = { normal: 1, dura: 2 };
 const HELADA_REMATE = 3;        // con tantas casillas jugables o menos, avanza siempre
 const COSECHA_GRANDE = 4;       // una cosecha de 4+ limpia amenazas (Pecoreo)
 
@@ -120,7 +131,14 @@ const COSECHA_GRANDE = 4;       // una cosecha de 4+ limpia amenazas (Pecoreo)
 const RELOJ_INICIAL = 90;
 const RELOJ_TECHO = 99;
 const RELOJ_ACELERA_CADA = 10;   // turnos
-const RELOJ_ACELERA = 0.10;      // +10 % de velocidad por tramo
+// Cuánto acelera el reloj por tramo. **Es la dificultad del contrarreloj** desde
+// la v5. Es la única palanca medida que aprieta MÁS al jugador bueno que al
+// flojo, que es justo lo que DESIGN §9 quiere: bajar el reloj inicial hunde la
+// p10 un 46 % y deja el máximo intacto; acelerar un 20 % baja p10, mediana, p90
+// y máximo entre un 26 % y un 35 %. Temáticamente ya estaba escrito: la
+// aceleración es el atardecer, y en difícil la luz se va antes.
+// Medido: 10 % → 99 turnos · 20 % → 66.
+const RELOJ_ACELERA = { normal: 0.10, dura: 0.20 };
 const NECTAR_SEGUNDOS = 15;
 // Lo que vale un segundo que no cabe bajo el techo. Provisional: DESIGN §9 dice
 // que el exceso cae como puntos, pero no a qué cambio.
@@ -138,6 +156,23 @@ const CALMA_TRAS_VELUTINA = 5;
 // partidas no veía un solo ítem (69 % con 9 rotas). Ver umbralItem() en state.js.
 const ITEM_THRESHOLDS = [14, 12, 10, 8, 6];
 const ITEM_UMBRAL_MIN = 3;   // suelo: por muy pequeño que quede el panal
+
+// Turnos que la gota espera en el tablero antes de evaporarse. Sin caducidad el
+// ítem se queda ahí para siempre y recogerlo no cuesta nada: tarde o temprano la
+// cadena pasa por encima. Con caducidad hay decisión de verdad — «desvío la
+// cadena y me cargo la meseta, o lo dejo morir» —, que es lo que DESIGN §8 dice
+// que tiene que pasar.
+const ITEM_TURNOS = 2;
+
+// Turnos de calma después de que aparezca un ítem, antes de que pueda salir el
+// siguiente. El umbral proporcional de la v4 tapó un agujero real (en un panal
+// mordido los ítems desaparecían), pero en el panal entero disparaba uno cada
+// 2,9 turnos: eso no es un premio, es un goteo. Nadie lo vio porque hasta la v5
+// el bot no recogía ítems, así que la gota se quedaba clavada bloqueando al
+// generador y la medición decía 2,7 por partida.
+// Medido, uno cada: umbral original 7,3 turnos · proporcional 2,9 ·
+// proporcional con calma 4 → 6,8 · con calma 6 → 9,0.
+const ITEM_CALMA = 4;
 
 // Agua mínima para que se ofrezca el propóleo. DESIGN §8 dice que nunca se
 // ofrece un ítem que no serviría de nada, y hasta la v3 bastaba UNA celda de
@@ -159,19 +194,31 @@ const ITEMS = {
 // leyenda). Hasta la v3 la gota sólo llevaba una letra y no había leyenda en
 // ninguna parte, así que se recogían a ciegas (QA CR-02) — y DESIGN §8 dice que
 // a veces NO compensa recogerlos, decisión imposible sin saber cuál es.
-// `soloConReloj` marca los que no existen fuera del contrarreloj.
+// `soloConReloj` y `soloConHelada` marcan los que no existen en todos los modos.
 const ITEM_INFO = {
   jalea:    { simbolo: 'J', nombre: 'Jalea real', que: 'toda la tierra sube un nivel' },
   propoleo: { simbolo: 'P', nombre: 'Propóleo',   que: 'el agua sube a cera' },
   danza:    { simbolo: 'D', nombre: 'Danza',      que: 'el próximo arrastre, de la longitud que quieras' },
   nectar:   { simbolo: 'N', nombre: 'Néctar',     que: `+${NECTAR_SEGUNDOS} s`, soloConReloj: true },
-  humo:     { simbolo: 'H', nombre: 'Humo',       que: 'la helada retrocede una celda' },
+  humo:     { simbolo: 'H', nombre: 'Humo',       que: 'devuelve como agua la última celda rota', soloConHelada: true },
   reina:    { simbolo: '♛', nombre: 'La reina',   que: 'la cadena la atraviesa aunque esté a otro nivel' },
 };
 
-// Los que se le enseñan al jugador. El humo no está: no sale desde la v3 y
-// anunciarlo sería mentir (pendiente de rediseño, T-21).
-const ITEMS_VISIBLES = ['jalea', 'propoleo', 'danza', 'nectar', 'reina'];
+// Los seis que se le enseñan al jugador. Cada uno con su bandera de modo: el
+// néctar sólo existe con reloj y el humo sólo con helada, así que la leyenda se
+// monta según el modo y nunca anuncia algo que no puede salir.
+const ITEMS_VISIBLES = ['jalea', 'propoleo', 'danza', 'nectar', 'humo', 'reina'];
+
+// Catálogo de desastres para la interfaz, igual que ITEM_INFO. Hasta la v4 sólo
+// se anunciaban en una línea de texto que se borraba al turno siguiente, así que
+// el jugador no llegaba a aprenderse la escalera.
+const DESASTRE_INFO = {
+  varroa:   { simbolo: 'V', nombre: 'Varroa',   que: 'la celda más alta baja a cera',      peldano: 1 },
+  polilla:  { simbolo: 'P', nombre: 'Polilla',  que: 'deja un capullo: sólo avisa',        peldano: 2 },
+  seda:     { simbolo: 'S', nombre: 'Seda',     que: 'el capullo eclosiona y bloquea sus vecinas', peldano: 3 },
+  velutina: { simbolo: 'A', nombre: 'Velutina', que: 'barre 3-4 celdas de una zona a cera', peldano: 4 },
+};
+const DESASTRES_VISIBLES = ['varroa', 'polilla', 'seda', 'velutina'];
 
 // El nombre del modo en pantalla. «Pecoreo» no se intuye como contrarreloj
 // (playtest del 20-09, T-24); el identificador del código no cambia.

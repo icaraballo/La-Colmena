@@ -7,9 +7,35 @@ const NOMBRE_ITEM = Object.fromEntries(
   Object.entries(ITEM_INFO).map(([k, v]) => [k, `${v.nombre} — ${v.que}`]));
 
 const partida = { modo: MODOS.INVIERNO, dificultad: 'normal' };
+
+// Récord por modo y dificultad (T-17). localStorage puede fallar o venir vacío
+// —ventana privada, datos bloqueados—, así que nunca se da por hecho: sin él el
+// juego funciona igual, sólo que sin récord.
+const RECORD_KEY = 'colmena.records.v1';
+function leerRecords() {
+  try { return JSON.parse(localStorage.getItem(RECORD_KEY)) || {}; } catch { return {}; }
+}
+function guardarRecord(clave, puntos) {
+  try {
+    const r = leerRecords();
+    if (!(puntos > (r[clave] || 0))) return false;
+    r[clave] = puntos;
+    localStorage.setItem(RECORD_KEY, JSON.stringify(r));
+    return true;                       // es récord nuevo
+  } catch { return false; }
+}
 let S = nuevaPartida();
 let canvas, ctx;
 const abejas = [];          // partículas de la cosecha
+// Destellos de lo que acaba de pasar, para que el tablero cuente la causa del
+// cambio y no sólo el HUD (T-16). Cada uno vive 900 ms.
+const destellos = [];
+const COLOR_AVISO = { helada: '#7fd4ff', varroa: '#ff7a45', velutina: '#ff4d4d',
+                      seda: '#f5f5f5', polilla: '#d8d2c4', deshiela: '#9fd67a' };
+function avisar(tipo, tiles) {
+  if (!tiles || !tiles.length) return;
+  destellos.push({ tiles, color: COLOR_AVISO[tipo] || '#ffd23f', t0: performance.now() });
+}
 let ultimoFrame = 0;
 
 // Semilla a la vista para poder reproducir una partida rara.
@@ -19,8 +45,9 @@ function nuevaPartida() {
 }
 
 function redraw(now = performance.now()) {
-  draw(ctx, S, { cells: drag.cells, trail: drag.trail, ready: dragReady(S), abejas }, now);
+  draw(ctx, S, { cells: drag.cells, trail: drag.trail, ready: dragReady(S), abejas, destellos }, now);
   updateHud();
+  pintarFin();
 }
 
 function setText(id, v) {
@@ -30,6 +57,23 @@ function setText(id, v) {
 
 // Leyenda de ítems: los cinco que existen hoy, siempre a la vista (QA CR-02).
 // Se reconstruye al cambiar de modo, porque el néctar sólo existe con reloj.
+// Una ficha de la leyenda. `malo` la pinta en rojo (desastres).
+function chip(info, clave, malo) {
+  const c = document.createElement('div');
+  c.className = 'chip' + (malo ? ' malo' : '') + (clave === ITEMS.REINA ? ' reina' : '');
+  c.dataset[malo ? 'des' : 'item'] = clave;
+  c.title = `${info.nombre}: ${info.que}`;
+  c.innerHTML = '<span class="sim"></span><span class="nom"></span>' +
+                '<span class="que"></span><span class="cuenta"></span>';
+  c.querySelector('.sim').textContent = info.simbolo;
+  c.querySelector('.nom').textContent = info.nombre;
+  c.querySelector('.que').textContent = info.que;
+  return c;
+}
+
+// Leyenda de ítems y de desastres, siempre a la vista (QA CR-02). Se reconstruye
+// al cambiar de modo, porque no todos existen en todos: el néctar necesita reloj
+// y el humo, helada. Nunca se anuncia algo que no puede salir.
 function pintarLeyenda() {
   const cfg = CONFIG_MODO[S.modo];
   const el = document.getElementById('leyenda');
@@ -37,15 +81,19 @@ function pintarLeyenda() {
   for (const tipo of ITEMS_VISIBLES) {
     const info = ITEM_INFO[tipo];
     if (info.soloConReloj && !cfg.reloj) continue;
-    const chip = document.createElement('div');
-    chip.className = 'chip' + (tipo === ITEMS.REINA ? ' reina' : '');
-    chip.dataset.item = tipo;
-    chip.title = `${info.nombre}: ${info.que}`;
-    chip.innerHTML = `<span class="sim"></span><span class="nom"></span><span class="que"></span>`;
-    chip.querySelector('.sim').textContent = info.simbolo;
-    chip.querySelector('.nom').textContent = info.nombre;
-    chip.querySelector('.que').textContent = info.que;
-    el.appendChild(chip);
+    if (info.soloConHelada && !cfg.helada) continue;
+    el.appendChild(chip(info, tipo, false));
+  }
+  // Los desastres, en la misma forma: hasta la v4 sólo se anunciaban en una
+  // línea de texto que se borraba al turno siguiente, así que la escalera de
+  // DESIGN §7 no había forma de aprendérsela.
+  const ed = document.getElementById('leyenda-des');
+  ed.innerHTML = '';
+  ed.hidden = !cfg.desastres;
+  if (cfg.desastres) for (const tipo of DESASTRES_VISIBLES) {
+    const info = DESASTRE_INFO[tipo];
+    const c = chip({ ...info, nombre: `${info.peldano}. ${info.nombre}` }, tipo, true);
+    ed.appendChild(c);
   }
 }
 
@@ -59,6 +107,50 @@ function textoAmenazas() {
     if (d.tipo === 'seda') partes.push(`seda ${Math.max(0, d.hasta - S.turn)}t`);
   }
   return partes.length ? partes.join(' · ') : '—';
+}
+
+// Pantalla de fin de partida (T-17). Se pinta ENCIMA del tablero para que se
+// pueda ver cómo ha quedado el panal: el final es información, no un telón.
+let finPintado = false;
+function pintarFin() {
+  const el = document.getElementById('fin');
+  if (!S.gameOver) { el.hidden = true; finPintado = false; return; }
+  if (finPintado) return;
+  finPintado = true;
+
+  const cfg = CONFIG_MODO[S.modo];
+  document.getElementById('fin-titulo').textContent = cfg.reloj
+    ? 'Se acabó el día' : cfg.helada ? 'El invierno se ha comido el panal' : 'Sin jugadas';
+
+  const sc = document.getElementById('fin-score');
+  sc.textContent = cfg.puntua ? S.score.toLocaleString('es-ES') : '—';
+
+  const rec = document.getElementById('fin-record');
+  if (cfg.puntua) {
+    const clave = `${S.modo}.${S.dificultad}`;
+    const antes = leerRecords()[clave] || 0;
+    const nuevo = guardarRecord(clave, S.score);
+    rec.textContent = nuevo
+      ? (antes ? `¡Récord! El anterior era ${antes.toLocaleString('es-ES')}` : '¡Primer récord!')
+      : `Tu récord: ${antes.toLocaleString('es-ES')}`;
+    rec.className = 'record' + (nuevo ? ' nuevo' : '');
+  } else {
+    rec.textContent = 'Panal libre no puntúa';
+    rec.className = 'record';
+  }
+
+  const det = document.getElementById('fin-detalle');
+  det.innerHTML = '';
+  const filas = [['Turnos', S.turn], ['Racha máxima', S.streakMax || S.streak],
+                 ['Paso máximo', S.pasoMax || S.step]];
+  for (const [lbl, v] of filas) {
+    const d = document.createElement('div');
+    const b = document.createElement('b'); b.textContent = v;
+    const t = document.createElement('span'); t.textContent = lbl;
+    d.appendChild(b); d.appendChild(t);
+    det.appendChild(d);
+  }
+  el.hidden = false;
 }
 
 function updateHud() {
@@ -85,9 +177,29 @@ function updateHud() {
   document.getElementById('amenazas-stat').hidden = !cfg.desastres;
   if (cfg.desastres) setText('amenazas', textoAmenazas());
 
-  // El ítem que está en el tablero se resalta en la leyenda.
-  document.querySelectorAll('#leyenda .chip').forEach(c =>
-    c.classList.toggle('activo', !!S.item && c.dataset.item === S.item.tipo));
+  // El ítem que está en el tablero se resalta, con los turnos que le quedan
+  // antes de evaporarse.
+  document.querySelectorAll('#leyenda .chip').forEach(c => {
+    const suyo = !!S.item && c.dataset.item === S.item.tipo;
+    c.classList.toggle('activo', suyo);
+    c.querySelector('.cuenta').textContent =
+      suyo ? `${Math.max(0, S.item.caduca - S.turn)}t` : '';
+  });
+  // Y el desastre que tocaría si fallas ahora: el jugador ve el peldaño antes de
+  // pisarlo, que es lo que hace que la escalera signifique algo.
+  const capullo = S.desastres.some(d => d.tipo === 'capullo');
+  const n = S.failStreak;
+  const siguiente = S.turn < S.calmaHasta ? null
+    : n >= 3 ? 'velutina' : (n === 2 && capullo) ? 'seda' : n === 1 ? 'polilla' : 'varroa';
+  document.querySelectorAll('#leyenda-des .chip').forEach(c => {
+    const act = c.dataset.des === siguiente;
+    c.classList.toggle('activo', act);
+    const d = S.desastres.find(x => x.tipo === c.dataset.des ||
+      (c.dataset.des === 'seda' && x.tipo === 'seda') ||
+      (c.dataset.des === 'polilla' && x.tipo === 'capullo'));
+    c.querySelector('.cuenta').textContent =
+      d && d.hasta ? `${Math.max(0, d.hasta - S.turn)}t` : (act ? '◀ toca' : '');
+  });
 
   // Aviso: el juego sabe antes que tú que vas a fallar. Aprovecharlo.
   const warn = document.getElementById('warn');
@@ -115,16 +227,21 @@ function contar(eventos) {
   const txt = [];
   for (const e of eventos) {
     if (e.type === 'usa') txt.push(`✦ ${NOMBRE_ITEM[e.tipo].split(' — ')[0]}`);
-    if (e.type === 'deshiela') txt.push('La cosecha empuja la helada: una celda vuelve como agua');
+    if (e.type === 'caduca') txt.push(`la gota de ${ITEM_INFO[e.tipo].nombre.toLowerCase()} se ha evaporado`);
+    if (e.type === 'deshiela') { txt.push('El humo empuja la helada: una celda vuelve como agua'); avisar('deshiela', [e.tile]); }
     if (e.type === 'limpia') txt.push(e.desastre === 'capullo' ? 'La cosecha elimina el capullo' : 'La cosecha retira la seda');
     if (e.type === 'fallback') {
       txt.push('Fallo: el paso vuelve a 1');
-      if (e.eaten !== undefined) txt.push('la helada destruye una celda');
+      if (e.eaten !== undefined) {
+        const rotas = S.heladas.slice(-HELADA_MUERDE[S.dificultad]);
+        txt.push(rotas.length > 1 ? `la helada destruye ${rotas.length} celdas` : 'la helada destruye una celda');
+        avisar('helada', rotas);
+      }
       const d = e.desastre;
-      if (d && d.tipo === 'varroa') txt.push('varroa: una celda baja a cera');
-      if (d && d.tipo === 'polilla') txt.push('polilla: aparece un capullo (eclosiona si vuelves a fallar)');
-      if (d && d.tipo === 'seda') txt.push(`el capullo eclosiona: seda en ${d.tiles.length} celdas durante ${SEDA_TURNOS} turnos`);
-      if (d && d.tipo === 'velutina') txt.push(`¡velutina! ${d.tiles.length} celdas barridas a cera`);
+      if (d && d.tipo === 'varroa') { txt.push('varroa: la celda más alta baja a cera'); avisar('varroa', d.tiles); }
+      if (d && d.tipo === 'polilla') { txt.push('polilla: aparece un capullo (eclosiona si vuelves a fallar)'); avisar('polilla', d.tiles); }
+      if (d && d.tipo === 'seda') { txt.push(`el capullo eclosiona: seda en ${d.tiles.length} celdas durante ${SEDA_TURNOS} turnos`); avisar('seda', d.tiles); }
+      if (d && d.tipo === 'velutina') { txt.push(`¡velutina! ${d.tiles.length} celdas barridas a cera`); avisar('velutina', d.tiles); }
     }
   }
   setText('log', txt.join(' · '));
@@ -133,6 +250,10 @@ function contar(eventos) {
 function onCommit(cells) {
   const antes = S.height.slice();
   if (!commitTurn(S, cells)) return;
+  // Máximos de la partida, sólo para la pantalla de fin: se llevan aquí para no
+  // meter datos de interfaz en el estado del motor.
+  S.streakMax = Math.max(S.streakMax || 0, S.streak);
+  S.pasoMax = Math.max(S.pasoMax || 0, S.step);
   if (S.last.type === 'harvest') {
     const t = performance.now();
     cells.forEach((i, k) => abejas.push({
@@ -148,6 +269,7 @@ function frame(now) {
   ultimoFrame = now;
   if (!document.hidden) tick(S, dt);
   while (abejas.length && now - abejas[0].t0 > 1500) abejas.shift();
+  while (destellos.length && now - destellos[0].t0 > 900) destellos.shift();
   redraw(now);
   requestAnimationFrame(frame);
 }
@@ -165,6 +287,9 @@ function resize() {
 
 function restart() {
   S = nuevaPartida();
+  finPintado = false;
+  destellos.length = 0;
+  document.getElementById('fin').hidden = true;
   drag.cells = []; drag.trail = [];
   abejas.length = 0;
   setText('log', '');
@@ -185,6 +310,7 @@ window.addEventListener('DOMContentLoaded', () => {
   ctx = canvas.getContext('2d');
   initInput(canvas, () => S, onCommit, redraw);
   document.getElementById('restart').addEventListener('click', restart);
+  document.getElementById('fin-otra').addEventListener('click', restart);
   document.querySelectorAll('[data-modo]').forEach(b => b.addEventListener('click', () => {
     partida.modo = b.dataset.modo; restart();
   }));

@@ -39,6 +39,9 @@ function createState(modo = MODOS.INVIERNO, dificultad = 'normal', seed = 1) {
     // --- reloj (Pecoreo) ---
     reloj: CONFIG_MODO[modo].reloj ? RELOJ_INICIAL : 0,
 
+    arrancado: false,   // el reloj no corre hasta el primer arrastre (v5, T-10)
+    itemCalma:  0,      // turno a partir del cual puede salir el siguiente ítem
+
     rng: (seed >>> 0) || 1,
     seed,
     gameOver: false,
@@ -152,19 +155,30 @@ function nivelCadena(s, cells) {
 // Tamaño de la mayor componente conexa de celdas jugables al mismo nivel. Con
 // tránsito es EXACTO: si mide >= step, existe jugada. (Sin tránsito era una
 // aproximación y una de cada tres partidas se colgaba — DESIGN §3.)
+// La REINA cuenta como comodín también aquí (v5). Hasta la v4 el arrastre la
+// aceptaba pero el cálculo la ignoraba, así que el motor podía declarar un fallo
+// habiendo jugada: medido, pasaba en el 5,3 % de las partidas de Invierno. Es el
+// espejo del cuelgue fantasma y viola lo mismo (DESIGN §3, §12): el motor nunca
+// puede mentir sobre si hay jugada.
+//
+// Como la reina pertenece a TODOS los niveles a la vez, ya no vale una pasada
+// con un `seen` global: hay que recorrer nivel por nivel. Son 6 pasadas sobre 24
+// celdas, así que el coste da igual.
 function biggestCoherentArea(s) {
-  const seen = new Uint8Array(TILE_COUNT);
+  const reina = (s.item && s.item.tipo === ITEMS.REINA && jugable(s, s.item.tile)) ? s.item.tile : -1;
   let best = 0;
-  for (let start = 0; start < TILE_COUNT; start++) {
-    if (seen[start] || !jugable(s, start)) continue;
-    const h = s.height[start];
-    const stack = [start]; seen[start] = 1; let size = 0;
-    while (stack.length) {
-      const u = stack.pop(); size++;
-      for (const v of ADJ[u])
-        if (!seen[v] && jugable(s, v) && s.height[v] === h) { seen[v] = 1; stack.push(v); }
+  for (let h = AGUA; h <= MAX_LEVEL; h++) {
+    const de = i => jugable(s, i) && (s.height[i] === h || i === reina);
+    const seen = new Uint8Array(TILE_COUNT);
+    for (let start = 0; start < TILE_COUNT; start++) {
+      if (seen[start] || !de(start)) continue;
+      const stack = [start]; seen[start] = 1; let size = 0;
+      while (stack.length) {
+        const u = stack.pop(); size++;
+        for (const v of ADJ[u]) if (!seen[v] && de(v)) { seen[v] = 1; stack.push(v); }
+      }
+      if (size > best) best = size;
     }
-    if (size > best) best = size;
   }
   return best;
 }
@@ -211,6 +225,7 @@ function commitTurn(s, cells) {
   }
 
   s.turn++;
+  s.arrancado = true;   // el reloj empieza a correr con el primer arrastre (v5)
   // La ronda de la danza no cuenta para el paso: se sigue pidiendo el mismo.
   if (libre) s.danza = false;
   else s.step = L + 1;
@@ -219,6 +234,7 @@ function commitTurn(s, cells) {
 
   if (cogido) { s.item = null; usarItem(s, cogido); }
   caducarSeda(s);
+  caducarItem(s);
   spawnItemIfEarned(s);
 
   // ¿Cabe el siguiente paso en algún sitio? Con danza, cualquier longitud vale.
@@ -258,14 +274,20 @@ function avanzarHelada(s) {
   if (!toca) return undefined;
   s.heladaCnt = 0;
 
-  const tile = SPIRAL.find(i => !s.roto[i]);
-  if (tile === undefined) return undefined;
-  s.roto[tile] = 1;
-  s.height[tile] = AGUA;      // irrelevante mientras esté rota, pero deja el array limpio
-  s.sedaHasta[tile] = 0;
-  s.heladas.push(tile);
-  if (s.item && s.item.tile === tile) s.item = null;
-  return tile;
+  // Muerde tantas celdas como diga la dificultad (v5): es la palanca que separa
+  // normal de dura, ahora que el panal empieza siempre entero.
+  let ultima;
+  for (let k = 0; k < HELADA_MUERDE[s.dificultad]; k++) {
+    const tile = SPIRAL.find(i => !s.roto[i]);
+    if (tile === undefined) break;
+    s.roto[tile] = 1;
+    s.height[tile] = AGUA;    // irrelevante mientras esté rota, pero deja el array limpio
+    s.sedaHasta[tile] = 0;
+    s.heladas.push(tile);
+    if (s.item && s.item.tile === tile) s.item = null;
+    ultima = tile;
+  }
+  return ultima;
 }
 
 // La última celda rota por la helada vuelve al panal, como AGUA: recuperas el
@@ -358,6 +380,17 @@ function limpiarAmenaza(s) {
   s.eventos.push({ type: 'limpia', desastre: d.tipo });
 }
 
+// La gota se evapora si no se recoge a tiempo (v5). Sin esto el ítem espera
+// para siempre y recogerlo sale gratis: antes o después la cadena pasa por
+// encima. Con caducidad hay que decidir si merece la pena romper la meseta para
+// llegar, que es lo que DESIGN §8 pide que pase.
+function caducarItem(s) {
+  if (!s.item) return;
+  if (s.turn < s.item.caduca) return;
+  s.eventos.push({ type: 'caduca', tipo: s.item.tipo, tile: s.item.tile });
+  s.item = null;
+}
+
 function caducarSeda(s) {
   s.desastres = s.desastres.filter(d => d.tipo !== 'seda' || d.hasta > s.turn);
 }
@@ -380,6 +413,7 @@ function umbralItem(s, h) {
 
 function spawnItemIfEarned(s) {
   if (s.item || s.gameOver) return null;
+  if (s.turn < s.itemCalma) return null;
 
   const cuenta = new Array(MAX_LEVEL + 1).fill(0);
   for (let i = 0; i < TILE_COUNT; i++) if (jugable(s, i)) cuenta[s.height[i]]++;
@@ -393,8 +427,9 @@ function spawnItemIfEarned(s) {
   const tile = elegir(s, cand);
   if (tipo === undefined || tile === undefined) return null;
 
-  s.item = { tile, tipo };
-  s.eventos.push({ type: 'item', tipo, tile });
+  s.item = { tile, tipo, caduca: s.turn + ITEM_TURNOS };
+  s.itemCalma = s.turn + ITEM_CALMA;
+  s.eventos.push({ type: 'item', tipo, tile, caduca: s.item.caduca });
   return s.item;
 }
 
@@ -416,9 +451,15 @@ function itemsUtiles(s) {
   // sea un premio y no algo que el jugador haría a mano en un turno (CR-01).
   if (agua >= PROPOLEO_MIN_AGUA) out.push(ITEMS.PROPOLEO);
   if (cfg.reloj) out.push(ITEMS.NECTAR);
-  // El humo no sale desde la v3: deshacía la helada, y la celda rota es ahora
-  // estrictamente permanente (palanca 1). Queda pendiente de rediseñar.
-  // if (cfg.helada && s.heladas.some(t => s.roto[t])) out.push(ITEMS.HUMO);
+  // El humo vuelve en la v5 (T-21). Estuvo fuera desde la v3 porque deshacía la
+  // helada y la celda rota había pasado a ser permanente. Vuelve porque Invierno
+  // se había quedado sin NINGUNA respuesta del jugador contra la helada: era una
+  // cuenta atrás y nada más. Devuelve la celda como AGUA — recuperas el suelo,
+  // no el trabajo — y sólo una, la última que se rompió.
+  // Medido con el bot ya recogiendo ítems (v5): Invierno normal 109 → 121 turnos
+  // y dura 55 → 58, con TODAS las partidas terminando. No es el agujero que fue
+  // el propóleo en la v2.
+  if (cfg.helada && s.heladas.some(t => s.roto[t])) out.push(ITEMS.HUMO);
   return out;
 }
 
@@ -462,13 +503,15 @@ function sumarTiempo(s, seg) {
 
 // Cada 10 turnos el reloj corre un 10 % más rápido: el atardecer.
 function velocidadReloj(s) {
-  return 1 + RELOJ_ACELERA * Math.floor(s.turn / RELOJ_ACELERA_CADA);
+  return 1 + RELOJ_ACELERA[s.dificultad] * Math.floor(s.turn / RELOJ_ACELERA_CADA);
 }
 
 // Hace correr el reloj `dt` segundos reales. La interfaz lo llama cada fotograma
 // y el bot una vez por turno.
 function tick(s, dt) {
-  if (s.gameOver || !CONFIG_MODO[s.modo].reloj) return;
+  // `arrancado` lo pone el primer commitTurn (v5, T-10): antes el reloj se comía
+  // los segundos que tardabas en mirar el tablero recién cargado.
+  if (s.gameOver || !CONFIG_MODO[s.modo].reloj || !s.arrancado) return;
   s.reloj -= dt * velocidadReloj(s);
   if (s.reloj <= 0) { s.reloj = 0; s.gameOver = true; }
 }

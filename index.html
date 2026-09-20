@@ -51,7 +51,26 @@ button.on{background:#F79A1F;color:#231500;border-color:#F79A1F;font-weight:600}
 .chip .nom{color:#c9b99c;font-weight:600}
 .chip.activo .nom{color:#ffd23f}
 .chip .que{color:#6d6150}
+.chip.malo{border-color:#4a2a24}
+.chip.malo .sim{background:#c2503a;color:#fff}
+.chip.malo.activo{border-color:#ff7a45;background:#2f201a}
+.chip.malo.activo .nom{color:#ff7a45}
+.chip .cuenta{color:#ffd23f;font-weight:700;font-variant-numeric:tabular-nums}
+.chip.malo .cuenta{color:#ff7a45}
 @media (max-width:620px){ .chip .que{display:none} }
+
+/* Fin de partida: se pinta encima del tablero, no lo sustituye. */
+#fin{
+  position:absolute;inset:0;display:grid;place-items:center;
+  background:rgba(18,16,12,.88);backdrop-filter:blur(2px);z-index:5;
+}
+#fin .caja{text-align:center;padding:22px 26px;max-width:min(92%,420px)}
+#fin h2{font-size:19px;font-weight:600;margin-bottom:12px;color:#ede4d3}
+#fin .marcador{font-size:40px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:#F79A1F}
+#fin .record{font-size:12px;color:#8c7f6a;margin-top:4px;min-height:16px}
+#fin .record.nuevo{color:#9fd67a;font-weight:600}
+#fin .detalle{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin:14px 0 18px;font-size:12px;color:#8c7f6a}
+#fin .detalle b{display:block;font-size:16px;color:#ede4d3;font-weight:600;font-variant-numeric:tabular-nums}
 #wrap{flex:1;min-height:0;min-width:0;position:relative;overflow:hidden}
 canvas{display:block;touch-action:none;position:absolute;left:0;top:0}
 footer{color:#6d6150;font-size:11px;padding:8px 2px 12px;display:flex;gap:12px;flex-wrap:wrap}
@@ -120,8 +139,20 @@ footer{color:#6d6150;font-size:11px;padding:8px 2px 12px;display:flex;gap:12px;f
 <div class="log" id="log"></div>
 <div class="item" id="item"></div>
 <div class="leyenda" id="leyenda"></div>
+<div class="leyenda" id="leyenda-des"></div>
 
-<div id="wrap"><canvas id="board"></canvas></div>
+<div id="wrap">
+  <canvas id="board"></canvas>
+  <div id="fin" hidden>
+    <div class="caja">
+      <h2 id="fin-titulo"></h2>
+      <div class="marcador" id="fin-score"></div>
+      <div class="record" id="fin-record"></div>
+      <div class="detalle" id="fin-detalle"></div>
+      <button id="fin-otra">Otra partida</button>
+    </div>
+  </div>
+</div>
 
 <footer>
   <span>Arrastra sobre tantas celdas conectadas como indique el paso, todas al mismo nivel
