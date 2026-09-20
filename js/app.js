@@ -1,11 +1,5 @@
 // Arranque, HUD y bucle de dibujo.
 
-// El nombre y lo que hace cada ítem salen de ITEM_INFO (constants.js), que es
-// también de donde render.js saca el símbolo de la gota. Antes había dos mapas
-// sueltos y podían discrepar.
-const NOMBRE_ITEM = Object.fromEntries(
-  Object.entries(ITEM_INFO).map(([k, v]) => [k, `${v.nombre} — ${v.que}`]));
-
 const partida = { modo: MODOS.INVIERNO, dificultad: 'normal' };
 
 // Récord por modo y dificultad (T-17). localStorage puede fallar o venir vacío
@@ -24,6 +18,17 @@ function guardarRecord(clave, puntos) {
     return true;                       // es récord nuevo
   } catch { return false; }
 }
+// Las instrucciones se abren solas la primera vez y luego se quedan detrás de
+// un botón (v6): ocupaban cinco líneas de pie que en el móvil le hacían falta
+// al tablero. localStorage puede fallar; si falla, se dan por vistas.
+const AYUDA_KEY = 'colmena.ayuda.v1';
+function ayudaVista() {
+  try { return !!localStorage.getItem(AYUDA_KEY); } catch { return true; }
+}
+function marcarAyudaVista() {
+  try { localStorage.setItem(AYUDA_KEY, '1'); } catch { /* da igual */ }
+}
+
 let S = nuevaPartida();
 let canvas, ctx;
 const abejas = [];          // partículas de la cosecha
@@ -55,19 +60,91 @@ function setText(id, v) {
   if (el.textContent !== String(v)) el.textContent = v;
 }
 
-// Leyenda de ítems: los cinco que existen hoy, siempre a la vista (QA CR-02).
-// Se reconstruye al cambiar de modo, porque el néctar sólo existe con reloj.
-// Una ficha de la leyenda. `malo` la pinta en rojo (desastres).
+// Igual, para la línea de datos secundarios, que lleva marcado. Todo lo que
+// entra aquí lo compone el propio juego: no hay texto de fuera.
+function setHtml(id, v) {
+  const el = document.getElementById(id);
+  if (el.innerHTML !== v) el.innerHTML = v;
+}
+
+// ---------------------------------------------------------------------------
+// Panel flotante (v6): la dificultad de un modo, o qué hace un ítem. Va en
+// position fixed a propósito — así no ocupa sitio en la columna y no le quita
+// alto al tablero, que es de lo que iba todo este cambio.
+// ---------------------------------------------------------------------------
+let popAncla = null;
+function cerrarPop() {
+  const p = document.getElementById('pop');
+  p.hidden = true; p.innerHTML = ''; popAncla = null;
+}
+function abrirPop(ancla, contenido) {
+  const p = document.getElementById('pop');
+  p.innerHTML = ''; p.appendChild(contenido); p.hidden = false;
+  const r = ancla.getBoundingClientRect();
+  const w = p.getBoundingClientRect().width;
+  p.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+  p.style.top = (r.bottom + 5) + 'px';
+  popAncla = ancla;
+}
+
+// El panel que cuelga de un modo. Elegir dificultad ES empezar la partida, así
+// que «Nueva partida» dejó de hacer falta: tocar un modo siempre acaba en
+// partida nueva de ese modo, con este paso intermedio cuando hay algo que
+// elegir. Panal libre no tiene dificultad, así que arranca directo.
+function panelDificultad(modo) {
+  const caja = document.createElement('div');
+  const titulo = document.createElement('b');
+  titulo.textContent = NOMBRE_MODO[modo];
+  const fila = document.createElement('div');
+  fila.className = 'difs';
+  for (const dif of ['normal', 'dificil']) {
+    const b = document.createElement('button');
+    b.textContent = NOMBRE_DIF[dif];
+    if (dif === partida.dificultad) b.classList.add('on');
+    b.addEventListener('click', () => {
+      partida.modo = modo; partida.dificultad = dif;
+      cerrarPop(); restart();
+    });
+    fila.appendChild(b);
+  }
+  caja.appendChild(titulo); caja.appendChild(fila);
+  return caja;
+}
+
+// Qué es esta ficha. En el móvil la leyenda está plegada a símbolos, así que
+// esto es lo único que cuenta qué hace cada ítem y cada desastre.
+function panelChip(c) {
+  const caja = document.createElement('div');
+  const n = document.createElement('b');
+  n.textContent = c.dataset.nom;
+  caja.appendChild(n);
+  caja.appendChild(document.createTextNode(c.dataset.que));
+  return caja;
+}
+
+// Una ficha de la leyenda. `malo` la pinta en rojo (desastres). El texto del
+// efecto ya no va dentro: lo cuenta el panel flotante al tocarla o al pasarle
+// el ratón (v6). Dentro sólo queda lo que tiene que leerse de un vistazo.
 function chip(info, clave, malo) {
   const c = document.createElement('div');
   c.className = 'chip' + (malo ? ' malo' : '') + (clave === ITEMS.REINA ? ' reina' : '');
   c.dataset[malo ? 'des' : 'item'] = clave;
-  c.title = `${info.nombre}: ${info.que}`;
-  c.innerHTML = '<span class="sim"></span><span class="nom"></span>' +
-                '<span class="que"></span><span class="cuenta"></span>';
+  c.dataset.nom = info.nombre;
+  c.dataset.que = info.que;
+  c.setAttribute('aria-label', `${info.nombre}: ${info.que}`);
+  c.innerHTML = '<span class="sim"></span><span class="nom"></span><span class="cuenta"></span>';
   c.querySelector('.sim').textContent = info.simbolo;
   c.querySelector('.nom').textContent = info.nombre;
-  c.querySelector('.que').textContent = info.que;
+  c.addEventListener('click', () => {
+    if (popAncla === c) { cerrarPop(); return; }
+    cerrarPop(); abrirPop(c, panelChip(c));
+  });
+  // En el escritorio basta pasar el ratón. Se usa el panel propio y no el
+  // `title` del navegador, que tarda un segundo y aparece donde quiere.
+  if (matchMedia('(hover:hover)').matches) {
+    c.addEventListener('pointerenter', () => { cerrarPop(); abrirPop(c, panelChip(c)); });
+    c.addEventListener('pointerleave', () => { if (popAncla === c) cerrarPop(); });
+  }
   return c;
 }
 
@@ -159,9 +236,6 @@ function updateHud() {
   setText('step', S.danza ? '∞' : S.step);
   setText('score', cfg.puntua ? S.score.toLocaleString('es-ES') : '—');
   setText('streak', S.streak);
-  setText('turn', S.turn);
-  setText('alive', tilesPlayable(S));
-  setText('area', biggest);
 
   document.getElementById('reloj-stat').hidden = !cfg.reloj;
   if (cfg.reloj) {
@@ -170,12 +244,21 @@ function updateHud() {
     setText('ritmo', v > 1 ? `×${v.toFixed(1)}` : '');
     document.getElementById('reloj').className = 'big' + (S.reloj < 10 ? ' urgente' : '');
   }
-  document.getElementById('helada-stat').hidden = !cfg.helada;
-  if (cfg.helada) setText('helada', `${S.heladaCnt}/${HELADA_CADA[S.dificultad]}`);
-  document.getElementById('fallos-stat').hidden = !cfg.desastres;
-  if (cfg.desastres) setText('fallos', S.failStreak);
-  document.getElementById('amenazas-stat').hidden = !cfg.desastres;
-  if (cfg.desastres) setText('amenazas', textoAmenazas());
+
+  // Lo secundario, en una línea de texto (v6). Como stats con etiqueta ocupaba
+  // una segunda fila de 40 px y no era información que se mire a menudo. La
+  // dificultad entra aquí porque desde la v6 su botón ya no está a la vista, y
+  // el récord es por modo Y dificultad.
+  const sub = [`turno <b>${S.turn}</b>`, `<b>${tilesPlayable(S)}</b> celdas`,
+               `meseta <b>${biggest}</b>`];
+  if (cfg.helada) sub.push(`helada <b>${S.heladaCnt}/${HELADA_CADA[S.dificultad]}</b>`);
+  if (cfg.desastres) {
+    sub.push(`<b>${S.failStreak}</b> fallos`);
+    const am = textoAmenazas();
+    if (am !== '—') sub.push(`<span class="alerta">${am}</span>`);
+  }
+  if (cfg.puntua) sub.push(NOMBRE_DIF[S.dificultad].toLowerCase());
+  setHtml('sub', sub.join(' · '));
 
   // El ítem que está en el tablero se resalta, con los turnos que le quedan
   // antes de evaporarse.
@@ -201,32 +284,37 @@ function updateHud() {
       d && d.hasta ? `${Math.max(0, d.hasta - S.turn)}t` : (act ? '◀ toca' : '');
   });
 
-  // Aviso: el juego sabe antes que tú que vas a fallar. Aprovecharlo.
-  const warn = document.getElementById('warn');
+  // Una sola línea para todo lo que antes eran tres (v6), por orden de
+  // urgencia. Lo que se cae del orden no se pierde: el ítem que hay en el
+  // tablero ya está en su ficha con la cuenta atrás, y la gota, en el panal.
+  const l = document.getElementById('linea');
+  let txt = '', cls = 'linea';
   if (S.gameOver) {
-    warn.textContent = cfg.reloj
+    txt = cfg.reloj
       ? `Se acabó el día · ${S.score.toLocaleString('es-ES')} puntos en ${S.turn} turnos`
       : `El invierno se ha comido el panal · ${S.score.toLocaleString('es-ES')} puntos en ${S.turn} turnos`;
-    warn.className = 'warn over';
+    cls = 'linea over';
+  } else if (logTurno && logTurnoEn === S.turn) {
+    txt = logTurno; cls = logClase;
   } else if (S.danza) {
-    warn.textContent = 'Danza: este arrastre puede tener la longitud que quieras';
-    warn.className = 'warn bueno';
+    txt = 'Danza: este arrastre puede tener la longitud que quieras';
+    cls = 'linea bueno';
   } else if (biggest === S.step) {
-    warn.textContent = 'Última jugada posible con este paso';
-    warn.className = 'warn tight';
-  } else {
-    warn.textContent = '';
-    warn.className = 'warn';
+    // El juego sabe antes que tú que vas a fallar. Aprovecharlo.
+    txt = 'Última jugada posible con este paso';
+    cls = 'linea tight';
   }
-
-  setText('item', S.item ? NOMBRE_ITEM[S.item.tipo] : '');
+  if (l.textContent !== txt) { l.textContent = txt; l.title = txt; }
+  l.className = cls;
 }
 
-// Lo que ha pasado en el último turno, contado en una línea.
+// Lo que ha pasado en el último turno. Ya no tiene línea propia: se guarda y
+// updateHud lo coloca en la línea única mientras dure el turno.
+let logTurno = '', logTurnoEn = -1, logClase = 'linea';
 function contar(eventos) {
   const txt = [];
   for (const e of eventos) {
-    if (e.type === 'usa') txt.push(`✦ ${NOMBRE_ITEM[e.tipo].split(' — ')[0]}`);
+    if (e.type === 'usa') txt.push(`✦ ${ITEM_INFO[e.tipo].nombre}`);
     if (e.type === 'caduca') txt.push(`la gota de ${ITEM_INFO[e.tipo].nombre.toLowerCase()} se ha evaporado`);
     if (e.type === 'deshiela') { txt.push('El humo empuja la helada: una celda vuelve como agua'); avisar('deshiela', [e.tile]); }
     if (e.type === 'limpia') txt.push(e.desastre === 'capullo' ? 'La cosecha elimina el capullo' : 'La cosecha retira la seda');
@@ -244,7 +332,9 @@ function contar(eventos) {
       if (d && d.tipo === 'velutina') { txt.push(`¡velutina! ${d.tiles.length} celdas barridas a cera`); avisar('velutina', d.tiles); }
     }
   }
-  setText('log', txt.join(' · '));
+  logTurno = txt.join(' · ');
+  logTurnoEn = S.turn;
+  logClase = 'linea' + (eventos.some(e => e.type === 'fallback') ? ' tight' : '');
 }
 
 function onCommit(cells) {
@@ -263,7 +353,7 @@ function onCommit(cells) {
   contar(S.eventos);
 }
 
-// Bucle: el reloj de Pecoreo corre en tiempo real, y las abejas y el ítem se animan.
+// Bucle: el reloj de Contrarreloj corre en tiempo real, y las abejas y el ítem se animan.
 function frame(now) {
   const dt = Math.min(0.25, (now - (ultimoFrame || now)) / 1000);
   ultimoFrame = now;
@@ -292,15 +382,10 @@ function restart() {
   document.getElementById('fin').hidden = true;
   drag.cells = []; drag.trail = [];
   abejas.length = 0;
-  setText('log', '');
+  logTurno = ''; logTurnoEn = -1;
   setText('seed', `semilla ${S.seed}`);
   document.querySelectorAll('[data-modo]').forEach(b =>
     b.classList.toggle('on', b.dataset.modo === partida.modo));
-  document.querySelectorAll('[data-dif]').forEach(b =>
-    b.classList.toggle('on', b.dataset.dif === partida.dificultad));
-  // La dificultad son las celdas rotas del arranque (T-20), así que tiene
-  // sentido en los dos modos con partida: sólo Panal libre se queda fuera.
-  document.getElementById('dificultad').hidden = !CONFIG_MODO[partida.modo].puntua;
   pintarLeyenda();
   redraw();
 }
@@ -309,15 +394,38 @@ window.addEventListener('DOMContentLoaded', () => {
   canvas = document.getElementById('board');
   ctx = canvas.getContext('2d');
   initInput(canvas, () => S, onCommit, redraw);
-  document.getElementById('restart').addEventListener('click', restart);
+  setText('version', VERSION);
   document.getElementById('fin-otra').addEventListener('click', restart);
+
+  // Tocar un modo siempre acaba en partida nueva de ese modo. Si hay dificultad
+  // que elegir, con el panel de por medio; Panal libre arranca directo.
   document.querySelectorAll('[data-modo]').forEach(b => b.addEventListener('click', () => {
-    partida.modo = b.dataset.modo; restart();
+    const modo = b.dataset.modo;
+    if (popAncla === b) { cerrarPop(); return; }   // segundo toque: se cierra
+    cerrarPop();
+    if (!CONFIG_MODO[modo].puntua) { partida.modo = modo; restart(); return; }
+    abrirPop(b, panelDificultad(modo));
   }));
-  document.querySelectorAll('[data-dif]').forEach(b => b.addEventListener('click', () => {
-    partida.dificultad = b.dataset.dif; restart();
-  }));
-  window.addEventListener('resize', resize);
+
+  // El panel se cierra al tocar fuera o con Escape. El canvas se lleva sus
+  // propios eventos, así que esto escucha en la fase de captura.
+  document.addEventListener('pointerdown', e => {
+    if (!popAncla) return;
+    const p = document.getElementById('pop');
+    if (!p.contains(e.target) && !popAncla.contains(e.target)) cerrarPop();
+  }, true);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarPop(); });
+
+  const ayuda = document.getElementById('ayuda');
+  document.getElementById('ayuda-btn').addEventListener('click', () => {
+    cerrarPop(); ayuda.hidden = false;
+  });
+  document.getElementById('ayuda-cerrar').addEventListener('click', () => {
+    ayuda.hidden = true; marcarAyudaVista();
+  });
+  if (!ayudaVista()) ayuda.hidden = false;
+
+  window.addEventListener('resize', () => { cerrarPop(); resize(); });
   restart();
   resize();
   requestAnimationFrame(frame);

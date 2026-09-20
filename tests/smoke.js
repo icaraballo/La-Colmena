@@ -44,8 +44,8 @@ eq(T.AGUA, 0, 'el agua es el nivel 0');
 // fallar, no una condición de salida. El mecanismo se conserva para los modos de
 // panal distinto que vengan (Instrucciones §9.3).
 for (const [modo, dif, rotasEsperadas] of [
-  ['invierno', 'normal', 0], ['invierno', 'dura', 0],
-  ['pecoreo',  'normal', 0], ['pecoreo',  'dura', 0],
+  ['invierno', 'normal', 0], ['invierno', 'dificil', 0],
+  ['contrarreloj',  'normal', 0], ['contrarreloj',  'dificil', 0],
   ['libre',    'normal', 0],
 ]) {
   eq(T.ROTAS_ARRANQUE[modo][dif], rotasEsperadas, `${modo} ${dif}: ${rotasEsperadas} rotas de tabla`);
@@ -159,9 +159,9 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   eq(s.roto[T.SPIRAL[2]], 1, 'la helada también rompe el agua');
 }
 {
-  const s = tablero('invierno', 2, {}, 'dura');
+  const s = tablero('invierno', 2, {}, 'dificil');
   T.fallback(s);
-  eq(rotas(s), 2, 'en dura la helada avanza en cada fallo, y se lleva 2 celdas (v5)');
+  eq(rotas(s), 2, 'en difícil la helada avanza en cada fallo, y se lleva 2 celdas (v5)');
 }
 {
   const s = tablero('invierno', 1, { 5: 5, 6: 5, 11: 5, 12: 5 });
@@ -179,7 +179,7 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
 
 // --- desastres (§7) ------------------------------------------------------------------
 {
-  const s = tablero('pecoreo', 3);
+  const s = tablero('contrarreloj', 3);
   T.fallback(s);
   eq(s.last.desastre.tipo, 'varroa', '1.er fallo: varroa');
   eq(contar(s, 1), 1, 'la varroa baja una celda a cera');
@@ -197,12 +197,12 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   T.fallback(s);
   eq(s.last.desastre, null, 'tras la velutina hay calma');
   eq(rotas(s), 0, 'ningún desastre rompe celdas');
-  const a = tablero('pecoreo', 0);
+  const a = tablero('contrarreloj', 0);
   for (let k = 0; k < 6; k++) T.fallback(a);
   eq(contar(a, 0), 24, 'los desastres no actúan sobre el agua');
 }
 {
-  const s = tablero('pecoreo', 2);
+  const s = tablero('contrarreloj', 2);
   s.desastres.push({ tipo: 'seda', tiles: [0, 1], hasta: 2 });
   s.sedaHasta[0] = 2; s.sedaHasta[1] = 2;
   ok(!T.jugable(s, 0), 'la celda con seda no es jugable');
@@ -210,7 +210,7 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   ok(T.jugable(s, 0), 'la seda caduca');
 }
 {
-  const s = tablero('pecoreo', 1, { 5: 5, 6: 5, 11: 5, 12: 5 });
+  const s = tablero('contrarreloj', 1, { 5: 5, 6: 5, 11: 5, 12: 5 });
   s.desastres.push({ tipo: 'capullo', tile: 20 });
   s.step = 4;
   T.commitTurn(s, [5, 6, 11, 12]);
@@ -221,7 +221,7 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   // v4 (T-23, variante B): la cosecha PEQUEÑA ya no reinicia el termómetro. Con
   // la regla vieja la escalera de DESIGN §7 no se subía nunca: se cosecha cada
   // ~4 turnos y el contador no llegaba a 2.
-  const s = tablero('pecoreo', 1, { 5: 5, 6: 5 });
+  const s = tablero('contrarreloj', 1, { 5: 5, 6: 5 });
   s.failStreak = 3;
   s.step = 2;
   ok(T.commitTurn(s, [5, 6]), 'se cosechan 2 celdas');
@@ -231,12 +231,12 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
 }
 {
   // v4: la varroa va a por la celda más alta, no por una al azar.
-  const s = tablero('pecoreo', 1, { 7: 4, 18: 2 });
+  const s = tablero('contrarreloj', 1, { 7: 4, 18: 2 });
   T.fallback(s);
   eq(s.last.desastre.tipo, 'varroa', '1.er fallo: varroa');
   eq(s.height[7], 1, 'la varroa se lleva la celda MÁS ALTA');
   eq(s.height[18], 2, '…y deja en paz a las demás');
-  const llano = tablero('pecoreo', 1);
+  const llano = tablero('contrarreloj', 1);
   T.fallback(llano);
   eq(llano.last.desastre, null, 'con todo a cera la varroa no tiene a quién morder');
 }
@@ -244,17 +244,17 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
 // --- la dificultad es consecuencia, no condición (v5) ---------------------------------
 {
   eq(T.ROTAS_ARRANQUE.invierno.normal, 0, 'el panal de Invierno empieza entero');
-  eq(T.ROTAS_ARRANQUE.invierno.dura, 0, '…también en dura');
-  eq(T.ROTAS_ARRANQUE.pecoreo.dura, 0, '…y el de contrarreloj');
+  eq(T.ROTAS_ARRANQUE.invierno.dificil, 0, '…también en difícil');
+  eq(T.ROTAS_ARRANQUE.contrarreloj.dificil, 0, '…y el de contrarreloj');
   eq(T.HELADA_MUERDE.normal, 1, 'Invierno normal: la helada rompe 1 celda por fallo');
-  eq(T.HELADA_MUERDE.dura, 2, 'Invierno dura: rompe 2');
+  eq(T.HELADA_MUERDE.dificil, 2, 'Invierno difícil: rompe 2');
   const n = tablero('invierno', 3, {}, 'normal');
-  const d = tablero('invierno', 3, {}, 'dura');
+  const d = tablero('invierno', 3, {}, 'dificil');
   T.fallback(n); T.fallback(d);
   eq(rotas(n), 1, 'un fallo en normal se lleva una celda');
-  eq(rotas(d), 2, 'el mismo fallo en dura se lleva dos');
-  ok(T.RELOJ_ACELERA.dura > T.RELOJ_ACELERA.normal, 'el reloj de dura acelera más');
-  const p = tablero('pecoreo', 1, {}, 'normal'), q = tablero('pecoreo', 1, {}, 'dura');
+  eq(rotas(d), 2, 'el mismo fallo en difícil se lleva dos');
+  ok(T.RELOJ_ACELERA.dificil > T.RELOJ_ACELERA.normal, 'el reloj de difícil acelera más');
+  const p = tablero('contrarreloj', 1, {}, 'normal'), q = tablero('contrarreloj', 1, {}, 'dificil');
   p.turn = q.turn = 20;
   ok(T.velocidadReloj(q) > T.velocidadReloj(p), '…y se nota en la velocidad del reloj');
 }
@@ -295,7 +295,7 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
 
 // --- el reloj espera al primer arrastre (v5, T-10) -------------------------------------
 {
-  const s = T.createState('pecoreo', 'normal', 7);
+  const s = T.createState('contrarreloj', 'normal', 7);
   const r0 = s.reloj;
   T.tick(s, 5);
   eq(s.reloj, r0, 'el reloj no corre antes del primer arrastre');
@@ -310,7 +310,7 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   ok(!T.itemsUtiles(s).includes('humo'), 'sin celdas rotas no sale humo');
   romper(s, 23); s.heladas.push(23);
   ok(T.itemsUtiles(s).includes('humo'), 'con una celda rota por la helada, sí');
-  ok(!T.itemsUtiles(tablero('pecoreo', 1)).includes('humo'), 'y nunca en contrarreloj');
+  ok(!T.itemsUtiles(tablero('contrarreloj', 1)).includes('humo'), 'y nunca en contrarreloj');
   s.item = { tile: 0, tipo: 'humo', caduca: s.turn + T.ITEM_TURNOS };
   T.commitTurn(s, [0]);
   eq(s.roto[23], 0, 'el humo devuelve la celda al panal');
@@ -327,7 +327,7 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   ok(!T.itemsUtiles(seca).includes('propoleo'), 'sin agua, nunca');
   eq(T.PROPOLEO_MIN_AGUA, 3, 'el mínimo de agua del propóleo es 3');
   ok(!T.itemsUtiles(tablero('invierno', 1)).includes('nectar'), 'el néctar no sale sin reloj');
-  ok(T.itemsUtiles(tablero('pecoreo', 1)).includes('nectar'), '…y sí con reloj');
+  ok(T.itemsUtiles(tablero('contrarreloj', 1)).includes('nectar'), '…y sí con reloj');
   ok(!T.itemsUtiles(tablero('invierno', 1)).includes('humo'), 'el humo no sale (v3, pendiente T-21)');
 }
 
@@ -394,7 +394,7 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   ok(!s.danza, 'la danza se gasta');
 }
 {
-  const s = tablero('pecoreo', 1);
+  const s = tablero('contrarreloj', 1);
   s.reloj = 50;
   s.item = { tile: 0, tipo: 'nectar', caduca: s.turn + T.ITEM_TURNOS };
   T.commitTurn(s, [0]);
@@ -428,7 +428,7 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
 {
   eq(T.segundosCosecha(1), 2, 'cosechar 1 da 2 s');
   eq(T.segundosCosecha(6), 27, 'cosechar 6 da 27 s');
-  const s = tablero('pecoreo', 1);
+  const s = tablero('contrarreloj', 1);
   s.reloj = 90;
   T.sumarTiempo(s, 27);
   eq(s.reloj, 99, 'techo de 99 s');
@@ -449,6 +449,30 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'state.js'), 'utf8');
   ok(!/document\.|window\.|canvas|Math\.random/.test(src.replace(/\/\/.*$/gm, '')),
      'state.js no usa DOM, canvas ni Math.random');
+}
+
+// --- la interfaz y el HTML concuerdan --------------------------------------------------------
+// Los tests no pueden jugar la interfaz (no hay DOM), pero sí pueden comprobar
+// lo que de verdad se rompe al moverla: que app.js pida un id que el HTML ya no
+// tiene. Pasó a punto de pasar al rehacer el HUD de la v6, donde desaparecieron
+// nueve ids de golpe.
+{
+  const fs = require('fs'), path = require('path');
+  const raiz = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  const html = raiz('index.html');
+  const ids = new Set([...html.matchAll(/id="([^"]+)"/g)].map(m => m[1]));
+  const js = ['js/app.js', 'js/render.js', 'js/input.js'].map(raiz).join('\n');
+  const pedidos = new Set([
+    ...[...js.matchAll(/getElementById\('([^']+)'\)/g)].map(m => m[1]),
+    ...[...js.matchAll(/set(?:Text|Html)\('([^']+)'/g)].map(m => m[1]),
+  ]);
+  for (const id of pedidos) ok(ids.has(id), `el HTML tiene el id «${id}» que pide el JS`);
+
+  // La versión que se ve en el pie tiene que ser la del paquete: si se
+  // descuadran, el número que enseña el juego miente (T-28).
+  const pkg = JSON.parse(raiz('package.json'));
+  const enJs = /const VERSION = '([^']+)'/.exec(raiz('js/constants.js'))[1];
+  eq(enJs, 'v' + pkg.version.split('.')[1], 'VERSION coincide con package.json');
 }
 
 console.log(`${total - fallos}/${total} comprobaciones correctas`);

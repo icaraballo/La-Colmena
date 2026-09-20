@@ -32,11 +32,11 @@ function createState(modo = MODOS.INVIERNO, dificultad = 'normal', seed = 1) {
     heladaCnt: 0,    // fallos acumulados desde el último avance
     heladas:   [],   // celdas que se ha comido la helada, en orden; la última se devuelve primero
 
-    // --- desastres (Pecoreo) ---
+    // --- desastres (Contrarreloj) ---
     desastres:   [],  // { tipo: 'capullo', tile } | { tipo: 'seda', tiles, hasta }
     calmaHasta:  0,   // sin desastres mientras turn < calmaHasta
 
-    // --- reloj (Pecoreo) ---
+    // --- reloj (Contrarreloj) ---
     reloj: CONFIG_MODO[modo].reloj ? RELOJ_INICIAL : 0,
 
     arrancado: false,   // el reloj no corre hasta el primer arrastre (v5, T-10)
@@ -246,7 +246,7 @@ function commitTurn(s, cells) {
 // (d) El fallo
 // ---------------------------------------------------------------------------
 // El paso vuelve a 1 y la racha se pierde. Según el modo, avanza la helada
-// (Invierno) o sube un peldaño la escalera de desastres (Pecoreo).
+// (Invierno) o sube un peldaño la escalera de desastres (Contrarreloj).
 function fallback(s) {
   const cfg = CONFIG_MODO[s.modo];
   s.step = 1;
@@ -266,7 +266,7 @@ function fallback(s) {
 // ---------------------------------------------------------------------------
 // Helada (DESIGN §6)
 // ---------------------------------------------------------------------------
-// Avanza cada 2 fallos (cada 1 en dura), y siempre si quedan 3 jugables o menos.
+// Avanza cada 2 fallos (cada 1 en difícil), y siempre si quedan 3 jugables o menos.
 // Rompe la primera celda de la espiral que no esté ya rota, sea del nivel que sea.
 function avanzarHelada(s) {
   s.heladaCnt++;
@@ -275,7 +275,7 @@ function avanzarHelada(s) {
   s.heladaCnt = 0;
 
   // Muerde tantas celdas como diga la dificultad (v5): es la palanca que separa
-  // normal de dura, ahora que el panal empieza siempre entero.
+  // normal de difícil, ahora que el panal empieza siempre entero.
   let ultima;
   for (let k = 0; k < HELADA_MUERDE[s.dificultad]; k++) {
     const tile = SPIRAL.find(i => !s.roto[i]);
@@ -457,7 +457,7 @@ function itemsUtiles(s) {
   // cuenta atrás y nada más. Devuelve la celda como AGUA — recuperas el suelo,
   // no el trabajo — y sólo una, la última que se rompió.
   // Medido con el bot ya recogiendo ítems (v5): Invierno normal 109 → 121 turnos
-  // y dura 55 → 58, con TODAS las partidas terminando. No es el agujero que fue
+  // y difícil 55 → 58, con TODAS las partidas terminando. No es el agujero que fue
   // el propóleo en la v2.
   if (cfg.helada && s.heladas.some(t => s.roto[t])) out.push(ITEMS.HUMO);
   return out;
@@ -490,7 +490,7 @@ function usarItem(s, tipo) {
 }
 
 // ---------------------------------------------------------------------------
-// Reloj (DESIGN §9) — sólo Pecoreo
+// Reloj (DESIGN §9) — sólo Contrarreloj
 // ---------------------------------------------------------------------------
 // Techo de 99 s; lo que no cabe se convierte en puntos.
 function sumarTiempo(s, seg) {

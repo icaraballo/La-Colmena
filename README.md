@@ -29,14 +29,14 @@ El **agua** (azul) se juega como cualquier nivel y sube a cera, pero no da punto
 
 ### Modos
 
-- **Contrarreloj** (*pecoreo*): reloj de 90 s que acelera. Cosechar da tiempo. Si fallas
+- **Contrarreloj**: reloj de 90 s que acelera. Cosechar da tiempo. Si fallas
   seguido llegan los desastres: varroa, polilla (capullo y después seda) y velutina. Sólo
   una cosecha de 4 celdas o más baja ese termómetro.
 - **Invierno**: sin reloj. En cada fallo la helada rompe una celda del borde, para
   siempre. Sin panal, se acabó.
 - **Panal libre**: sin presión y sin puntos, para probar.
 
-Los dos primeros tienen **normal** y **dura**. Cada uno escala su propia presión: en
+Los dos primeros tienen **normal** y **difícil**. Cada uno escala su propia presión: en
 Invierno, cuántas celdas se lleva la helada por fallo (1 o 2); en contrarreloj, cuánto
 acelera el reloj (+10 % o +20 % cada 10 turnos).
 

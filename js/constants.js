@@ -52,7 +52,7 @@ const ARRANQUE = [
 //
 // Medido con el bot (mediana de turnos, con el resto de la v4 aplicada):
 //   invierno  0→106   3→80   4→72   6→57   9→39
-//   pecoreo   0→98    3→70   4→61   6→48   9→40
+//   contrarreloj   0→98    3→70   4→61   6→48   9→40
 //
 // Invierno arranca ya mordido por el frío; el contrarreloj arranca entero y se
 // acorta solo con el resto de los cambios de la v4. Ojo: subir de 6 empeora el
@@ -62,9 +62,9 @@ const ARRANQUE = [
 // condición de salida. El mecanismo se conserva a 0 porque es la palanca que van
 // a necesitar los modos de panal distinto y el de celdas bloqueadas.
 const ROTAS_ARRANQUE = {
-  invierno: { normal: 0, dura: 0 },
-  pecoreo:  { normal: 0, dura: 0 },
-  libre:    { normal: 0, dura: 0 },
+  invierno:     { normal: 0, dificil: 0 },
+  contrarreloj: { normal: 0, dificil: 0 },
+  libre:        { normal: 0, dificil: 0 },
 };
 
 // Adyacencia precalculada. Verificada contra las máscaras de distancia al borde
@@ -104,18 +104,18 @@ const SPIRAL = [23, 19, 14, 8, 3, 2, 1, 0, 4, 9, 15, 20, 21, 22,
 // Modos (DESIGN §5). Cada uno con UNA sola fuente de presión. Son configuración,
 // no código distinto: las reglas consultan estas banderas.
 // ---------------------------------------------------------------------------
-const MODOS = { PECOREO: 'pecoreo', INVIERNO: 'invierno', LIBRE: 'libre' };
+const MODOS = { CONTRARRELOJ: 'contrarreloj', INVIERNO: 'invierno', LIBRE: 'libre' };
 
 const CONFIG_MODO = {
-  pecoreo:  { reloj: true,  helada: false, desastres: true,  puntua: true  },
-  invierno: { reloj: false, helada: true,  desastres: false, puntua: true  },
-  libre:    { reloj: false, helada: false, desastres: false, puntua: false },
+  contrarreloj: { reloj: true,  helada: false, desastres: true,  puntua: true  },
+  invierno:     { reloj: false, helada: true,  desastres: false, puntua: true  },
+  libre:        { reloj: false, helada: false, desastres: false, puntua: false },
 };
 
 // Helada (DESIGN §6): avanza en CADA fallo desde la v3 (la palanca 2 del cambio
 // agua/celda rota). HELADA_CADA se queda en 1 para las dos dificultades: lo que
 // las separa es cuántas celdas muerde.
-const HELADA_CADA = { normal: 1, dura: 1 };
+const HELADA_CADA = { normal: 1, dificil: 1 };
 
 // Cuántas celdas rompe la helada en cada fallo. **Es la dificultad de Invierno**
 // desde la v5: el panal empieza SIEMPRE entero y lo que se pierde es consecuencia
@@ -123,11 +123,11 @@ const HELADA_CADA = { normal: 1, dura: 1 };
 // celdas ya rotas en el arranque, y eso imponía parte de la dificultad antes de
 // jugar — justo lo contrario de lo que el juego dice ser.
 // Medido (2000 partidas, mediana de turnos): muerde 1 → 108 · 2 → 55 · 3 → 37.
-const HELADA_MUERDE = { normal: 1, dura: 2 };
+const HELADA_MUERDE = { normal: 1, dificil: 2 };
 const HELADA_REMATE = 3;        // con tantas casillas jugables o menos, avanza siempre
-const COSECHA_GRANDE = 4;       // una cosecha de 4+ limpia amenazas (Pecoreo)
+const COSECHA_GRANDE = 4;       // una cosecha de 4+ limpia amenazas (Contrarreloj)
 
-// Reloj de Pecoreo (DESIGN §9).
+// Reloj de Contrarreloj (DESIGN §9).
 const RELOJ_INICIAL = 90;
 const RELOJ_TECHO = 99;
 const RELOJ_ACELERA_CADA = 10;   // turnos
@@ -138,7 +138,7 @@ const RELOJ_ACELERA_CADA = 10;   // turnos
 // y máximo entre un 26 % y un 35 %. Temáticamente ya estaba escrito: la
 // aceleración es el atardecer, y en difícil la luz se va antes.
 // Medido: 10 % → 99 turnos · 20 % → 66.
-const RELOJ_ACELERA = { normal: 0.10, dura: 0.20 };
+const RELOJ_ACELERA = { normal: 0.10, dificil: 0.20 };
 const NECTAR_SEGUNDOS = 15;
 // Lo que vale un segundo que no cabe bajo el techo. Provisional: DESIGN §9 dice
 // que el exceso cae como puntos, pero no a qué cambio.
@@ -220,12 +220,22 @@ const DESASTRE_INFO = {
 };
 const DESASTRES_VISIBLES = ['varroa', 'polilla', 'seda', 'velutina'];
 
-// El nombre del modo en pantalla. «Pecoreo» no se intuye como contrarreloj
-// (playtest del 20-09, T-24); el identificador del código no cambia.
+// El nombre del modo en pantalla. Hasta la v5 el identificador era «pecoreo» y
+// sólo el botón decía «Contrarreloj» (T-24): el nombre temático no se intuía
+// como lo que el modo es. Desde la v6 el código dice lo mismo que la pantalla,
+// igual que «dura» pasó a «dificil». Esta tabla se queda porque «libre» y
+// «invierno» sí necesitan traducción.
+const NOMBRE_DIF = { normal: 'Normal', dificil: 'Difícil' };
+
+// La versión, a la vista en el pie junto a la semilla: jugando en el móvil no
+// hay forma de saber si lo que tienes delante es lo último que se subió.
+// Se mantiene a mano y tiene que coincidir con package.json (ver Recetas).
+const VERSION = 'v6';
+
 const NOMBRE_MODO = {
-  pecoreo:  'Contrarreloj',
-  invierno: 'Invierno',
-  libre:    'Panal libre',
+  contrarreloj: 'Contrarreloj',
+  invierno:     'Invierno',
+  libre:        'Panal libre',
 };
 
 // Segundos que da una cosecha de L celdas: L·(L+3)/2 (DESIGN §9).

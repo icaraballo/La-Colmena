@@ -3,9 +3,9 @@
 //   npm run bot                    1000 partidas de Invierno, semillas 1..1000
 //   npm run bot 5000               5000 partidas
 //   npm run bot 2000 42            2000 partidas desde la semilla 42 (reproducible)
-//   npm run bot 2000 1 pecoreo     el modo contrarreloj
-//   npm run bot 2000 1 invierno dura
-//   npm run bot 2000 1 pecoreo normal 2   Pecoreo a 2 s por turno (por defecto 2,5)
+//   npm run bot 2000 1 contrarreloj     el modo contrarreloj
+//   npm run bot 2000 1 invierno dificil
+//   npm run bot 2000 1 contrarreloj normal 2   Contrarreloj a 2 s por turno (por defecto 2,5)
 //
 // No es una IA: juega con una heurística tonta (cosechar si puede, si no la meseta
 // mayor) y sirve para una sola cosa, que es la importante: convertir "me parece que
@@ -122,7 +122,7 @@ function jugarUna(seed, modo, dificultad) {
 
   while (!s.gameOver && guard++ < 3000) {
     if (s.step > st.pasoMax) st.pasoMax = s.step;
-    // El reloj de Pecoreo corre lo que tarde en pensar un humano. Sin esto la
+    // El reloj de Contrarreloj corre lo que tarde en pensar un humano. Sin esto la
     // partida contrarreloj no acabaría nunca.
     T.tick(s, SEG_POR_TURNO);
     if (s.gameOver) break;
