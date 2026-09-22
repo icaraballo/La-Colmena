@@ -29,11 +29,12 @@ El **agua** (azul) se juega como cualquier nivel y sube a cera, pero no da punto
 
 ### Modos
 
-- **Contrarreloj**: reloj de 90 s que acelera. Cosechar da tiempo. Si fallas
-  seguido llegan los desastres: varroa, polilla (capullo y después seda) y velutina. Sólo
-  una cosecha de 4 celdas o más baja ese termómetro.
-- **Invierno**: sin reloj. En cada fallo la helada rompe una celda del borde, para
-  siempre. Sin panal, se acabó.
+- **Contrarreloj**: reloj de 90 s que acelera. Cosechar da tiempo. Cada fallo te sube un
+  peldaño de la escalera de desastres: varroa, polilla (un capullo), seda (el capullo
+  eclosiona) y velutina. Jugar bien no te baja: sólo una cosecha de 5 celdas o más te
+  devuelve al primer peldaño.
+- **Invierno**: sin reloj. En cada fallo la helada rompe celdas del borde, para siempre.
+  El humo, un ítem que sólo sale aquí, devuelve la última. Sin panal, se acabó.
 - **Panal libre**: sin presión y sin puntos, para probar.
 
 Los dos primeros tienen **normal** y **difícil**. Cada uno escala su propia presión: en
@@ -54,7 +55,7 @@ index.html      HTML + CSS
 js/constants.js panal, niveles, modos, tablas
 js/state.js     estado y reglas: funciones puras, sin DOM y con azar con semilla
 js/render.js    canvas: el panal en falso 2.5D
-js/input.js     el arrastre con tránsito
+js/input.js     el arrastre: tránsito, quitar volviendo atrás, cancelar fuera
 js/app.js       arranque, HUD, reloj y bucle de dibujo
 tests/smoke.js  pruebas de las reglas             · npm test
 tests/bot.js    simulador de partidas             · npm run bot [n] [semilla] [modo] [dificultad] [s/turno]

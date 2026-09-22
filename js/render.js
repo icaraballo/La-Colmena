@@ -77,8 +77,9 @@ function sidePath(ctx, x, y, R, D) {
   ctx.closePath();
 }
 
-// ui = { cells, trail, ready, abejas }
+// ui = { cells, ready, fuera, abejas, destellos }
 //   ready   la cadena ya es una jugada válida
+//   fuera   el dedo está fuera del panal: soltar cancela
 //   abejas  partículas de la cosecha: { x, y, t0 } — las lleva app.js
 function draw(ctx, s, ui, now) {
   const { width, height } = ctx.canvas;
@@ -110,13 +111,8 @@ function draw(ctx, s, ui, now) {
     hexPath(ctx, x, y, R);
     ctx.fill();
 
-    if (inChain.has(i)) {
-      ctx.strokeStyle = ui.ready ? '#ffffff' : 'rgba(255,255,255,0.55)';
-      ctx.lineWidth = ui.ready ? 4 : 2.5;
-    } else {
-      ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-      ctx.lineWidth = 1;
-    }
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth = 1;
     ctx.stroke();
 
     ctx.fillStyle = h >= LARVA ? 'rgba(30,20,5,0.7)' : 'rgba(255,245,225,0.8)';
@@ -150,6 +146,35 @@ function draw(ctx, s, ui, now) {
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
+  }
+
+  // La cadena: un contorno grueso, «la negrita del borde» (v7). No se oscurece
+  // la celda porque en este juego el brillo ES el nivel: una larva oscurecida
+  // se leería como un huevo justo cuando el jugador decide qué está a la misma
+  // altura. Blanco a medio grosor mientras está incompleta, grueso cuando está
+  // lista, con un halo oscuro debajo para que se vea también sobre la
+  // operculada, que es crema. Hacia dentro del hexágono, para no pisar a las
+  // vecinas, y en una pasada aparte para que ninguna celda lo tape.
+  // Con el dedo fuera del panal se apaga: soltar ahí cancela.
+  if (inChain.size) {
+    const blanco = ui.ready ? R * 0.16 : R * 0.09;
+    const halo = blanco + R * 0.08;
+    ctx.save();
+    ctx.globalAlpha = ui.fuera ? 0.3 : 1;
+    ctx.lineJoin = 'round';
+    for (const i of inChain) {
+      if (s.roto[i]) continue;
+      const x = layout.cx[i], y = topY(s, i);
+      hexPath(ctx, x, y, R - halo / 2);
+      ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+      ctx.lineWidth = halo;
+      ctx.stroke();
+      hexPath(ctx, x, y, R - halo / 2);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = blanco;
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // Destellos: lo que acaba de pasar, marcado sobre las celdas afectadas durante
@@ -192,19 +217,9 @@ function draw(ctx, s, ui, now) {
     ctx.fillText((ITEM_INFO[s.item.tipo] || {}).simbolo || '?', x, y + 1);
   }
 
-  // El recorrido del dedo, con tránsito incluido.
-  if (ui.trail.length > 1) {
-    ctx.beginPath();
-    ui.trail.forEach((i, k) => {
-      const x = layout.cx[i], y = topY(s, i);
-      k === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    });
-    ctx.strokeStyle = ui.ready ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)';
-    ctx.lineWidth = Math.max(3, R * 0.14);
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.stroke();
-  }
+  // El recorrido del dedo ya no se dibuja (v7): el contorno dice qué está
+  // elegido, y la línea tapaba los números. drag.trail se sigue usando en
+  // input.js para saber dónde está el dedo y para deshacer.
 
   // Cosecha: la abeja sale volando.
   for (const a of ui.abejas) {

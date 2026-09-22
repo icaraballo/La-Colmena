@@ -26,6 +26,26 @@ const rotas = (s) => [...s.roto].filter(Boolean).length;
 function romper(s, ...tiles) { for (const t of tiles) { s.roto[t] = 1; s.height[t] = T.AGUA; } return s; }
 // Una celda jugable cualquiera, para arrastres de longitud 1.
 function findNivel(s) { for (let i = 0; i < T.TILE_COUNT; i++) if (T.jugable(s, i)) return i; return 0; }
+// Una jugada válida cualquiera de longitud step, o null. Empieza desde una celda
+// al azar y crece por vecinas al azar: juega mal a propósito, para que falle.
+function jugadaAlAzar(s, azar) {
+  const L = s.danza ? 1 + azar(3) : s.step;
+  const inicios = [];
+  for (let i = 0; i < T.TILE_COUNT; i++) if (T.jugable(s, i)) inicios.push(i);
+  for (let k = inicios.length - 1; k > 0; k--) { const j = azar(k + 1); [inicios[k], inicios[j]] = [inicios[j], inicios[k]]; }
+  for (const a of inicios) {
+    const cadena = [a];
+    while (cadena.length < L) {
+      const cand = [];
+      for (const u of cadena) for (const v of T.ADJ[u])
+        if (!cadena.includes(v) && !cand.includes(v) && T.isValidDrag({ ...s, step: cadena.length + 1, danza: false }, [...cadena, v])) cand.push(v);
+      if (!cand.length) break;
+      cadena.push(cand[azar(cand.length)]);
+    }
+    if (T.isValidDrag(s, cadena)) return cadena;
+  }
+  return null;
+}
 
 // --- geometría (§2) ------------------------------------------------------------
 eq(T.TILE_COUNT, 24, 'el panal tiene 24 celdas');
@@ -86,6 +106,73 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   y.step = 7;
   ok(T.isValidDrag(y, [11, 5, 0, 12, 13, 16, 20]), 'la meseta en Y de 7 se juega entera (tránsito)');
   ok(!T.isValidDrag(y, [11, 5, 0, 12, 13, 16, 4]), 'una celda de otro nivel la invalida');
+}
+
+// --- el arrastre, paso a paso (v7, G.1 y G.4) -----------------------------------------
+// pasoDeCadena es la lógica de input.js sin DOM. `recorre` simula el dedo
+// entrando en una celda tras otra, empezando en la primera.
+{
+  const recorre = (s, camino) => {
+    let c = { cells: [camino[0]], desde: [-1], trail: [camino[0]], deshaciendo: false };
+    for (const i of camino.slice(1)) c = T.pasoDeCadena(s, c, i);
+    return c;
+  };
+  const s = tablero('libre', 1);
+  s.step = 3;
+  // Fila de arriba: 0-1-2-3. Y el 5 debajo del 0 y el 1.
+  eq(recorre(s, [0, 1, 2]).cells.join(), '0,1,2', 'añadir: el dedo va sumando vecinas del mismo nivel');
+  eq(recorre(s, [0, 2]).cells.join(), '0', 'una celda que no es vecina no entra');
+  eq(recorre(s, [0, 1, 2, 3]).cells.join(), '0,1,2', 'con la cadena completa no entra ni una más');
+
+  // Tránsito: con la cadena incompleta, volver atrás NO quita: pasa.
+  const tr = recorre(s, [0, 1, 0, 5]);
+  eq(tr.cells.join(), '0,1,5', 'tránsito: se vuelve a pasar por el 0 para llegar al 5');
+
+  // Quitar: con la cadena completa, volver a la celda desde la que llegaste.
+  eq(recorre(s, [0, 1, 2, 1]).cells.join(), '0,1', 'cadena completa: volver atrás quita la última (G.1)');
+  eq(recorre(s, [0, 1, 2, 1, 6]).cells.join(), '0,1,6', '…y se puede elegir otra en su lugar');
+
+  // Deshacer encadenado: desandar el mismo camino sigue quitando.
+  const t = tablero('libre', 1);
+  t.step = 4;
+  eq(recorre(t, [0, 1, 2, 3, 2, 1]).cells.join(), '0,1', 'deshacer encadenado: desandando se quitan varias');
+  eq(recorre(t, [0, 1, 2, 3, 2, 1, 0]).cells.join(), '0', '…hasta la primera, que no se quita');
+  // Salirse del camino (pasar por una celda de la cadena que no es la de
+  // origen) corta el deshacer: con la cadena incompleta, volver ya es tránsito.
+  const v = tablero('libre', 1);
+  v.step = 5;
+  eq(recorre(v, [0, 1, 5, 6, 7, 6, 1, 6, 5]).cells.join(), '0,1,5,6',
+     'tras salirse del camino, volver atrás vuelve a ser tránsito');
+  eq(recorre(t, [0, 1, 2, 3, 2, 7]).cells.join(), '0,1,2,7', 'tras quitar se puede añadir otra en su sitio');
+
+  // Con tránsito la última puede colgar de otra rama: se quita volviendo a SU
+  // celda de origen, no a la penúltima de la lista.
+  const r = recorre(s, [0, 1, 0, 5]);          // 5 cuelga del 0, no del 1
+  eq(T.pasoDeCadena(s, r, 1).cells.join(), '0,1,5', 'volver al 1 desde el 5 no es desandar: no quita');
+  eq(T.pasoDeCadena(s, r, 0).cells.join(), '0,1', 'volver al 0, de donde vino el 5, sí lo quita');
+
+  // Danza: no hay tope, así que la cadena nunca está completa y volver es tránsito.
+  const d = tablero('libre', 1);
+  d.danza = true;
+  eq(recorre(d, [0, 1, 2, 1]).cells.join(), '0,1,2', 'con danza volver atrás es tránsito, no quita');
+
+  // Reina: entra aunque esté a otro nivel, y se puede quitar como cualquiera.
+  const q = tablero('libre', 1, { 1: 4 });
+  q.item = { tile: 1, tipo: 'reina', caduca: 9 };
+  q.step = 3;
+  eq(recorre(q, [0, 1, 2]).cells.join(), '0,1,2', 'la reina entra en la cadena a otro nivel');
+  eq(recorre(q, [0, 1, 2, 1]).cells.join(), '0,1', '…y la última se quita igual');
+  const q2 = tablero('libre', 1, { 1: 4, 2: 3 });
+  q2.item = { tile: 1, tipo: 'reina', caduca: 9 };
+  q2.step = 3;
+  eq(recorre(q2, [0, 1, 2]).cells.join(), '0,1', 'tras la reina, sigue mandando el nivel de la cadena');
+
+  // Una celda con seda o de otro nivel no entra.
+  const u = tablero('libre', 1, { 1: 2 });
+  u.step = 3;
+  eq(recorre(u, [0, 1]).cells.join(), '0', 'una celda de otro nivel no entra');
+  u.sedaHasta[5] = 9;
+  eq(recorre(u, [0, 5]).cells.join(), '0', 'una celda con seda no entra');
 }
 
 // --- agua y celdas rotas (§2) ---------------------------------------------------------
@@ -210,12 +297,50 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   ok(T.jugable(s, 0), 'la seda caduca');
 }
 {
+  const s = tablero('contrarreloj', 1, { 5: 5, 6: 5, 11: 5, 12: 5, 10: 5 });
+  s.desastres.push({ tipo: 'capullo', tile: 20 });
+  s.failStreak = 2;
+  s.step = 5;
+  T.commitTurn(s, [5, 6, 11, 12, 10]);
+  eq(s.desastres.length, 0, 'una cosecha de 5+ elimina el capullo');
+  eq(s.failStreak, 0, 'la cosecha de 5+ pone la escalera a cero');
+  ok(s.eventos.some(e => e.type === 'baja' && e.desde === 2 && e.cosecha === 5), '…y lo avisa con el evento «baja» (v7)');
+  ok(s.eventos.some(e => e.type === 'limpia' && e.desastre === 'capullo'), '…y el de «limpia»');
+}
+{
+  // v7: el umbral pasa de 4 a 5. Una cosecha de 4 ya no baja de la escalera.
   const s = tablero('contrarreloj', 1, { 5: 5, 6: 5, 11: 5, 12: 5 });
   s.desastres.push({ tipo: 'capullo', tile: 20 });
+  s.failStreak = 2;
   s.step = 4;
   T.commitTurn(s, [5, 6, 11, 12]);
-  eq(s.desastres.length, 0, 'una cosecha de 4+ elimina el capullo');
-  eq(s.failStreak, 0, 'la cosecha de 4+ reinicia los fallos seguidos');
+  eq(s.failStreak, 2, 'una cosecha de 4 ya NO reinicia la escalera (v7)');
+  eq(s.desastres.length, 1, '…ni quita el capullo');
+  ok(!s.eventos.some(e => e.type === 'baja'), '…ni avisa de que bajas');
+}
+{
+  // Con la escalera ya a cero no hay nada que bajar: no se avisa.
+  const s = tablero('contrarreloj', 1, { 5: 5, 6: 5, 11: 5, 12: 5, 10: 5 });
+  s.step = 5;
+  T.commitTurn(s, [5, 6, 11, 12, 10]);
+  ok(!s.eventos.some(e => e.type === 'baja'), 'con la escalera a cero, la cosecha grande no avisa de nada');
+  const i = tablero('invierno', 1, { 5: 5, 6: 5, 11: 5, 12: 5, 10: 5 });
+  i.failStreak = 3; i.step = 5;
+  T.commitTurn(i, [5, 6, 11, 12, 10]);
+  ok(!i.eventos.some(e => e.type === 'baja'), 'en Invierno no hay escalera: tampoco se avisa');
+}
+{
+  // v7: la seda, una vez suelta, no se quita. La cosecha grande no la toca.
+  const s = tablero('contrarreloj', 1, { 5: 5, 6: 5, 11: 5, 12: 5, 10: 5 });
+  s.desastres.push({ tipo: 'seda', tiles: [20, 21], hasta: 2 });
+  s.sedaHasta[20] = 2; s.sedaHasta[21] = 2;
+  s.failStreak = 3;
+  s.step = 5;
+  T.commitTurn(s, [5, 6, 11, 12, 10]);
+  eq(s.failStreak, 0, 'la cosecha grande baja la escalera aunque haya seda');
+  ok(s.desastres.some(d => d.tipo === 'seda'), '…pero la seda sigue ahí (v7)');
+  ok(!T.jugable(s, 20), '…y sus celdas siguen bloqueadas');
+  ok(!s.eventos.some(e => e.type === 'limpia'), '…y no hay evento de limpieza');
 }
 {
   // v4 (T-23, variante B): la cosecha PEQUEÑA ya no reinicia el termómetro. Con
@@ -225,9 +350,9 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   s.failStreak = 3;
   s.step = 2;
   ok(T.commitTurn(s, [5, 6]), 'se cosechan 2 celdas');
-  eq(s.failStreak, 3, 'una cosecha de menos de 4 NO baja el termómetro');
+  eq(s.failStreak, 3, 'una cosecha pequeña NO baja el termómetro');
   eq(s.streak, 1, '…pero sí suma racha');
-  eq(T.COSECHA_GRANDE, 4, 'el umbral de cosecha grande es 4');
+  eq(T.COSECHA_GRANDE, 5, 'el umbral de cosecha grande es 5 (v7)');
 }
 {
   // v4: la varroa va a por la celda más alta, no por una al azar.
@@ -239,6 +364,100 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   const llano = tablero('contrarreloj', 1);
   T.fallback(llano);
   eq(llano.last.desastre, null, 'con todo a cera la varroa no tiene a quién morder');
+}
+{
+  // v7: la polilla sin sitio donde dejar el capullo cae como varroa (antes el
+  // fallo se quedaba sin consecuencia). Todo agua salvo una celda de huevo que
+  // ya tiene capullo: la polilla no tiene dónde ir.
+  const s = tablero('contrarreloj', 0, { 7: 2 });
+  s.desastres.push({ tipo: 'capullo', tile: 7 });
+  s.failStreak = 1;
+  eq(T.siguienteDesastre(s, s.turn), 'varroa', 'polilla sin candidata: se anuncia varroa');
+  T.fallback(s);
+  eq(s.last.desastre && s.last.desastre.tipo, 'varroa', '…y cae varroa');
+  eq(s.height[7], T.CERA, '…sobre la celda más alta');
+}
+{
+  // v7 (C.4): la velutina no elige nunca de centro una celda rota.
+  for (let seed = 1; seed <= 50; seed++) {
+    const s = tablero('contrarreloj', 1, { 0: 4 });
+    romper(s, 0); s.height[0] = 4;   // rota, con altura guardada: una trampa
+    s.height[23] = 3;
+    s.failStreak = 3; s.rng = seed;
+    T.fallback(s);
+    ok(s.last.desastre && s.last.desastre.tiles[0] === 23 && !s.last.desastre.tiles.includes(0),
+       `semilla ${seed}: la velutina va a la única celda viva por encima de cera, no a la rota`);
+  }
+}
+{
+  // D.1 (CR-07): el último turno de calma ya NO protege en la interfaz. El fallo
+  // de la interfaz ocurre tras turn++, así que con calmaHasta = turn + 1 ya cae.
+  const s = tablero('contrarreloj', 3);
+  s.failStreak = 5;
+  s.calmaHasta = s.turn + 2;
+  eq(T.siguienteDesastre(s), null, 'con 2 turnos de calma, fallar ahora no trae nada');
+  s.calmaHasta = s.turn + 1;
+  eq(T.siguienteDesastre(s), 'velutina', 'en el último turno de calma, fallar ya trae la velutina (CR-07)');
+  // D.2 (CR-08): con dos amenazas activas el peldaño 2 es varroa, no polilla.
+  const t = tablero('contrarreloj', 3);
+  t.failStreak = 1;
+  eq(T.siguienteDesastre(t), 'polilla', 'contador en 1: si fallas, polilla');
+  t.desastres.push({ tipo: 'capullo', tile: 3 }, { tipo: 'seda', tiles: [20], hasta: t.turn + 5 });
+  eq(T.siguienteDesastre(t), 'varroa', 'con dos amenazas activas, si fallas cae varroa (CR-08)');
+  t.desastres[1].hasta = t.turn + 1;
+  eq(T.siguienteDesastre(t), 'polilla', '…salvo que la seda caduque antes del fallo');
+  eq(T.siguienteDesastre(tablero('invierno', 3)), null, 'sin desastres en el modo, no se anuncia nada');
+}
+{
+  // Test de propiedad (D.3): lo que anuncia siguienteDesastre es lo que cae.
+  // Partidas de contrarreloj con un jugador torpe al azar, para que falle a
+  // menudo y pase por calma, capullos, dos amenazas y el contador alto. En
+  // cada turno: se pide la predicción, se juega en una copia y, si hay fallo,
+  // se compara. La cosecha grande se excluye porque cambia la escalera antes
+  // del fallo (para eso está la pista de la interfaz).
+  // Las dos amenazas a la vez no salen en partida: la única pareja posible es
+  // seda + capullo, y para eso habría que bajar de la escalera con la seda
+  // viva, cosa que no da tiempo (ver C.2 del encargo v7). Ese caso lo cubre el
+  // bloque de arriba a mano.
+  // La varroa y la velutina pueden no encontrar víctima (nada por encima de
+  // cera): entonces no pasa nada, y eso también es acertar.
+  const sinVictima = s => ![...s.height].some((h, i) => !s.roto[i] && h > T.CERA);
+  const coincide = (s, pred, d) => d ? d.tipo === pred
+    : pred === null || ((pred === 'varroa' || pred === 'velutina') && sinVictima(s));
+  const cobertura = { calma: 0, ultimoCalma: 0, capullo: 0, contadorAlto: 0, bot: 0 };
+  let comparados = 0, distintos = 0;
+  for (let seed = 1; seed <= 300; seed++) {
+    const s = T.createState('contrarreloj', seed % 2 ? 'normal' : 'dificil', seed);
+    let r = seed;
+    const azar = n => { r ^= r << 13; r ^= r >>> 17; r ^= r << 5; return ((r >>> 0) % n); };
+    for (let turno = 0; turno < 150 && !s.gameOver; turno++) {
+      const jugada = jugadaAlAzar(s, azar);
+      const pred = T.siguienteDesastre(s);
+      if (s.turn + 1 < s.calmaHasta) cobertura.calma++;
+      if (s.turn + 1 === s.calmaHasta) cobertura.ultimoCalma++;
+      if (s.desastres.some(d => d.tipo === 'capullo')) cobertura.capullo++;
+      if (s.failStreak >= 3) cobertura.contadorAlto++;
+      if (!jugada || azar(12) === 0) {
+        // Como el bot: falla sin jugar, sin turn++. También de vez en cuando
+        // a propósito, porque commitTurn casi nunca deja al jugador sin jugada.
+        const predBot = T.siguienteDesastre(s, s.turn);
+        T.fallback(s);
+        cobertura.bot++; comparados++;
+        if (!coincide(s, predBot, s.last.desastre)) distintos++;
+        continue;
+      }
+      const grande = s.height[jugada.find(i => !(s.item && s.item.tipo === 'reina' && s.item.tile === i)) ?? jugada[0]] === T.MAX_LEVEL
+        && jugada.length >= T.COSECHA_GRANDE;
+      T.commitTurn(s, jugada);
+      const ev = s.eventos.find(e => e.type === 'fallback');
+      if (!ev || grande) continue;
+      comparados++;
+      if (!coincide(s, pred, ev.desastre)) distintos++;
+    }
+  }
+  ok(comparados > 1000, `el test de propiedad compara muchos fallos (${comparados})`);
+  eq(distintos, 0, `lo que anuncia siguienteDesastre es lo que cae, en ${comparados} fallos`);
+  for (const [k, n] of Object.entries(cobertura)) ok(n > 0, `el test de propiedad pasa por «${k}» (${n})`);
 }
 
 // --- la dificultad es consecuencia, no condición (v5) ---------------------------------
@@ -328,7 +547,6 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   eq(T.PROPOLEO_MIN_AGUA, 3, 'el mínimo de agua del propóleo es 3');
   ok(!T.itemsUtiles(tablero('invierno', 1)).includes('nectar'), 'el néctar no sale sin reloj');
   ok(T.itemsUtiles(tablero('contrarreloj', 1)).includes('nectar'), '…y sí con reloj');
-  ok(!T.itemsUtiles(tablero('invierno', 1)).includes('humo'), 'el humo no sale (v3, pendiente T-21)');
 }
 
 // --- umbral de ítems proporcional al panal vivo (v4, T-26) -----------------------------
@@ -364,7 +582,7 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   s.item = { tile: 0, tipo: 'jalea', caduca: s.turn + T.ITEM_TURNOS };
   T.commitTurn(s, [0]);
   eq(s.last.item, 'jalea', 'al pasar la cadena por el ítem se recoge');
-  eq(s.height[1], 2, 'jalea: toda la tierra sube');
+  eq(s.height[1], 2, 'jalea: todo el panal sube un nivel');
   eq(s.height[3], 0, 'jalea: el agua no sube');
 }
 {
@@ -401,15 +619,20 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   eq(s.reloj, 65, 'néctar: +15 s');
 }
 {
-  // El humo no se ofrece desde la v3, pero si se usa sigue haciendo su efecto.
+  // El humo sale en Invierno en cuanto la helada ha roto algo (v5), y deshace
+  // la última rotura. Hasta la v6 este bloque decía lo contrario («el humo no
+  // sale») y pasaba por vacío: no reiniciaba itemCalma, así que tras el primer
+  // ítem no salía ninguno más y la comprobación no miraba nada.
   const s = tablero('invierno', 1);
   T.fallback(s);
   const rota = T.SPIRAL[0];
-  for (let seed = 1; seed <= 100; seed++) {
-    s.item = null; s.rng = (seed * 2654435761) >>> 0 || 1;
+  let sale = false;
+  for (let seed = 1; seed <= 200 && !sale; seed++) {
+    s.item = null; s.itemCalma = 0; s.rng = (seed * 2654435761) >>> 0 || 1;
     const it = T.spawnItemIfEarned(s);
-    ok(!it || it.tipo !== 'humo', `semilla ${seed}: el humo no sale (v3)`);
+    if (it && it.tipo === 'humo') sale = true;
   }
+  ok(sale, 'con una celda rota, el humo sale de verdad en Invierno');
   s.item = { tile: 5, tipo: 'humo', caduca: s.turn + T.ITEM_TURNOS };
   T.commitTurn(s, [5]);
   eq(s.roto[rota], 0, 'humo: la celda rota vuelve al panal');
@@ -444,6 +667,17 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   ok(!i.gameOver, 'Invierno no tiene reloj');
 }
 
+// --- los textos leen los números de las constantes (v7) ----------------------------------
+{
+  ok(T.DESASTRE_INFO.seda.que.includes(`${T.SEDA_TURNOS} turnos`), 'el texto de la seda lleva SEDA_TURNOS');
+  ok(T.DESASTRE_INFO.velutina.que.includes(`${T.CALMA_TRAS_VELUTINA} turnos`) &&
+     T.DESASTRE_INFO.velutina.que.includes(`cosechas ${T.COSECHA_GRANDE}`), 'el de la velutina, la calma y el umbral');
+  ok(!/tierra/i.test(JSON.stringify(T.ITEM_INFO)), 'ningún ítem habla de «tierra» (v7)');
+  const s = tablero('libre', 1, { 5: 5, 6: 5, 11: 5, 12: 5, 10: 5 });
+  eq(T.mesetaDeNivel(s, 5), 5, 'mesetaDeNivel cuenta la meseta de abejas');
+  eq(T.mesetaDeNivel(s, 1), 19, '…y la de cera, por separado');
+}
+
 // --- el motor no toca el DOM ---------------------------------------------------------------
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'state.js'), 'utf8');
@@ -467,6 +701,14 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
     ...[...js.matchAll(/set(?:Text|Html)\('([^']+)'/g)].map(m => m[1]),
   ]);
   for (const id of pedidos) ok(ids.has(id), `el HTML tiene el id «${id}» que pide el JS`);
+
+  // Los números de la ayuda los rellena app.js desde las constantes (v7): cada
+  // data-const del HTML tiene que ser uno que app.js sepa rellenar.
+  const consts = [...html.matchAll(/data-const="([^"]+)"/g)].map(m => m[1]);
+  ok(consts.includes('COSECHA_GRANDE'), 'la ayuda lee el umbral de COSECHA_GRANDE');
+  const rellena = /const valores = \{([^}]+)\}/.exec(js)[1];
+  for (const c of new Set(consts)) ok(rellena.includes(c), `app.js rellena el data-const «${c}»`);
+  ok(!/4 celdas o más/.test(html), 'la ayuda ya no lleva el umbral escrito a mano');
 
   // La versión que se ve en el pie tiene que ser la del paquete: si se
   // descuadran, el número que enseña el juego miente (T-28).

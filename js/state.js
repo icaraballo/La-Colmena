@@ -26,7 +26,7 @@ function createState(modo = MODOS.INVIERNO, dificultad = 'normal', seed = 1) {
 
     // --- modo ---
     modo, dificultad,
-    failStreak: 0,   // fallos seguidos; vuelve a 0 al cosechar
+    failStreak: 0,   // peldaño de la escalera: fallos desde la última cosecha grande
 
     // --- helada (Invierno) ---
     heladaCnt: 0,    // fallos acumulados desde el último avance
@@ -165,20 +165,26 @@ function nivelCadena(s, cells) {
 // con un `seen` global: hay que recorrer nivel por nivel. Son 6 pasadas sobre 24
 // celdas, así que el coste da igual.
 function biggestCoherentArea(s) {
-  const reina = (s.item && s.item.tipo === ITEMS.REINA && jugable(s, s.item.tile)) ? s.item.tile : -1;
   let best = 0;
-  for (let h = AGUA; h <= MAX_LEVEL; h++) {
-    const de = i => jugable(s, i) && (s.height[i] === h || i === reina);
-    const seen = new Uint8Array(TILE_COUNT);
-    for (let start = 0; start < TILE_COUNT; start++) {
-      if (seen[start] || !de(start)) continue;
-      const stack = [start]; seen[start] = 1; let size = 0;
-      while (stack.length) {
-        const u = stack.pop(); size++;
-        for (const v of ADJ[u]) if (!seen[v] && de(v)) { seen[v] = 1; stack.push(v); }
-      }
-      if (size > best) best = size;
+  for (let h = AGUA; h <= MAX_LEVEL; h++) best = Math.max(best, mesetaDeNivel(s, h));
+  return best;
+}
+
+// La mayor meseta jugable a un nivel concreto, con la reina de comodín. La
+// interfaz la usa para saber si hay una cosecha grande a mano (v7).
+function mesetaDeNivel(s, h) {
+  const reina = (s.item && s.item.tipo === ITEMS.REINA && jugable(s, s.item.tile)) ? s.item.tile : -1;
+  const de = i => jugable(s, i) && (s.height[i] === h || i === reina);
+  const seen = new Uint8Array(TILE_COUNT);
+  let best = 0;
+  for (let start = 0; start < TILE_COUNT; start++) {
+    if (seen[start] || !de(start)) continue;
+    const stack = [start]; seen[start] = 1; let size = 0;
+    while (stack.length) {
+      const u = stack.pop(); size++;
+      for (const v of ADJ[u]) if (!seen[v] && de(v)) { seen[v] = 1; stack.push(v); }
     }
+    if (size > best) best = size;
   }
   return best;
 }
@@ -212,7 +218,12 @@ function commitTurn(s, cells) {
     // normal reiniciándolo (hasta la v3), la escalera de DESIGN §7 no se subía
     // nunca: el 91 % de los desastres eran varroa y la velutina salía 11 veces
     // en 2000 partidas. Ver Balance § v3, "Lo que destapó el playtest".
-    if (L >= COSECHA_GRANDE) s.failStreak = 0;
+    // Desde la v7 se avisa (evento 'baja'): hasta entonces el contador volvía a 0
+    // en silencio y el jugador no aprendía que la cosecha grande es su defensa.
+    if (L >= COSECHA_GRANDE) {
+      if (cfg.desastres && s.failStreak > 0) s.eventos.push({ type: 'baja', desde: s.failStreak, cosecha: L });
+      s.failStreak = 0;
+    }
 
     // En Invierno la cosecha grande ya NO devuelve celdas rotas: con el agua
     // jugable la partida no terminaba (palanca 1 del cambio agua/celda rota).
@@ -291,8 +302,7 @@ function avanzarHelada(s) {
 }
 
 // La última celda rota por la helada vuelve al panal, como AGUA: recuperas el
-// suelo, no el trabajo. Desde la v3 nada la llama (la cosecha grande dejó de
-// hacerlo y el humo no sale); se conserva para cuando se rediseñe el humo.
+// suelo, no el trabajo. La llama el humo (desde la v5, sólo en Invierno).
 function devolverHelada(s) {
   while (s.heladas.length) {
     const tile = s.heladas.pop();
@@ -306,42 +316,96 @@ function devolverHelada(s) {
 }
 
 // ---------------------------------------------------------------------------
-// Desastres (DESIGN §7): castigos escalonados por fallos seguidos, nunca al azar.
+// Desastres (DESIGN §7): castigos escalonados por los fallos desde la última
+// cosecha grande (la escalera), nunca al azar.
 // Ninguno rompe celdas (eso es exclusivo de la helada) ni actúa sobre el agua.
 // ---------------------------------------------------------------------------
+// El peldaño que toca lo decide decidirDesastre, que es la misma función que
+// usa la interfaz para avisar (v7). Aquí sólo se ejecuta.
 function dispararDesastre(s) {
-  if (s.turn < s.calmaHasta) return null;
+  switch (decidirDesastre(s, s.failStreak, s.turn)) {
+    case 'velutina': return velutina(s);
+    case 'seda':     return eclosionar(s, s.desastres.find(d => d.tipo === 'capullo'));
+    case 'polilla':  return polilla(s);
+    case 'varroa':   return varroa(s);
+  }
+  return null;
+}
 
-  const activos = s.desastres.length;
-  const capullo = s.desastres.find(d => d.tipo === 'capullo');
-  const n = s.failStreak;
+// Qué desastre caería si el jugador fallara en el turno `turnoDelFallo`. Pura:
+// no toca el estado. Es la ÚNICA definición de la escalera — el motor la
+// ejecuta y el HUD la anuncia —, así que no pueden discrepar. Hasta la v6 el HUD
+// llevaba su propia copia de las reglas y se equivocaba en dos sitios: decía
+// «calma» un turno de más (CR-07) y no miraba el tope de amenazas (CR-08).
+//
+// En la interfaz el fallo ocurre dentro de commitTurn, DESPUÉS de turn++: de ahí
+// el +1 por defecto. El bot falla sin jugar (sin turn++) y pasa s.turn.
+function siguienteDesastre(s, turnoDelFallo = s.turn + 1) {
+  if (!CONFIG_MODO[s.modo].desastres) return null;
+  return decidirDesastre(s, s.failStreak + 1, turnoDelFallo);
+}
 
-  if (n >= 4) return velutina(s);
-  if (n === 3 && capullo) return eclosionar(s, capullo);
-  if (n === 2 && activos < DESASTRES_MAX_ACTIVOS) return polilla(s);
-  return varroa(s);   // 1.er fallo, o el peldaño que tocaba no ha podido darse
+// n es el contador YA sumado el fallo: 1 varroa, 2 polilla, 3 seda, 4+ velutina.
+// Cuando un peldaño no puede darse cae una varroa: la seda sin capullo, y desde
+// la v7 también la polilla sin celda donde poner el capullo (antes el fallo se
+// quedaba sin consecuencia, DESIGN §15). Devuelve null sólo en calma.
+//
+// Lo que NO mira es si la varroa o la velutina tendrán a quién morder: la
+// interfaz pregunta ANTES de la jugada, y la jugada cambia el tablero (con todo
+// a cera no hay víctima, pero en cuanto subes una celda a huevo, sí). Si al
+// caer no queda nada por encima de cera, el desastre no hace nada.
+function decidirDesastre(s, n, turno) {
+  if (turno < s.calmaHasta) return null;
+  // Sólo cuentan las amenazas vivas en ese turno: commitTurn caduca la seda
+  // antes de llegar al fallo.
+  const vivas = s.desastres.filter(d => d.tipo !== 'seda' || d.hasta > turno);
+  const capullo = vivas.some(d => d.tipo === 'capullo');
+
+  let tipo = 'varroa';
+  if (n >= 4) tipo = 'velutina';
+  else if (n === 3 && capullo) tipo = 'seda';
+  else if (n === 2 && vivas.length < DESASTRES_MAX_ACTIVOS && candidatasPolilla(s).length) tipo = 'polilla';
+
+  return tipo;
+}
+
+// Las celdas a las que puede ir cada desastre. Las comparten la decisión y la
+// ejecución, por lo mismo.
+function candidatasVarroa(s) {
+  let alto = CERA;
+  for (let i = 0; i < TILE_COUNT; i++) if (!s.roto[i] && s.height[i] > alto) alto = s.height[i];
+  const cand = [];
+  if (alto > CERA) for (let i = 0; i < TILE_COUNT; i++) if (!s.roto[i] && s.height[i] === alto) cand.push(i);
+  return cand;
+}
+function candidatasPolilla(s) {
+  const cand = [];
+  for (let i = 0; i < TILE_COUNT; i++)
+    if (!s.roto[i] && s.height[i] >= CERA && !s.desastres.some(d => d.tile === i)) cand.push(i);
+  return cand;
+}
+// Sin mirar s.roto la velutina podía elegir de centro una celda rota. Hoy da
+// igual (Contrarreloj no tiene helada), pero no el día que un modo tenga las dos.
+function candidatasVelutina(s) {
+  const cand = [];
+  for (let i = 0; i < TILE_COUNT; i++) if (!s.roto[i] && s.height[i] > CERA) cand.push(i);
+  return cand;
 }
 
 // Una celda baja a cera. Desde la v4 va a por la MÁS ALTA, no por una al azar:
 // el ácaro ataca a la cría. Pasa de costar ~2 niveles a ~4 y, sobre todo, se
 // lee: ves caer tu mejor celda en vez de una cualquiera.
 function varroa(s) {
-  let alto = CERA;
-  for (let i = 0; i < TILE_COUNT; i++) if (!s.roto[i] && s.height[i] > alto) alto = s.height[i];
-  const cand = [];
-  for (let i = 0; i < TILE_COUNT; i++) if (!s.roto[i] && s.height[i] === alto && alto > CERA) cand.push(i);
-  const tile = elegir(s, cand);
+  const tile = elegir(s, candidatasVarroa(s));
   if (tile === undefined) return null;
+  const niveles = s.height[tile] - CERA;   // lo que se pierde: lo lee el bot (v7)
   s.height[tile] = CERA;
-  return { tipo: 'varroa', tiles: [tile] };
+  return { tipo: 'varroa', tiles: [tile], niveles };
 }
 
 // Un capullo en una celda. Sólo avisa: eclosiona en el siguiente fallo.
 function polilla(s) {
-  const cand = [];
-  for (let i = 0; i < TILE_COUNT; i++)
-    if (!s.roto[i] && s.height[i] >= CERA && !s.desastres.some(d => d.tile === i)) cand.push(i);
-  const tile = elegir(s, cand);
+  const tile = elegir(s, candidatasPolilla(s));
   if (tile === undefined) return null;
   s.desastres.push({ tipo: 'capullo', tile });
   return { tipo: 'polilla', tiles: [tile] };
@@ -359,24 +423,25 @@ function eclosionar(s, capullo) {
 
 // Barre 3-4 celdas de una zona a cera. Después, calma obligada.
 function velutina(s) {
-  const cand = [];
-  for (let i = 0; i < TILE_COUNT; i++) if (s.height[i] > CERA) cand.push(i);
-  const centro = elegir(s, cand);
+  const centro = elegir(s, candidatasVelutina(s));
   if (centro === undefined) return null;
   const zona = [centro, ...barajar(s, ADJ[centro].filter(v => !s.roto[v] && s.height[v] >= CERA))]
     .slice(0, 3 + randInt(s, 2));
-  for (const i of zona) s.height[i] = CERA;
+  let niveles = 0;
+  for (const i of zona) { niveles += s.height[i] - CERA; s.height[i] = CERA; }
   s.calmaHasta = s.turn + CALMA_TRAS_VELUTINA;
-  return { tipo: 'velutina', tiles: zona };
+  return { tipo: 'velutina', tiles: zona, niveles };
 }
 
-// Cosechar 4+ borra un capullo pendiente o, si no hay, retira una seda.
+// La cosecha grande borra el capullo si todavía no ha eclosionado. La seda ya
+// suelta NO se quita (v7): aguanta sus turnos pase lo que pase. Hasta la v6 la
+// regla decía que sí, pero era letra muerta: la seda sale en un fallo, el fallo
+// deja el paso en 1, y en sus 2 turnos el paso sólo llega a 2 — nunca daba para
+// una cosecha grande. Medido: quitar la regla da resultados idénticos a la décima.
 function limpiarAmenaza(s) {
-  let k = s.desastres.findIndex(d => d.tipo === 'capullo');
-  if (k === -1) k = s.desastres.findIndex(d => d.tipo === 'seda');
+  const k = s.desastres.findIndex(d => d.tipo === 'capullo');
   if (k === -1) return;
   const [d] = s.desastres.splice(k, 1);
-  if (d.tipo === 'seda') for (const v of d.tiles) s.sedaHasta[v] = 0;
   s.eventos.push({ type: 'limpia', desastre: d.tipo });
 }
 
@@ -433,7 +498,7 @@ function spawnItemIfEarned(s) {
   return s.item;
 }
 
-// Nunca se ofrece un ítem que no serviría (el original: isItemRaiseLandPossible…).
+// Nunca se ofrece un ítem que no serviría de nada en ese momento (DESIGN §8).
 function itemsUtiles(s) {
   const cfg = CONFIG_MODO[s.modo];
   const out = [ITEMS.DANZA, ITEMS.REINA];
@@ -469,11 +534,11 @@ function usarItem(s, tipo) {
   switch (tipo) {
     case ITEMS.JALEA:
       for (let i = 0; i < TILE_COUNT; i++)
-        // "Raise all land tiles": sube la tierra, no el agua.
+        // Todo el panal sube un nivel, menos el agua (y la abeja, que ya está arriba).
         if (!s.roto[i] && s.height[i] >= CERA && s.height[i] < MAX_LEVEL) s.height[i]++;
       break;
     case ITEMS.PROPOLEO:
-      // "Raise all water tiles": el agua sube a cera. Las rotas no vuelven.
+      // El agua sube un nivel, a cera. Las rotas no vuelven.
       for (let i = 0; i < TILE_COUNT; i++) if (!s.roto[i] && s.height[i] === AGUA) s.height[i] = CERA;
       break;
     case ITEMS.DANZA:

@@ -71,9 +71,13 @@ function buscarJugada(s, L, nivelPreferido, R, forzar) {
 
   for (const inicio of inicios) {
     // Desde la reina, el nivel de la cadena lo marcan sus vecinas; desde
-    // cualquier otra celda, ella misma.
+    // cualquier otra celda, ella misma. La reina entra también con su PROPIO
+    // nivel: si es la última celda viva (la helada se ha comido las otras 23) no
+    // tiene vecinas jugables, y sola es una jugada de 1 que el motor sí cuenta.
+    // Sin esto el bot se colgaba en el 0,3 % de las partidas de Invierno difícil
+    // (CR-09) por culpa suya, no del motor.
     const niveles = inicio === reina
-      ? [...new Set(T.ADJ[inicio].filter(v => jugable(s, v)).map(v => s.height[v]))]
+      ? [...new Set([s.height[inicio], ...T.ADJ[inicio].filter(v => jugable(s, v)).map(v => s.height[v])])]
       : [s.height[inicio]];
     for (const h of shuffled(niveles, R)) {
       if (nivelPreferido !== undefined && h !== nivelPreferido) continue;
@@ -117,7 +121,26 @@ function jugable(s, i) { return T.jugable(s, i); }
 function jugarUna(seed, modo, dificultad) {
   const R = rng(seed);
   const s = T.createState(modo, dificultad, seed);
-  const st = { pasoMax: 0, cosechas: 0, fallos: 0, fantasmas: 0, mayorCosecha: 0, items: 0, caducados: 0 };
+  const st = { pasoMax: 0, cosechas: 0, fallos: 0, fantasmas: 0, mayorCosecha: 0, items: 0, caducados: 0,
+               varroa: 0, polilla: 0, seda: 0, sedaCeldas: 0, velutina: 0, enCalma: 0,
+               perdidos: 0, subidos: 0, grandes: 0, dosAmenazas: 0 };
+  for (const t of T.ITEMS_VISIBLES) { st['sale_' + t] = 0; st['usa_' + t] = 0; }
+  // Lo que cuentan los eventos del motor (v7, H.4): desastres por tipo, lo que
+  // cuestan en niveles y los ítems por tipo. Se leen los eventos, no se toca el
+  // motor para medir.
+  const leer = () => {
+    for (const e of s.eventos) {
+      if (e.type === 'item') st['sale_' + e.tipo]++;
+      if (e.type === 'usa') st['usa_' + e.tipo]++;
+      if (e.type !== 'fallback' || !T.CONFIG_MODO[modo].desastres) continue;
+      const d = e.desastre;
+      if (!d) { st.enCalma++; continue; }
+      st[d.tipo]++;
+      if (d.tipo === 'seda') st.sedaCeldas += d.tiles.length;
+      st.perdidos += d.niveles || 0;
+    }
+    if (s.desastres.length >= T.DESASTRES_MAX_ACTIVOS) st.dosAmenazas++;
+  };
   let guard = 0;
 
   while (!s.gameOver && guard++ < 3000) {
@@ -136,13 +159,17 @@ function jugarUna(seed, modo, dificultad) {
       // el motor cree que el jugador sigue vivo y no le deja fallar, así que un humano
       // se queda arrastrando el dedo sin que pase nada. DEBE SER SIEMPRE 0.
       if (T.biggestCoherentArea(s) >= s.step) st.fantasmas++;
-      st.fallos++; T.fallback(s); continue;
+      s.eventos = [];
+      st.fallos++; T.fallback(s); leer(); continue;
     }
 
     const esCosecha = s.height[cells[0]] === T.MAX_LEVEL;
     const llevabaItem = !!(s.item && cells.includes(s.item.tile));
     const pasoAntes = s.step;
-    if (!T.commitTurn(s, cells)) { st.fallos++; T.fallback(s); continue; }
+    if (!T.commitTurn(s, cells)) { s.eventos = []; st.fallos++; T.fallback(s); leer(); continue; }
+    leer();
+    if (!esCosecha) st.subidos += cells.length;
+    else if (cells.length >= T.COSECHA_GRANDE) st.grandes++;
 
     if (llevabaItem) st.items++;
     for (const e of s.eventos) if (e.type === 'caduca') st.caducados++;
@@ -192,10 +219,27 @@ console.log(`cosechas por partida    media ${media(col('cosechas')).toFixed(1)} 
 console.log(`fallos por partida      media ${media(col('fallos')).toFixed(1)}`);
 console.log(`ítems recogidos         media ${media(col('items')).toFixed(1)}   ·   evaporados sin recoger ${media(col('caducados')).toFixed(1)}`);
 
+// Ítems por tipo (v7, H.1): cuántos salen y cuántos se recogen.
+const lineaItems = T.ITEMS_VISIBLES
+  .filter(t => media(col('sale_' + t)) > 0)
+  .map(t => `${t} ${media(col('sale_' + t)).toFixed(1)}/${media(col('usa_' + t)).toFixed(1)}`);
+if (lineaItems.length) console.log(`ítems por tipo          salen/recogidos por partida: ${lineaItems.join(' · ')}`);
+
 // Un turno de cada X es una cosecha. Es el ritmo del juego: cuanto más bajo, más
 // veces pasa lo divertido. Con 5 niveles debería rondar 1 de cada 4.
 const ritmo = media(turnos) / Math.max(1, media(col('cosechas')));
 console.log(`ritmo                   una cosecha cada ${ritmo.toFixed(1)} turnos`);
+
+// Desastres (v7, H.4): la escalera por dentro. El coste son los niveles que
+// quitan los desastres entre los que sube el jugador arrastrando.
+if (T.CONFIG_MODO[modoId].desastres) {
+  const f = k => media(col(k)).toFixed(2);
+  const conVel = res.filter(r => r.velutina > 0).length;
+  const coste = media(col('perdidos')) / Math.max(1, media(col('subidos')));
+  console.log(`desastres por partida   varroa ${f('varroa')} · polilla ${f('polilla')} · seda ${f('seda')} (${media(col('sedaCeldas')).toFixed(1)} celdas) · velutina ${f('velutina')} · en calma ${f('enCalma')}`);
+  console.log(`coste                   niveles perdidos ${media(col('perdidos')).toFixed(1)} de ${media(col('subidos')).toFixed(0)} subidos = ${(coste * 100).toFixed(1)} % · cosechas grandes ${media(col('grandes')).toFixed(1)} · con velutina ${(conVel / N * 100).toFixed(1)} %`);
+  if (res.some(r => r.dosAmenazas)) console.log(`                        turnos con ${T.DESASTRES_MAX_ACTIVOS} amenazas a la vez: ${f('dosAmenazas')} por partida`);
+}
 
 // --- test de regresión de la regla del arrastre ---
 const fant = col('fantasmas');

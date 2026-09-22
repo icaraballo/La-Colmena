@@ -42,7 +42,6 @@ header{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;padding:8px 2px
 /* Segunda fila de datos: una línea de texto, no nueve columnas con etiqueta. */
 .sub{font-size:12px;color:#8c7f6a;padding:2px 2px 0;min-height:17px}
 .sub b{color:#c9b99c;font-weight:600;font-variant-numeric:tabular-nums}
-.sub .alerta{color:#ff9f45}
 
 /* Una sola línea de mensaje (v6). Antes eran tres huecos reservados —aviso,
    registro e ítem— que casi nunca estaban llenos a la vez y se comían 52 px de
@@ -87,6 +86,15 @@ header{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;padding:8px 2px
 .chip.malo.activo.previo .cuenta{color:#6d6150;font-weight:400}
 .chip .cuenta{color:#ffd23f;font-weight:700;font-variant-numeric:tabular-nums}
 .chip.malo .cuenta{color:#ff7a45}
+/* La escalera (v7): los cuatro desastres en orden y unidos por una flecha, en
+   tres tonos — por venir (apagado), subido (ya pisado desde la última cosecha
+   grande) y «si fallas» (el de arriba, `activo`). */
+#leyenda-des{align-items:center;gap:3px}
+#leyenda-des .flecha{color:#4a2a24;font-size:13px;line-height:1}
+.chip.malo:not(.activo):not(.subido) .sim{background:#4a2a24;color:#8c6a5e}
+.chip.malo.subido{border-color:#7a3a2c}
+.chip.malo.subido .sim{background:#a0442f;color:#f3d9cf}
+.chip.malo.subido .nom{color:#c98a78}
 @media (max-width:620px){
   /* Los tres modos tienen que caber en una fila de móvil: es el punto de todo
      el cambio. A 14 px suman 476 px y no caben en 390. */
@@ -236,7 +244,7 @@ footer .sem{font-variant-numeric:tabular-nums}
       a 5 (abeja), arrástralas para <b>cosechar</b>: la celda se vacía y vuelve a agua.</p>
       <p>Si el paso no cabe en ninguna parte es un <b>fallo</b>: vuelve a 1 y pierdes la
       racha. Cada modo castiga el fallo a su manera.</p>
-      <p>Pasa la cadena por una <b>gota</b> para recoger el ítem; se evaporan a los 2 turnos.
+      <p>Pasa la cadena por una <b>gota</b> para recoger el ítem; se evaporan a los <span data-const="ITEM_TURNOS">2</span> turnos.
       Toca cualquier ficha de las leyendas para ver qué hace.</p>
 
       <div class="m" data-ayuda="contrarreloj">
@@ -246,9 +254,14 @@ footer .sem{font-variant-numeric:tabular-nums}
         <b>99 s</b>: lo que pase de ahí <b>se convierte en puntos</b>, así que cosechar con el
         reloj lleno nunca se desperdicia.</p>
         <p>Cada 10 turnos el reloj <b>acelera</b>: +10 % en normal, +20 % en difícil.</p>
-        <p>Fallar seguido sube la escalera de <b>desastres</b>: varroa → polilla → seda →
-        velutina. La leyenda marca el que te tocaría si fallas ahora. Sólo una cosecha de
-        <b>4 celdas o más</b> limpia las amenazas y devuelve el contador a cero.</p>
+        <p>Cada fallo te sube un peldaño de la escalera de <b>desastres</b>: varroa → polilla →
+        seda → velutina. <b>Jugar bien no te baja</b>: sólo una <b>cosecha de
+        <span data-const="COSECHA_GRANDE">5</span> o más</b> te devuelve al primer peldaño (y
+        quita el capullo si aún no ha eclosionado).</p>
+        <p>La seda, una vez suelta, no se quita: bloquea sus celdas
+        <span data-const="SEDA_TURNOS">2</span> turnos. Y después de la velutina, cada fallo es
+        otra velutina hasta que cosechas <span data-const="COSECHA_GRANDE">5</span>. La leyenda
+        te dice qué te cae si fallas ahora.</p>
       </div>
 
       <div class="m" data-ayuda="invierno">
@@ -276,6 +289,7 @@ footer .sem{font-variant-numeric:tabular-nums}
 <footer>
   <button id="ayuda-btn">¿Cómo se juega?</button>
   <span class="sem" id="seed" role="button" tabindex="0" title="Tócala para copiarla"></span>
+  <span id="dif"></span>
   <span id="version"></span>
 </footer>
 

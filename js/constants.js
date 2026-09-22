@@ -14,8 +14,8 @@ const ROW_WIDTHS = [4, 5, 6, 5, 4];
 const TILE_COUNT = 24;
 
 // La escalera: el ciclo de cría de una abeja, con el AGUA debajo. El agua es un
-// escalón más: se arrastra como cualquier nivel y sube a cera (como el agua del
-// original, que subía a arena). Las celdas ROTAS no están en la escalera: van en
+// escalón más: se arrastra como cualquier nivel y sube a cera (la idea sale del
+// original). Las celdas ROTAS no están en la escalera: van en
 // s.roto[], son irreversibles y desaparecen del panal (ver state.js).
 const AGUA       = 0;   // celda vacía: JUGABLE, sube a cera
 const CERA       = 1;
@@ -125,7 +125,14 @@ const HELADA_CADA = { normal: 1, dificil: 1 };
 // Medido (2000 partidas, mediana de turnos): muerde 1 → 108 · 2 → 55 · 3 → 37.
 const HELADA_MUERDE = { normal: 1, dificil: 2 };
 const HELADA_REMATE = 3;        // con tantas casillas jugables o menos, avanza siempre
-const COSECHA_GRANDE = 4;       // una cosecha de 4+ limpia amenazas (Contrarreloj)
+// Cosecha grande (Contrarreloj): la única forma de bajar de la escalera de
+// desastres. Pone el contador a 0 y quita el capullo si no ha eclosionado; la
+// seda no (v7). Pasó de 4 a 5 en la v7 porque 4 se conseguía sin buscarlo en un
+// panal de 24. Medido (2000 partidas, contrarreloj normal): limpia con 4 → 1,86
+// velutinas por partida · 5 → 2,35 · 6 → 3,03 (con 6 la velutina sale en el 95 %
+// de las partidas y deja de ser el castigo gordo). La duración apenas se mueve.
+// Ningún texto de la interfaz lleva el número a mano: lo leen de aquí.
+const COSECHA_GRANDE = 5;
 
 // Reloj de Contrarreloj (DESIGN §9).
 const RELOJ_INICIAL = 90;
@@ -150,8 +157,8 @@ const SEDA_TURNOS = 2;
 const CALMA_TRAS_VELUTINA = 5;
 
 // Ítems (DESIGN §8). Casillas necesarias a un mismo nivel para que aparezca uno,
-// indexado por nivel-1. Es getMinSpecialCountForThisLevel del original, y está
-// calibrado para un panal de 24. Desde la v4 se escala al panal VIVO: con 6
+// indexado por nivel-1. Los números salen del original y están calibrados para
+// un panal de 24. Desde la v4 se escala al panal VIVO: con 6
 // celdas rotas pedir 14 de cera sobre 18 es pedir lo imposible, y el 27 % de las
 // partidas no veía un solo ítem (69 % con 9 rotas). Ver umbralItem() en state.js.
 const ITEM_THRESHOLDS = [14, 12, 10, 8, 6];
@@ -181,11 +188,11 @@ const ITEM_CALMA = 4;
 // mano en un turno; por debajo de esto el propóleo no es un premio.
 const PROPOLEO_MIN_AGUA = 3;
 const ITEMS = {
-  JALEA:    'jalea',     // todo el panal sube un nivel
-  PROPOLEO: 'propoleo',  // el agua sube a cera
+  JALEA:    'jalea',     // todo el panal sube un nivel, menos el agua
+  PROPOLEO: 'propoleo',  // el agua sube un nivel (a cera)
   DANZA:    'danza',     // la ronda siguiente, arrastre de cualquier longitud
   NECTAR:   'nectar',    // +15 s (sólo contrarreloj)
-  HUMO:     'humo',      // la helada retrocede una celda — hoy NO sale (ver itemsUtiles)
+  HUMO:     'humo',      // devuelve la última celda rota; sólo en Invierno (ver itemsUtiles)
   REINA:    'reina',     // comodín: la cadena la atraviesa aunque esté a otro nivel
 };
 
@@ -196,8 +203,8 @@ const ITEMS = {
 // a veces NO compensa recogerlos, decisión imposible sin saber cuál es.
 // `soloConReloj` y `soloConHelada` marcan los que no existen en todos los modos.
 const ITEM_INFO = {
-  jalea:    { simbolo: 'J', nombre: 'Jalea real', que: 'toda la tierra sube un nivel' },
-  propoleo: { simbolo: 'P', nombre: 'Propóleo',   que: 'el agua sube a cera' },
+  jalea:    { simbolo: 'J', nombre: 'Jalea real', que: 'todo el panal sube un nivel, menos el agua' },
+  propoleo: { simbolo: 'P', nombre: 'Propóleo',   que: 'el agua sube un nivel' },
   danza:    { simbolo: 'D', nombre: 'Danza',      que: 'el próximo arrastre, de la longitud que quieras' },
   nectar:   { simbolo: 'N', nombre: 'Néctar',     que: `+${NECTAR_SEGUNDOS} s`, soloConReloj: true },
   humo:     { simbolo: 'H', nombre: 'Humo',       que: 'devuelve como agua la última celda rota', soloConHelada: true },
@@ -212,11 +219,17 @@ const ITEMS_VISIBLES = ['jalea', 'propoleo', 'danza', 'nectar', 'humo', 'reina']
 // Catálogo de desastres para la interfaz, igual que ITEM_INFO. Hasta la v4 sólo
 // se anunciaban en una línea de texto que se borraba al turno siguiente, así que
 // el jugador no llegaba a aprenderse la escalera.
+// Los textos dicen la escalera tal como es desde la v7 (DESIGN §7): los números
+// salen de las constantes, nunca escritos a mano.
 const DESASTRE_INFO = {
-  varroa:   { simbolo: 'V', nombre: 'Varroa',   que: 'la celda más alta baja a cera',      peldano: 1 },
-  polilla:  { simbolo: 'P', nombre: 'Polilla',  que: 'deja un capullo: sólo avisa',        peldano: 2 },
-  seda:     { simbolo: 'S', nombre: 'Seda',     que: 'el capullo eclosiona y bloquea sus vecinas', peldano: 3 },
-  velutina: { simbolo: 'A', nombre: 'Velutina', que: 'barre 3-4 celdas de una zona a cera', peldano: 4 },
+  varroa:   { simbolo: 'V', nombre: 'Varroa',   peldano: 1,
+              que: 'tu celda más alta baja a cera' },
+  polilla:  { simbolo: 'P', nombre: 'Polilla',  peldano: 2,
+              que: 'deja un capullo; eclosiona si vuelves a fallar' },
+  seda:     { simbolo: 'S', nombre: 'Seda',     peldano: 3,
+              que: `el capullo eclosiona: sus vecinas quedan bloqueadas ${SEDA_TURNOS} turnos, sin remedio` },
+  velutina: { simbolo: 'A', nombre: 'Velutina', peldano: 4,
+              que: `3-4 celdas a cera; luego ${CALMA_TRAS_VELUTINA} turnos de calma. Se repite en cada fallo hasta que cosechas ${COSECHA_GRANDE}` },
 };
 const DESASTRES_VISIBLES = ['varroa', 'polilla', 'seda', 'velutina'];
 
@@ -230,7 +243,7 @@ const NOMBRE_DIF = { normal: 'Normal', dificil: 'Difícil' };
 // La versión, a la vista en el pie junto a la semilla: jugando en el móvil no
 // hay forma de saber si lo que tienes delante es lo último que se subió.
 // Se mantiene a mano y tiene que coincidir con package.json (ver Recetas).
-const VERSION = 'v6';
+const VERSION = 'v7';
 
 const NOMBRE_MODO = {
   contrarreloj: 'Contrarreloj',

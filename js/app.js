@@ -72,7 +72,7 @@ async function copiarTexto(txt) {
 }
 
 function redraw(now = performance.now()) {
-  draw(ctx, S, { cells: drag.cells, trail: drag.trail, ready: dragReady(S), abejas, destellos }, now);
+  draw(ctx, S, { cells: drag.cells, ready: dragReady(S), fuera: drag.fuera, abejas, destellos }, now);
   updateHud();
   pintarFin();
 }
@@ -112,7 +112,7 @@ function abrirPop(ancla, contenido) {
 // El panel que cuelga de un modo. Elegir dificultad ES empezar la partida, así
 // que «Nueva partida» dejó de hacer falta: tocar un modo siempre acaba en
 // partida nueva de ese modo, con este paso intermedio cuando hay algo que
-// elegir. Panal libre no tiene dificultad, así que arranca directo.
+// elegir. Panal libre no tiene dificultad: ver panelConfirmar.
 function panelDificultad(modo) {
   const caja = document.createElement('div');
   const titulo = document.createElement('b');
@@ -130,6 +130,31 @@ function panelDificultad(modo) {
     fila.appendChild(b);
   }
   caja.appendChild(titulo); caja.appendChild(fila);
+  return caja;
+}
+
+// Panal libre no tiene dificultad, así que no había panel de por medio y un
+// toque sin querer en la barra reiniciaba la partida sin red (v7, F.3). Con
+// partida empezada, se pregunta; con el panal recién puesto o la partida
+// acabada, no hay nada que perder y arranca directo.
+function partidaEmpezada() { return S.turn > 0 && !S.gameOver; }
+function panelConfirmar(modo) {
+  const caja = document.createElement('div');
+  const t = document.createElement('b');
+  t.textContent = '¿Empezar una partida nueva?';
+  const nota = document.createElement('span');
+  nota.className = 'nota';
+  nota.textContent = 'Se pierde la de ahora.';
+  const fila = document.createElement('div');
+  fila.className = 'difs';
+  const si = document.createElement('button');
+  si.textContent = 'Sí, empezar';
+  si.addEventListener('click', () => { partida.modo = modo; cerrarPop(); restart(); });
+  const no = document.createElement('button');
+  no.textContent = 'No';
+  no.addEventListener('click', cerrarPop);
+  fila.appendChild(si); fila.appendChild(no);
+  caja.appendChild(t); caja.appendChild(fila); caja.appendChild(nota);
   return caja;
 }
 
@@ -185,6 +210,14 @@ function panelChip(c) {
   n.textContent = c.dataset.nom;
   caja.appendChild(n);
   caja.appendChild(document.createTextNode(c.dataset.que));
+  // Lo que pasa AHORA con esta ficha (el capullo que espera, la seda que no se
+  // quita), aparte de lo que hace en general. Lo rellena updateHud.
+  if (c.dataset.ahora) {
+    const a = document.createElement('span');
+    a.className = 'nota';
+    a.textContent = c.dataset.ahora;
+    caja.appendChild(a);
+  }
   return caja;
 }
 
@@ -230,26 +263,32 @@ function pintarLeyenda() {
   // Los desastres, en la misma forma: hasta la v4 sólo se anunciaban en una
   // línea de texto que se borraba al turno siguiente, así que la escalera de
   // DESIGN §7 no había forma de aprendérsela.
+  // Desde la v7 van en orden y unidos por una flecha, para que se lean como
+  // peldaños y no como cuatro fichas sueltas: jugando, ni el autor entendía
+  // cuándo se saltaba de uno a otro.
   const ed = document.getElementById('leyenda-des');
   ed.innerHTML = '';
   ed.hidden = !cfg.desastres;
-  if (cfg.desastres) for (const tipo of DESASTRES_VISIBLES) {
+  if (cfg.desastres) DESASTRES_VISIBLES.forEach((tipo, k) => {
+    if (k) {
+      const f = document.createElement('span');
+      f.className = 'flecha';
+      f.textContent = '›';
+      f.setAttribute('aria-hidden', 'true');
+      ed.appendChild(f);
+    }
     const info = DESASTRE_INFO[tipo];
-    const c = chip({ ...info, nombre: `${info.peldano}. ${info.nombre}` }, tipo, true);
-    ed.appendChild(c);
-  }
+    ed.appendChild(chip({ ...info, nombre: `${info.peldano}. ${info.nombre}` }, tipo, true));
+  });
 }
 
-// Lo que hay encima de la mesa ahora mismo. Sin esto los desastres sólo se
-// anunciaban en una línea de texto que se borraba al turno siguiente.
-function textoAmenazas() {
-  if (S.turn < S.calmaHasta) return `calma ${S.calmaHasta - S.turn}t`;
-  const partes = [];
-  for (const d of S.desastres) {
-    if (d.tipo === 'capullo') partes.push('capullo');
-    if (d.tipo === 'seda') partes.push(`seda ${Math.max(0, d.hasta - S.turn)}t`);
-  }
-  return partes.length ? partes.join(' · ') : '—';
+// Los números de la ayuda salen de las constantes (v7): la ayuda es HTML
+// estático y decía «4 celdas» a mano cuando el umbral ya era otro.
+function rellenarConstantes() {
+  const valores = { COSECHA_GRANDE, SEDA_TURNOS, ITEM_TURNOS, CALMA_TRAS_VELUTINA };
+  document.querySelectorAll('[data-const]').forEach(el => {
+    el.textContent = valores[el.dataset.const];
+  });
 }
 
 // Pantalla de fin de partida (T-17). Se pinta ENCIMA del tablero para que se
@@ -312,19 +351,31 @@ function updateHud() {
   }
 
   // Lo secundario, en una línea de texto (v6). Como stats con etiqueta ocupaba
-  // una segunda fila de 40 px y no era información que se mire a menudo. La
-  // dificultad entra aquí porque desde la v6 su botón ya no está a la vista, y
-  // el récord es por modo Y dificultad.
-  const sub = [`turno <b>${S.turn}</b>`, `<b>${tilesPlayable(S)}</b> celdas`,
-               `meseta <b>${biggest}</b>`];
-  if (cfg.helada) sub.push(`helada <b>${S.heladaCnt}/${HELADA_CADA[S.dificultad]}</b>`);
-  if (cfg.desastres) {
-    sub.push(`<b>${S.failStreak}</b> fallos`);
-    const am = textoAmenazas();
-    if (am !== '—') sub.push(`<span class="alerta">${am}</span>`);
+  // una segunda fila de 40 px y no era información que se mire a menudo.
+  // Tiene que caber en UNA línea de 336 px (360 de móvil menos márgenes): si
+  // salta a dos, el panal pierde 17 px. Por eso desde la v7 la dificultad se
+  // fue al pie, junto a la semilla, y las celdas sólo salen donde cambian, que
+  // es con helada.
+  const sub = [`turno <b>${S.turn}</b>`];
+  // Invierno: lo que muerde la helada si fallas (v7). Hasta la v6 ponía
+  // «helada 0/1», que no se movía nunca porque HELADA_CADA vale 1.
+  if (cfg.helada) {
+    const muerde = Math.min(HELADA_MUERDE[S.dificultad], tilesPlayable(S));
+    sub.push(`<b>${tilesPlayable(S)}</b> celdas`, `si fallas <b>−${muerde}</b>`);
   }
-  if (cfg.puntua) sub.push(NOMBRE_DIF[S.dificultad].toLowerCase());
+  sub.push(`meseta <b>${biggest}</b>`);
+  // Contrarreloj: el peldaño. Hasta la v6 decía «N fallos» y se leía como
+  // fallos SEGUIDOS, cuando cuenta los fallos desde la última cosecha grande
+  // aunque en medio haya veinte turnos buenos. Pasado el 4 todo es velutina,
+  // así que no sube de ahí.
+  if (cfg.desastres) {
+    const tope = DESASTRES_VISIBLES.length;
+    sub.push(`escalera <b>${Math.min(S.failStreak, tope)}/${tope}</b> · baja con ${COSECHA_GRANDE}+`);
+  }
   setHtml('sub', sub.join(' · '));
+  // La dificultad, en el pie: el récord es por modo Y dificultad, y su botón
+  // no está a la vista desde la v6.
+  setText('dif', cfg.puntua ? NOMBRE_DIF[S.dificultad].toLowerCase() : '');
 
   // El ítem que está en el tablero se resalta, con los turnos que le quedan
   // antes de evaporarse.
@@ -334,28 +385,43 @@ function updateHud() {
     c.querySelector('.cuenta').textContent =
       suyo ? `${Math.max(0, S.item.caduca - S.turn)}t` : '';
   });
-  // Y el desastre que tocaría si fallas ahora: el jugador ve el peldaño antes de
-  // pisarlo, que es lo que hace que la escalera signifique algo.
+  // La escalera (v7). Cada peldaño en uno de tres estados: SUBIDO (ya pisado
+  // desde la última cosecha grande), SI FALLAS (el siguiente) o POR VENIR.
   //
-  // Con 0 fallos seguidos el peldaño es la varroa, así que su ficha sale marcada
-  // desde el turno 0 y no se apaga nunca. Eso se leía como «la varroa está
-  // activa» (playtest del 20-09): el aviso decía «toca» sin decir *cuándo*. De
-  // ahí las dos cosas de abajo — el texto dice «si fallas», y con el contador a
-  // cero el resaltado es tenue (`previo`), porque avisa de lo que pasaría, no de
-  // un peligro en marcha.
-  const capullo = S.desastres.some(d => d.tipo === 'capullo');
+  // Qué cae si fallas lo dice el motor (siguienteDesastre), no una copia de sus
+  // reglas: hasta la v6 el HUD llevaba la suya y decía «calma» un turno de más
+  // (CR-07). Con el contador a cero el resaltado es tenue (`previo`): avisa de
+  // lo que pasaría, no de un peligro en marcha (CR-06).
   const n = S.failStreak;
-  const siguiente = S.turn < S.calmaHasta ? null
-    : n >= 3 ? 'velutina' : (n === 2 && capullo) ? 'seda' : n === 1 ? 'polilla' : 'varroa';
+  const siguiente = siguienteDesastre(S);
+  // Turnos en los que fallar aún no trae nada. El fallo de la interfaz ocurre
+  // en S.turn + 1, de ahí el −1: en el último turno de calma ya son 0.
+  const calma = Math.max(0, S.calmaHasta - S.turn - 1);
+  const capullo = S.desastres.some(d => d.tipo === 'capullo');
+  const seda = S.desastres.find(d => d.tipo === 'seda');
   document.querySelectorAll('#leyenda-des .chip').forEach(c => {
-    const act = c.dataset.des === siguiente;
+    const tipo = c.dataset.des;
+    const peldano = DESASTRE_INFO[tipo].peldano;
+    const act = tipo === siguiente;
     c.classList.toggle('activo', act);
     c.classList.toggle('previo', act && n === 0);
-    const d = S.desastres.find(x => x.tipo === c.dataset.des ||
-      (c.dataset.des === 'seda' && x.tipo === 'seda') ||
-      (c.dataset.des === 'polilla' && x.tipo === 'capullo'));
-    c.querySelector('.cuenta').textContent =
-      d && d.hasta ? `${Math.max(0, d.hasta - S.turn)}t` : (act ? 'si fallas' : '');
+    c.classList.toggle('subido', !act && peldano <= n);
+    let cuenta = act ? 'si fallas' : '', ahora = '';
+    if (tipo === 'polilla' && capullo) {
+      cuenta = 'capullo';
+      ahora = 'Hay un capullo en el panal: eclosiona si fallas. Una cosecha grande lo quita.';
+    }
+    if (tipo === 'seda' && seda) {
+      const quedan = Math.max(0, seda.hasta - S.turn);
+      cuenta = `${quedan}t`;
+      ahora = `La seda bloquea sus celdas ${quedan} ${quedan === 1 ? 'turno' : 'turnos'} más. No se quita.`;
+    }
+    if (tipo === 'velutina' && calma > 0) {
+      cuenta = `calma ${calma}t`;
+      ahora = `Calma: si fallas en los próximos ${calma} turnos no cae nada. Después, cada fallo es otra velutina.`;
+    }
+    c.querySelector('.cuenta').textContent = cuenta;
+    c.dataset.ahora = ahora;
   });
 
   // Una sola línea para todo lo que antes eran tres (v6), por orden de
@@ -377,6 +443,11 @@ function updateHud() {
     // El juego sabe antes que tú que vas a fallar. Aprovecharlo.
     txt = 'Última jugada posible con este paso';
     cls = 'linea tight';
+  } else if (cfg.desastres && S.failStreak > 0 && S.step >= COSECHA_GRANDE &&
+             mesetaDeNivel(S, MAX_LEVEL) >= S.step) {
+    // Enseña la regla en el momento exacto en que sirve (v7, E.5).
+    txt = 'Si cosechas ahora, bajas de la escalera';
+    cls = 'linea bueno';
   }
   if (l.textContent !== txt) { l.textContent = txt; l.title = txt; }
   l.className = cls;
@@ -391,7 +462,13 @@ function contar(eventos) {
     if (e.type === 'usa') txt.push(`✦ ${ITEM_INFO[e.tipo].nombre}`);
     if (e.type === 'caduca') txt.push(`la gota de ${ITEM_INFO[e.tipo].nombre.toLowerCase()} se ha evaporado`);
     if (e.type === 'deshiela') { txt.push('El humo empuja la helada: una celda vuelve como agua'); avisar('deshiela', [e.tile]); }
-    if (e.type === 'limpia') txt.push(e.desastre === 'capullo' ? 'La cosecha elimina el capullo' : 'La cosecha retira la seda');
+    // Bajar de la escalera se cuenta (v7): hasta la v6 el contador volvía a 0 en
+    // silencio y el jugador no aprendía que la cosecha grande es su defensa.
+    if (e.type === 'baja') {
+      const quita = eventos.some(x => x.type === 'limpia');
+      txt.push(`Cosecha de ${e.cosecha}: vuelves al primer peldaño` + (quita ? ' y el capullo desaparece' : ''));
+    }
+    if (e.type === 'limpia' && !eventos.some(x => x.type === 'baja')) txt.push('La cosecha elimina el capullo');
     if (e.type === 'fallback') {
       txt.push('Fallo: el paso vuelve a 1');
       if (e.eaten !== undefined) {
@@ -408,7 +485,8 @@ function contar(eventos) {
   }
   logTurno = txt.join(' · ');
   logTurnoEn = S.turn;
-  logClase = 'linea' + (eventos.some(e => e.type === 'fallback') ? ' tight' : '');
+  logClase = 'linea' + (eventos.some(e => e.type === 'fallback') ? ' tight'
+                      : eventos.some(e => e.type === 'baja') ? ' bueno' : '');
 }
 
 function onCommit(cells) {
@@ -454,7 +532,7 @@ function restart(semilla) {
   finPintado = false;
   destellos.length = 0;
   document.getElementById('fin').hidden = true;
-  drag.cells = []; drag.trail = [];
+  drag.cells = []; drag.desde = []; drag.trail = []; drag.deshaciendo = false; drag.fuera = false;
   abejas.length = 0;
   logTurno = ''; logTurnoEn = -1;
   setText('seed', `semilla ${S.seed}`);
@@ -469,15 +547,20 @@ window.addEventListener('DOMContentLoaded', () => {
   ctx = canvas.getContext('2d');
   initInput(canvas, () => S, onCommit, redraw);
   setText('version', VERSION);
+  rellenarConstantes();
   document.getElementById('fin-otra').addEventListener('click', () => restart());
 
   // Tocar un modo siempre acaba en partida nueva de ese modo. Si hay dificultad
-  // que elegir, con el panel de por medio; Panal libre arranca directo.
+  // que elegir, con el panel de por medio; Panal libre pide confirmación si hay
+  // partida empezada (v7) y si no arranca directo.
   document.querySelectorAll('[data-modo]').forEach(b => b.addEventListener('click', () => {
     const modo = b.dataset.modo;
     if (popAncla === b) { cerrarPop(); return; }   // segundo toque: se cierra
     cerrarPop();
-    if (!CONFIG_MODO[modo].puntua) { partida.modo = modo; restart(); return; }
+    if (!CONFIG_MODO[modo].puntua) {
+      if (partidaEmpezada()) { abrirPop(b, panelConfirmar(modo)); return; }
+      partida.modo = modo; restart(); return;
+    }
     abrirPop(b, panelDificultad(modo));
   }));
 

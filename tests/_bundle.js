@@ -8,8 +8,10 @@
 // por correctas.
 const fs = require('fs'), vm = require('vm'), path = require('path');
 
-// Sólo el motor: render.js, input.js y app.js necesitan canvas y DOM.
-const FILES = ['constants.js', 'state.js'];
+// El motor, y desde la v7 también input.js: al cargarse sólo declara funciones
+// (el DOM lo toca initInput, que aquí nadie llama), y así pasoDeCadena, la
+// lógica del arrastre, se puede probar. render.js y app.js necesitan canvas y DOM.
+const FILES = ['constants.js', 'state.js', 'input.js'];
 
 const src = FILES
   .map(f => fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8'))
@@ -21,10 +23,11 @@ const FOOTER = `
      MODOS, CONFIG_MODO, HELADA_CADA, ITEM_THRESHOLDS, ITEMS, segundosCosecha,
      ROTAS_ARRANQUE, COSECHA_DEVUELVE, COSECHA_GRANDE, umbralItem,
      PROPOLEO_MIN_AGUA, itemsUtiles, HELADA_MUERDE, RELOJ_ACELERA, ITEM_TURNOS,
-     DESASTRE_INFO, DESASTRES_VISIBLES, caducarItem, ITEM_CALMA, ITEM_TURNOS,
+     DESASTRE_INFO, DESASTRES_VISIBLES, caducarItem, ITEM_CALMA,
      RELOJ_INICIAL, RELOJ_TECHO, PUNTOS_POR_SEGUNDO, SEDA_TURNOS, CALMA_TRAS_VELUTINA,
      createState, isValidDrag, biggestCoherentArea, commitTurn, fallback, tilesPlayable,
-     jugable, spawnItemIfEarned, usarItem, sumarTiempo, velocidadReloj, tick })
+     jugable, spawnItemIfEarned, usarItem, sumarTiempo, velocidadReloj, tick,
+     siguienteDesastre, mesetaDeNivel, DESASTRES_MAX_ACTIVOS, ITEM_INFO, ITEMS_VISIBLES, pasoDeCadena })
 `;
 
 module.exports = vm.runInNewContext(src + FOOTER, {});
