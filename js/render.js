@@ -28,17 +28,17 @@ function shade(hex, f) {
 }
 
 // Calcula el centro de cada celda para el tamaño actual del canvas.
-function computeLayout(width, height) {
+function computeLayout(width, height, arriba = height > width * 1.1 ? 0.3 : 0.5) {
   const R = Math.min(width / (6 * Math.sqrt(3) + 1), height / 10.5);
   const w = Math.sqrt(3) * R;
   layout.R = R; layout.w = w;
   layout.cx.length = 0; layout.cy.length = 0;
 
   const totalH = 1.5 * R * (ROW_WIDTHS.length - 1) + 2 * R;
-  // En pantalla vertical (el móvil) el panal no va centrado sino algo más arriba:
-  // centrado quedaba bajo, lejos del HUD, con un hueco grande encima (playtest de
-  // la v8). En horizontal (el PC), centrado como siempre.
-  const arriba = height > width * 1.1 ? 0.3 : 0.5;
+  // `arriba`: qué parte del hueco libre queda encima del panal. En pantalla
+  // vertical (el móvil) no va centrado sino más arriba: centrado quedaba bajo,
+  // lejos del HUD (playtest de la v8). En horizontal (el PC), centrado. app.js
+  // lo afina por modo.
   const top = (height - totalH) * arriba + R + MAX_LEVEL * LIFT * 0.5;
 
   ROW_WIDTHS.forEach((n, r) => {

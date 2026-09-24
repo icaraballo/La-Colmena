@@ -624,7 +624,11 @@ function resize() {
   canvas.height = Math.round(r.height * dpr);
   canvas.style.width = r.width + 'px';
   canvas.style.height = r.height + 'px';
-  computeLayout(canvas.width, canvas.height);
+  // En el móvil, Contrarreloj pega el panal a la fila de plagas (v8.3): con el
+  // bloque de riesgo más alto, a un 30 % todavía se veía caído.
+  const vertical = r.height > r.width * 1.1;
+  const arriba = !vertical ? 0.5 : S.modo === MODOS.CONTRARRELOJ ? 0.1 : 0.3;
+  computeLayout(canvas.width, canvas.height, arriba);
   redraw();
 }
 
@@ -642,7 +646,7 @@ function restart(semilla) {
   document.querySelectorAll('[data-modo]').forEach(b =>
     b.classList.toggle('on', b.dataset.modo === partida.modo));
   pintarLeyenda();
-  redraw();
+  if (canvas) resize(); else redraw();   // cada modo coloca el panal a su altura
 }
 
 window.addEventListener('DOMContentLoaded', () => {
