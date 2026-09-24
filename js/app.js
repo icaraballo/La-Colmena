@@ -290,7 +290,6 @@ function pintarLeyenda() {
   fila.innerHTML = '';
   if (!cfg.desastres) return;
   document.getElementById('plagas-tope').textContent = DESASTRES_VISIBLES.length;
-  document.getElementById('espanta').textContent = `cosecha ${COSECHA_GRANDE}+ las espanta`;
   const extremo = (txt, cls) => {
     const e = document.createElement('span');
     e.className = 'extremo' + cls; e.textContent = txt;
@@ -308,10 +307,55 @@ function pintarLeyenda() {
   fila.appendChild(extremo('grave', ' der'));
 }
 
+// La tarjeta de las plagas (v8.4): la regla de la cosecha grande, una fila por
+// tamaño con las cuatro plagas y en verde las que apaga. Las filas salen de
+// peldanosQueBaja, nunca a mano: 5 o 6 → 1, 7 → 2, 8 → 3, 9 o más → todas.
+// Sale al empezar cada partida de Contrarreloj hasta que se marca «No volver a
+// enseñar» (se recuerda en el dispositivo) y se abre siempre tocando «Plagas».
+// Antes se probó la regla escrita fija en la cabecera, y no gustó: se decidió
+// con bocetos (A1).
+const TARJETA_KEY = 'colmena.tarjetaPlagas.v1';
+function tarjetaQuitada() {
+  try { return localStorage.getItem(TARJETA_KEY) === 'no'; } catch { return false; }
+}
+function recordarTarjeta(quitar) {
+  try { quitar ? localStorage.setItem(TARJETA_KEY, 'no') : localStorage.removeItem(TARJETA_KEY); } catch { /* da igual */ }
+}
+function hexMini(tipo, estado) {
+  const k = DESASTRES_VISIBLES.indexOf(tipo);
+  const [relleno, borde, letra, raya] = estado === 'apaga'
+    ? ['none', '#6f8f4e', '#9fd67a', 'stroke-dasharray="3 2"']
+    : [ROJO_PISADA[k], '#ff7a45', '#fff', ''];
+  return `<svg viewBox="0 0 46 40" aria-hidden="true"><polygon points="${HEX}" fill="${relleno}" stroke="${borde}" stroke-width="2" ${raya}/>` +
+    `<text x="23" y="21" text-anchor="middle" dominant-baseline="central" fill="${letra}" font-size="17" font-weight="700" font-family="system-ui,sans-serif">${DESASTRE_INFO[tipo].simbolo}</text></svg>`;
+}
+function pintarTarjeta() {
+  const tope = DESASTRES_VISIBLES.length, filas = [];
+  for (let L = COSECHA_GRANDE; L <= COSECHA_LIMPIA; L++) {
+    const n = Math.min(peldanosQueBaja(L), tope), ult = filas[filas.length - 1];
+    if (ult && ult.n === n && n < tope) ult.hasta = L; else filas.push({ desde: L, hasta: L, n });
+  }
+  document.getElementById('tarjeta-escala').innerHTML = filas.map(f => {
+    const nombre = f.n >= tope ? `${f.desde} o más` : f.hasta > f.desde ? `${f.desde} o ${f.hasta}` : `${f.desde}`;
+    const hex = DESASTRES_VISIBLES.map((t, k) => hexMini(t, k >= tope - f.n ? 'apaga' : 'pisada')).join('');
+    return `<div class="escalon"><span class="n">${nombre}<small>celdas</small></span>` +
+      `<span class="mini">${hex}<em>${f.n >= tope ? 'todas' : '−' + f.n}</em></span></div>`;
+  }).join('');
+}
+function abrirTarjeta() {
+  cerrarPop();
+  document.getElementById('tarjeta-no').checked = tarjetaQuitada();
+  document.getElementById('tarjeta').hidden = false;
+}
+function cerrarTarjeta() {
+  recordarTarjeta(document.getElementById('tarjeta-no').checked);
+  document.getElementById('tarjeta').hidden = true;
+}
+
 // Los números de la ayuda salen de las constantes (v7): la ayuda es HTML
 // estático y decía «4 celdas» a mano cuando el umbral ya era otro.
 function rellenarConstantes() {
-  const valores = { COSECHA_GRANDE, SEDA_TURNOS, ITEM_TURNOS, CALMA_TRAS_VELUTINA };
+  const valores = { COSECHA_GRANDE, COSECHA_LIMPIA, SEDA_TURNOS, ITEM_TURNOS, CALMA_TRAS_VELUTINA };
   document.querySelectorAll('[data-const]').forEach(el => {
     el.textContent = valores[el.dataset.const];
   });
@@ -442,8 +486,9 @@ function pintarPlagas(now) {
   // Al espantarlas (evento `baja`) se apagan en cascada de derecha a izquierda
   // (v8): mientras dura, las que estaban encendidas siguen pisadas hasta su
   // momento. Es cuando se aprende que la cosecha grande limpia la escalera.
-  const enCascada = p => cascada && now - cascada.t0 < CASCADA_MS && p <= cascada.desde &&
-    now - cascada.t0 < (cascada.desde - p + 1) * (CASCADA_MS / cascada.desde);
+  // Desde la v8.4 sólo se apagan las que baja la cosecha (de `desde` a `hasta`).
+  const enCascada = p => cascada && now - cascada.t0 < CASCADA_MS && p <= cascada.desde && p > cascada.hasta &&
+    now - cascada.t0 < (cascada.desde - p + 1) * (CASCADA_MS / (cascada.desde - cascada.hasta));
   // Turnos en los que fallar aún no trae nada. El fallo de la interfaz ocurre
   // en S.turn + 1, de ahí el −1: en el último turno de calma ya son 0.
   const calma = Math.max(0, S.calmaHasta - S.turn - 1);
@@ -506,12 +551,9 @@ function pintarLineas(cfg, biggest) {
     // El juego sabe antes que tú que vas a fallar. Aprovecharlo.
     txt = 'Última jugada posible con este paso';
     cls = 'linea tight';
-  } else if (cfg.desastres && S.failStreak > 0 && S.step >= COSECHA_GRANDE &&
-             mesetaDeNivel(S, MAX_LEVEL) >= S.step) {
-    // Enseña la regla en el momento exacto en que sirve (v7, E.5).
-    txt = 'Si cosechas ahora, espantas las plagas';
-    cls = 'linea bueno';
   }
+  // La pista «si cosechas ahora…» (v7) se quitó en la v8.4: la escala fija de la
+  // cabecera de la fila lo dice siempre, sin avisos que aparecen y desaparecen.
   ponerLinea('linea-fallo', txt, cls);
 }
 // Las líneas llevan <b> (la frase del fallo); todo lo que entra lo compone el
@@ -563,8 +605,11 @@ function contar(eventos) {
     // grande es su defensa.
     if (e.type === 'baja') {
       const quita = eventos.some(x => x.type === 'limpia');
-      fallo.push(`Cosecha de ${e.cosecha}: las plagas se van` + (quita ? ' y el capullo desaparece' : ''));
-      cascada = { t0: now, desde: Math.min(e.desde, DESASTRES_VISIBLES.length) };
+      const van = e.desde - e.hasta;
+      const cuanto = e.hasta === 0 ? 'las plagas se van'
+        : `se ${van === 1 ? 'va 1 plaga' : `van ${van} plagas`} (${e.hasta === 1 ? 'queda 1' : `quedan ${e.hasta}`})`;
+      fallo.push(`Cosecha de ${e.cosecha}: ${cuanto}` + (quita ? ' y el capullo desaparece' : ''));
+      cascada = { t0: now, desde: e.desde, hasta: e.hasta };
       hayCascada = true;
     }
     if (e.type === 'limpia' && !eventos.some(x => x.type === 'baja')) fallo.push('La cosecha elimina el capullo');
@@ -647,6 +692,9 @@ function restart(semilla) {
     b.classList.toggle('on', b.dataset.modo === partida.modo));
   pintarLeyenda();
   if (canvas) resize(); else redraw();   // cada modo coloca el panal a su altura
+  // La tarjeta de las plagas, al empezar cada partida de Contrarreloj (v8.4).
+  document.getElementById('tarjeta').hidden = true;
+  if (CONFIG_MODO[S.modo].desastres && !tarjetaQuitada()) abrirTarjeta();
 }
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -691,6 +739,12 @@ window.addEventListener('DOMContentLoaded', () => {
     ayuda.querySelector('.caja').scrollTop = 0;
   }
   document.getElementById('ayuda-btn').addEventListener('click', abrirAyuda);
+
+  pintarTarjeta();
+  const tarjeta = document.getElementById('tarjeta');
+  document.getElementById('plagas-titulo').addEventListener('click', abrirTarjeta);
+  document.getElementById('tarjeta-ok').addEventListener('click', cerrarTarjeta);
+  tarjeta.addEventListener('click', e => { if (e.target === tarjeta) cerrarTarjeta(); });
   function cerrarAyuda() { ayuda.hidden = true; marcarAyudaVista(); }
   document.getElementById('ayuda-cerrar').addEventListener('click', cerrarAyuda);
   // Tocar fuera de la caja también cierra: en el móvil es el gesto que se hace

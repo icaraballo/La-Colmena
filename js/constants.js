@@ -134,6 +134,19 @@ const HELADA_REMATE = 3;        // con tantas casillas jugables o menos, avanza 
 // Ningún texto de la interfaz lleva el número a mano: lo leen de aquí.
 const COSECHA_GRANDE = 5;
 
+// Cuánto baja la escalera una cosecha grande (v8.4, T-38): ya no la pone a cero,
+// sino según su tamaño. 5 y 6 bajan un peldaño, 7 dos, 8 tres y 9 o más la
+// limpian entera. Con la escalera a cero de golpe, bajar era tan fácil que la
+// velutina casi no se veía jugando. Medido (2000 partidas, contrarreloj normal,
+// variante F): partidas con velutina del jugador medio 57 → 70 %, de los buenos
+// 5 → 10 %, y los puntos casi no se mueven. El contador tiene tope en
+// ESCALERA_TOPE: pasada la velutina no sube más, y una cosecha grande siempre se nota.
+const ESCALERA_TOPE = 4;
+const COSECHA_LIMPIA = COSECHA_GRANDE + ESCALERA_TOPE;   // 9: la que las espanta todas
+function peldanosQueBaja(L) {
+  return L < COSECHA_GRANDE ? 0 : Math.max(1, L - COSECHA_GRANDE);
+}
+
 // Reloj de Contrarreloj (DESIGN §9).
 const RELOJ_INICIAL = 90;
 const RELOJ_TECHO = 99;
@@ -236,7 +249,7 @@ const DESASTRE_INFO = {
   seda:     { simbolo: 'S', nombre: 'Seda',     peldano: 3,
               que: `el capullo eclosiona: sus vecinas quedan bloqueadas ${SEDA_TURNOS} turnos, sin remedio` },
   velutina: { simbolo: 'A', nombre: 'Velutina', peldano: 4,
-              que: `3-4 celdas a cera; luego ${CALMA_TRAS_VELUTINA} turnos de calma. Se repite en cada fallo hasta que cosechas ${COSECHA_GRANDE}` },
+              que: `3-4 celdas a cera; luego ${CALMA_TRAS_VELUTINA} turnos de calma. Se repite en cada fallo hasta que una cosecha grande la baja` },
 };
 const DESASTRES_VISIBLES = ['varroa', 'polilla', 'seda', 'velutina'];
 
@@ -250,7 +263,7 @@ const NOMBRE_DIF = { normal: 'Normal', dificil: 'Difícil' };
 // La versión, a la vista en el pie junto a la semilla: jugando en el móvil no
 // hay forma de saber si lo que tienes delante es lo último que se subió.
 // Se mantiene a mano y tiene que coincidir con package.json (ver Recetas).
-const VERSION = 'v8.3';
+const VERSION = 'v8.4';
 
 const NOMBRE_MODO = {
   contrarreloj: 'Contrarreloj',

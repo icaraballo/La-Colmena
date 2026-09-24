@@ -220,9 +220,12 @@ function commitTurn(s, cells) {
     // en 2000 partidas. Ver Balance § v3, "Lo que destapó el playtest".
     // Desde la v7 se avisa (evento 'baja'): hasta entonces el contador volvía a 0
     // en silencio y el jugador no aprendía que la cosecha grande es su defensa.
+    // Desde la v8.4 baja según el tamaño (peldanosQueBaja): 5 y 6 un peldaño, 9
+    // o más todos. El evento dice desde y hasta dónde, para la cascada.
     if (L >= COSECHA_GRANDE) {
-      if (cfg.desastres && s.failStreak > 0) s.eventos.push({ type: 'baja', desde: s.failStreak, cosecha: L });
-      s.failStreak = 0;
+      const hasta = Math.max(0, s.failStreak - peldanosQueBaja(L));
+      if (cfg.desastres && s.failStreak > 0) s.eventos.push({ type: 'baja', desde: s.failStreak, hasta, cosecha: L });
+      s.failStreak = hasta;
     }
 
     // En Invierno la cosecha grande ya NO devuelve celdas rotas: con el agua
@@ -266,7 +269,7 @@ function fallback(s) {
   s.step = 1;
   s.streak = 0;
   s.danza = false;
-  s.failStreak++;
+  s.failStreak = Math.min(s.failStreak + 1, ESCALERA_TOPE);   // tope (v8.4): pasada la velutina no sube
 
   const ev = { type: 'fallback', paso, meseta, eaten: undefined, desastre: null };
   if (cfg.helada) ev.eaten = avanzarHelada(s);

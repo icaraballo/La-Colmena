@@ -76,7 +76,31 @@ header{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;padding:8px 2px
 .plagas-cab{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#8c7f6a;
   text-transform:uppercase;letter-spacing:.06em;padding:0 2px 3px}
 .plagas-cab b{color:#c9b99c;font-variant-numeric:tabular-nums}
-.plagas-cab .espanta{color:#9fd67a;text-transform:none;letter-spacing:0}
+/* El título de la fila abre la tarjeta de las plagas (v8.4): se ve tocable por
+   el subrayado de puntos y la «i», sin ocupar sitio nuevo. */
+.plagas-titulo{all:unset;cursor:pointer;display:inline-block;white-space:pre-wrap;
+  border-bottom:1px dashed #6d6150;padding-bottom:1px}
+.plagas-titulo:focus-visible{outline:2px solid #F79A1F;outline-offset:2px}
+.plagas-titulo .info{display:inline-grid;place-items:center;width:14px;height:14px;margin-left:6px;
+  border:1px solid #8c7f6a;border-radius:50%;font:700 9px/1 system-ui,sans-serif;color:#c9b99c;text-transform:none;vertical-align:1px}
+
+/* La tarjeta de las plagas (v8.4): la regla de la cosecha grande, en una fila
+   por tamaño. Sale al empezar cada partida de Contrarreloj hasta que se marca
+   «No volver a enseñar», y se abre siempre tocando el título de la fila. */
+#tarjeta .caja{max-width:340px;background:#1c1710;border:1px solid #43372a;border-radius:14px;
+  padding:16px 16px 14px;text-align:left;display:grid;gap:12px;box-shadow:0 14px 34px rgba(0,0,0,.6)}
+#tarjeta h2{font-size:17px;font-weight:700;color:#ede4d3}
+#tarjeta p{font-size:13px;color:#c9b99c}
+.escalon{display:grid;grid-template-columns:70px 1fr;align-items:center;gap:8px}
+.escalon .n{font-weight:700;font-size:15px;color:#ede4d3;font-variant-numeric:tabular-nums}
+.escalon .n small{display:block;font-weight:400;font-size:10.5px;color:#8c7f6a}
+.escalon .mini{display:flex;align-items:center;gap:3px}
+.escalon svg{width:28px;height:25px;display:block}
+.escalon em{font-style:normal;font-size:12px;color:#9fd67a;margin-left:6px;white-space:nowrap}
+#tarjeta .pie{display:flex;justify-content:space-between;align-items:center;gap:10px}
+#tarjeta label{display:flex;align-items:center;gap:7px;font-size:12px;color:#8c7f6a;cursor:pointer}
+#tarjeta input{accent-color:#F79A1F;width:15px;height:15px}
+#tarjeta-ok{background:#F79A1F;color:#231500;border-color:#F79A1F;font-weight:700}
 .plagas-fila{display:flex;align-items:flex-start;justify-content:center;gap:0}
 .plagas-fila .extremo{font-size:9px;color:#6d6150;text-transform:uppercase;letter-spacing:.06em;
   width:34px;padding-top:15px;flex:none}
@@ -252,7 +276,7 @@ footer .sem{font-variant-numeric:tabular-nums}
      la de helada en Invierno, y en los tres la línea del fallo. -->
 <div id="riesgo">
   <div id="plagas">
-    <div class="plagas-cab"><span>Plagas · <b id="plagas-n">0</b> de <span id="plagas-tope">4</span></span><span class="espanta" id="espanta"></span></div>
+    <div class="plagas-cab"><button type="button" class="plagas-titulo" id="plagas-titulo" aria-label="Cómo se espantan las plagas">Plagas · <b id="plagas-n">0</b> de <span id="plagas-tope">4</span><span class="info" aria-hidden="true">i</span></button></div>
     <div class="plagas-fila" id="plagas-fila"></div>
   </div>
   <div class="sub" id="helada"></div>
@@ -268,6 +292,17 @@ footer .sem{font-variant-numeric:tabular-nums}
       <div class="record" id="fin-record"></div>
       <div class="detalle" id="fin-detalle"></div>
       <button id="fin-otra">Otra partida</button>
+    </div>
+  </div>
+  <div id="tarjeta" class="encima" hidden>
+    <div class="caja" role="dialog" aria-labelledby="tarjeta-titulo">
+      <h2 id="tarjeta-titulo">Espanta las plagas</h2>
+      <p>Cada fallo enciende una. Una cosecha grande apaga las de arriba: cuanto más grande, más apaga.</p>
+      <div id="tarjeta-escala"></div>
+      <div class="pie">
+        <label><input type="checkbox" id="tarjeta-no">No volver a enseñar</label>
+        <button id="tarjeta-ok">Entendido</button>
+      </div>
     </div>
   </div>
   <div id="ayuda" class="encima" hidden>
@@ -291,13 +326,16 @@ footer .sem{font-variant-numeric:tabular-nums}
         reloj lleno nunca se desperdicia.</p>
         <p>Cada 10 turnos el reloj <b>acelera</b>: +10 % en normal, +20 % en difícil.</p>
         <p>Cada fallo enciende una <b>plaga</b> más de la fila: varroa → polilla →
-        seda → velutina. <b>Jugar bien no las apaga</b>: sólo una <b>cosecha de
-        <span data-const="COSECHA_GRANDE">5</span> o más</b> las espanta todas (y
-        quita el capullo si aún no ha eclosionado).</p>
+        seda → velutina. <b>Jugar bien no las apaga</b>: sólo una <b>cosecha grande</b>, y cuanto más
+        grande, más apaga. Una de <span data-const="COSECHA_GRANDE">5</span> o 6 apaga la
+        última plaga, una de 7 dos, una de 8 tres, y una de
+        <span data-const="COSECHA_LIMPIA">9</span> o más las espanta todas. Cualquier
+        cosecha grande quita además el capullo si aún no ha eclosionado.</p>
         <p>La seda, una vez suelta, no se quita: bloquea sus celdas
         <span data-const="SEDA_TURNOS">2</span> turnos. Y después de la velutina, cada fallo es
-        otra velutina hasta que cosechas <span data-const="COSECHA_GRANDE">5</span>. La plaga que
-        parpadea es la que te cae si fallas ahora.</p>
+        otra velutina hasta que una cosecha grande la apague. La plaga que
+        parpadea es la que te cae si fallas ahora. Tocando «Plagas» encima de la fila
+        vuelves a ver cuánto apaga cada cosecha.</p>
       </div>
 
       <div class="m" data-ayuda="invierno">

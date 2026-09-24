@@ -303,8 +303,8 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   s.step = 5;
   T.commitTurn(s, [5, 6, 11, 12, 10]);
   eq(s.desastres.length, 0, 'una cosecha de 5+ elimina el capullo');
-  eq(s.failStreak, 0, 'la cosecha de 5+ pone la escalera a cero');
-  ok(s.eventos.some(e => e.type === 'baja' && e.desde === 2 && e.cosecha === 5), '…y lo avisa con el evento «baja» (v7)');
+  eq(s.failStreak, 1, 'la cosecha de 5 baja un peldaño (v8.4; hasta la v8.3, a cero)');
+  ok(s.eventos.some(e => e.type === 'baja' && e.desde === 2 && e.hasta === 1 && e.cosecha === 5), '…y lo avisa con el evento «baja», desde y hasta (v8.4)');
   ok(s.eventos.some(e => e.type === 'limpia' && e.desastre === 'capullo'), '…y el de «limpia»');
 }
 {
@@ -330,6 +330,25 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   ok(!i.eventos.some(e => e.type === 'baja'), 'en Invierno no hay escalera: tampoco se avisa');
 }
 {
+  // v8.4 (T-38): la cosecha grande baja según su tamaño, y la escalera tiene tope.
+  const baja = [4, 5, 6, 7, 8, 9, 12].map(T.peldanosQueBaja);
+  eq(baja.join(), '0,1,1,2,3,4,7', 'cuánto baja: 4 nada, 5 y 6 uno, 7 dos, 8 tres, 9 todo');
+  eq(T.COSECHA_LIMPIA, 9, 'la cosecha que las espanta todas es la de 9');
+  eq(T.ESCALERA_TOPE, T.DESASTRES_VISIBLES.length, 'el tope es el número de plagas');
+  const s = tablero('contrarreloj', 3);
+  for (let k = 0; k < 7; k++) T.fallback(s);
+  eq(s.failStreak, T.ESCALERA_TOPE, 'la escalera no pasa del tope');
+  for (const [L, desde, hasta] of [[5, 4, 3], [6, 4, 3], [7, 4, 2], [8, 4, 1], [9, 4, 0], [7, 1, 0]]) {
+    const c = tablero('contrarreloj', 1);
+    const cadena = [0, 1, 2, 3, 4, 5, 6, 7, 8].slice(0, L);   // la primera fila y parte de la segunda
+    for (const i of cadena) c.height[i] = 5;
+    c.failStreak = desde; c.step = L;
+    ok(T.isValidDrag(c, cadena), `cadena de ${L} válida`);
+    T.commitTurn(c, cadena);
+    eq(c.failStreak, hasta, `cosecha de ${L} con ${desde} plagas deja ${hasta}`);
+  }
+}
+{
   // v7: la seda, una vez suelta, no se quita. La cosecha grande no la toca.
   const s = tablero('contrarreloj', 1, { 5: 5, 6: 5, 11: 5, 12: 5, 10: 5 });
   s.desastres.push({ tipo: 'seda', tiles: [20, 21], hasta: 2 });
@@ -337,7 +356,7 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   s.failStreak = 3;
   s.step = 5;
   T.commitTurn(s, [5, 6, 11, 12, 10]);
-  eq(s.failStreak, 0, 'la cosecha grande baja la escalera aunque haya seda');
+  eq(s.failStreak, 2, 'la cosecha grande baja la escalera aunque haya seda');
   ok(s.desastres.some(d => d.tipo === 'seda'), '…pero la seda sigue ahí (v7)');
   ok(!T.jugable(s, 20), '…y sus celdas siguen bloqueadas');
   ok(!s.eventos.some(e => e.type === 'limpia'), '…y no hay evento de limpieza');
@@ -675,7 +694,7 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
 {
   ok(T.DESASTRE_INFO.seda.que.includes(`${T.SEDA_TURNOS} turnos`), 'el texto de la seda lleva SEDA_TURNOS');
   ok(T.DESASTRE_INFO.velutina.que.includes(`${T.CALMA_TRAS_VELUTINA} turnos`) &&
-     T.DESASTRE_INFO.velutina.que.includes(`cosechas ${T.COSECHA_GRANDE}`), 'el de la velutina, la calma y el umbral');
+     T.DESASTRE_INFO.velutina.que.includes('cosecha grande'), 'el de la velutina, la calma y cómo se baja');
   ok(!/tierra/i.test(JSON.stringify(T.ITEM_INFO)), 'ningún ítem habla de «tierra» (v7)');
   const s = tablero('libre', 1, { 5: 5, 6: 5, 11: 5, 12: 5, 10: 5 });
   eq(T.mesetaDeNivel(s, 5), 5, 'mesetaDeNivel cuenta la meseta de abejas');

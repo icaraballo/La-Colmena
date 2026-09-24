@@ -27,7 +27,7 @@ const FOOTER = `
      RELOJ_INICIAL, RELOJ_TECHO, PUNTOS_POR_SEGUNDO, SEDA_TURNOS, CALMA_TRAS_VELUTINA,
      createState, isValidDrag, biggestCoherentArea, commitTurn, fallback, tilesPlayable,
      jugable, spawnItemIfEarned, usarItem, sumarTiempo, velocidadReloj, tick,
-     siguienteDesastre, mesetaDeNivel, DESASTRES_MAX_ACTIVOS, ITEM_INFO, ITEMS_VISIBLES, pasoDeCadena })
+     siguienteDesastre, mesetaDeNivel, peldanosQueBaja, ESCALERA_TOPE, COSECHA_LIMPIA, DESASTRES_MAX_ACTIVOS, ITEM_INFO, ITEMS_VISIBLES, pasoDeCadena })
 `;
 
 module.exports = vm.runInNewContext(src + FOOTER, {});
