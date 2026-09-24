@@ -162,7 +162,9 @@ const PESOS = {
                despiste: 0.20 },
   codicioso: { fallo: -30, falloGratis: 0, cosechaPequeña: -5, cosechaGrande: 25, margen: 1, margenTope: 5,
                item: 15, abeja: 3 },
-  // PROVISIONAL: pendiente de la opción B (ver LC-Bots-Revision-Cierre en el vault).
+  // Opción B (T-34, 24-09): al final de lo que mira, pone nota al tablero que deja.
+  // Medido con 2000 partidas: gana al codicioso en Contrarreloj (371.000 contra
+  // 296.000 puntos) y no empeora en Invierno (172.000 contra 169.000 sin B).
   // El planificador cuenta en PUNTOS, que es lo que guarda el récord. Lo que no son
   // puntos se convierte con `puntosPorNivel`: un nivel que quita un desastre, una
   // celda que rompe la helada (vale `nivelesPorRota` niveles) y cada celda de margen
@@ -171,7 +173,9 @@ const PESOS = {
   // 800 → 130. Y la profundidad sí importa: 1 turno → 102, 2 → 118, 3 → 145.
   // Darle valor a los segundos lo EMPEORA (300 puntos/s → 128 turnos): basta con
   // que el reloj corra en sus copias, y así ve venir el final.
-  planificador: { profundidad: 3, haz: 3, puntosPorNivel: 200, nivelesPorRota: 10, margenTope: 5 },
+  planificador: { profundidad: 3, haz: 3, puntosPorNivel: 200, nivelesPorRota: 10, margenTope: 5,
+                  b: 1, potencial: 0.5, racha: 1, cosechaMedia: 4,
+                  escalera: 1, nivelesPorDesastre: 3, turnosReloj: 3, relojRiesgo: 2000 },
 };
 
 // Una copia del estado que se puede jugar sin tocar el de verdad.
@@ -268,9 +272,25 @@ function valorPlan(s, c, k, P) {
   if (e.fallo) v -= P.puntosPorNivel * (e.niveles + e.rotas * P.nivelesPorRota);
   return v;
 }
+const puntosCosecha = (L, racha) => 10 * L * L * T.bonusMultiplier(L) * (1 + racha);
 function finalPlan(k, P) {
   const m = k.danza ? P.margenTope : Math.max(0, Math.min(T.biggestCoherentArea(k) - k.step, P.margenTope));
-  return P.puntosPorNivel * m;
+  let v = P.puntosPorNivel * m;
+  if (!P.b) return v;
+  const cfg = T.CONFIG_MODO[k.modo];
+  // Potencial: las abejas juntas, a una parte de lo que daría cosecharlas.
+  const abejas = T.mesetaDeNivel(k, T.MAX_LEVEL);
+  if (abejas) v += P.potencial * puntosCosecha(abejas, k.streak);
+  // Racha: lo que se pierde si se rompe, en cosechas medias.
+  v += P.racha * k.streak * puntosCosecha(P.cosechaMedia, 0);
+  // Escalera: lo cerca que está el próximo desastre.
+  if (cfg.desastres) v -= P.escalera * Math.min(k.failStreak, 4) * P.nivelesPorDesastre * P.puntosPorNivel;
+  // Reloj: sólo como riesgo, cuando queda para menos de unos turnos.
+  if (cfg.reloj) {
+    const umbral = P.turnosReloj * segActual * T.velocidadReloj(k);
+    if (k.reloj < umbral) v -= P.relojRiesgo * (umbral - k.reloj);
+  }
+  return v;
 }
 // Lo mejor que se puede sacar desde `s` en `prof` turnos, siguiendo en cada turno
 // sólo las `haz` jugadas de más valor inmediato (más el margen que dejan).
