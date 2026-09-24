@@ -35,7 +35,11 @@ function computeLayout(width, height) {
   layout.cx.length = 0; layout.cy.length = 0;
 
   const totalH = 1.5 * R * (ROW_WIDTHS.length - 1) + 2 * R;
-  const top = (height - totalH) / 2 + R + MAX_LEVEL * LIFT * 0.5;
+  // En pantalla vertical (el móvil) el panal no va centrado sino algo más arriba:
+  // centrado quedaba bajo, lejos del HUD, con un hueco grande encima (playtest de
+  // la v8). En horizontal (el PC), centrado como siempre.
+  const arriba = height > width * 1.1 ? 0.3 : 0.5;
+  const top = (height - totalH) * arriba + R + MAX_LEVEL * LIFT * 0.5;
 
   ROW_WIDTHS.forEach((n, r) => {
     const rowW = n * w;
