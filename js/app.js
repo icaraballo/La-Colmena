@@ -716,6 +716,11 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   window.addEventListener('resize', () => { cerrarPop(); resize(); });
+  // El hueco del panal también cambia sin que cambie la ventana: cada modo tiene
+  // su bloque de riesgo (plagas, helada o nada) y cada uno mide distinto. Hasta
+  // la v8.1 sólo se medía al cargar, así que al pasar de Invierno a Contrarreloj
+  // el panal se dibujaba 53 px más abajo de lo que tocaba (playtest de la v8).
+  if (window.ResizeObserver) new ResizeObserver(() => resize()).observe(document.getElementById('wrap'));
   restart();
   resize();
   requestAnimationFrame(frame);
