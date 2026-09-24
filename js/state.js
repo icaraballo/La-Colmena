@@ -260,12 +260,15 @@ function commitTurn(s, cells) {
 // (Invierno) o sube un peldaño la escalera de desastres (Contrarreloj).
 function fallback(s) {
   const cfg = CONFIG_MODO[s.modo];
+  // El paso que no cupo y la meseta que había (v8): la interfaz cuenta el fallo
+  // con ellos («paso 6 inalcanzable») y así no tiene que deducir nada.
+  const paso = s.step, meseta = biggestCoherentArea(s);
   s.step = 1;
   s.streak = 0;
   s.danza = false;
   s.failStreak++;
 
-  const ev = { type: 'fallback', eaten: undefined, desastre: null };
+  const ev = { type: 'fallback', paso, meseta, eaten: undefined, desastre: null };
   if (cfg.helada) ev.eaten = avanzarHelada(s);
   if (cfg.desastres) ev.desastre = dispararDesastre(s);
   s.last = ev;

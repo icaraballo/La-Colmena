@@ -34,19 +34,28 @@ nav button{white-space:nowrap}
 header{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;padding:8px 2px 2px}
 .big{font-size:26px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .big.urgente{color:#ff7a45}
+/* El color de paso y máx (v8): lo decide cómo se comparan, nunca un número
+   solo. Máx igual al paso = última jugada posible (ámbar). Fallo = los dos en
+   rojo durante un segundo, con el paso que no cupo tachado al lado. */
+.big.cuidado{color:#E3C87E}
+.big.fallo{color:#ff7a45}
+.no-cupo{font-size:17px;font-weight:600;color:#ff7a45;margin-left:6px;font-variant-numeric:tabular-nums}
 .lbl{color:#8c7f6a;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
 .stat{display:flex;flex-direction:column;gap:1px}
 .stat .v{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
 .ritmo{font-size:12px;color:#ff9f45;margin-left:4px}
 
-/* Segunda fila de datos: una línea de texto, no nueve columnas con etiqueta. */
+/* Segunda fila de datos: una línea de texto, no nueve columnas con etiqueta.
+   Desde la v8 lleva puntos, racha y turno; lo que era de la escalera se fue a
+   la fila de plagas. */
 .sub{font-size:12px;color:#8c7f6a;padding:2px 2px 0;min-height:17px}
 .sub b{color:#c9b99c;font-weight:600;font-variant-numeric:tabular-nums}
 
-/* Una sola línea de mensaje (v6). Antes eran tres huecos reservados —aviso,
-   registro e ítem— que casi nunca estaban llenos a la vez y se comían 52 px de
-   alto en blanco. Altura fija de una línea: si apareciera y desapareciera, el
-   tablero pegaría un salto en cada turno. */
+/* Líneas de mensaje. La v6 lo juntó todo en una, y en la v8 se parte en dos,
+   cada una debajo de lo suyo: la de ítems y la del fallo («✦ Jalea real · Fallo:
+   el paso vuelve a 1 · varroa…» en una sola línea no había quien lo leyera).
+   Altura fija de una línea aunque estén vacías: si aparecieran y
+   desaparecieran, el tablero pegaría un salto en cada turno. */
 .linea{
   min-height:18px;font-size:12px;padding:2px 2px 4px;color:#c9b99c;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
@@ -54,12 +63,52 @@ header{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;padding:8px 2px
 .linea.tight{color:#E3C87E}
 .linea.bueno{color:#9fd67a}
 .linea.over{color:#F79A1F;font-weight:600}
+.linea b{font-weight:700}
+/* La del fallo reserva DOS líneas: «Fallo · paso 7 inalcanzable → Varroa: tu
+   celda más alta baja a cera» no cabe en 336 px, y cortada con «…» se perdía
+   justo lo que ha caído. Medido a 360×640: el panal pierde un 2 % de radio. */
+#linea-fallo{white-space:normal;min-height:34px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
 
-/* Leyendas de ítems y desastres. En el móvil se pliegan a los símbolos: nueve
-   fichas con nombre ocupan cuatro filas y el catálogo no es información del
-   turno. Se toca una (o se pasa el ratón en el escritorio) y se cuenta qué es.
-   La excepción es la ficha ACTIVA —el ítem que está en el tablero, el desastre
-   que toca si fallas ahora—, que sí es del turno y conserva su nombre. */
+/* La fila de plagas (v8), en lugar de las fichas de la escalera: cuatro celdas
+   que se encienden según subes. Separada de los ítems con aire y una raya, para
+   que se lean como dos bloques. */
+#riesgo{margin-top:8px;border-top:1px solid #241c15;padding-top:6px}
+.plagas-cab{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#8c7f6a;
+  text-transform:uppercase;letter-spacing:.06em;padding:0 2px 3px}
+.plagas-cab b{color:#c9b99c;font-variant-numeric:tabular-nums}
+.plagas-cab .espanta{color:#9fd67a;text-transform:none;letter-spacing:0}
+.plagas-fila{display:flex;align-items:flex-start;justify-content:center;gap:0}
+.plagas-fila .extremo{font-size:9px;color:#6d6150;text-transform:uppercase;letter-spacing:.06em;
+  width:34px;padding-top:15px;flex:none}
+.plagas-fila .extremo.der{text-align:right}
+.plaga{display:flex;flex-direction:column;align-items:center;width:52px;flex:none;cursor:pointer;user-select:none}
+.plaga svg{display:block;width:46px;height:40px;overflow:visible}
+.plaga polygon{fill:#17120d;stroke:#241c15;stroke-width:1.5}
+.plaga text{fill:#3d3026;font:700 14px system-ui,sans-serif;text-anchor:middle;dominant-baseline:central}
+.plaga .et{font-size:10px;color:#3d3026;line-height:1.2;margin-top:1px;white-space:nowrap;min-height:12px}
+.plaga.pisada polygon{stroke:#ff7a45}
+.plaga.pisada text{fill:#fff}
+.plaga.pisada .et{color:#c98a78}
+.plaga.siguiente polygon{fill:transparent;stroke:#ff7a45;stroke-dasharray:4 3}
+.plaga.siguiente text{fill:#ff7a45}
+.plaga.siguiente .et{color:#ff7a45;font-weight:700}
+.plaga.siguiente:not(.previo) svg{animation:parpadeo 1.6s ease-in-out infinite}
+/* Con el contador a cero es un aviso, no un peligro en marcha (CR-06). */
+.plaga.siguiente.previo polygon{stroke:#7a3a2c}
+.plaga.siguiente.previo text{fill:#8c6a5e}
+.plaga.siguiente.previo .et{color:#8c7f6a;font-weight:400}
+.plaga.destello svg{animation:destello .8s ease-out}
+@keyframes parpadeo{50%{opacity:.45}}
+@keyframes destello{0%{transform:scale(1.35);filter:brightness(2.2) drop-shadow(0 0 8px #ff7a45)}100%{transform:none;filter:none}}
+.trazo{width:12px;height:2px;background:#241c15;margin-top:19px;flex:none}
+.trazo.on{background:#7a3a2c}
+
+/* Leyenda de ítems. En el móvil se pliega a los símbolos: las fichas con
+   nombre ocupan varias filas y el catálogo no es información del turno. Se toca
+   una (o se pasa el ratón en el escritorio) y se cuenta qué es. La excepción es
+   la ficha ACTIVA —el ítem que está en el tablero—, que sí es del turno y
+   conserva su nombre. Los desastres tenían aquí sus fichas hasta la v7; desde
+   la v8 son la fila de plagas. */
 .leyenda{display:flex;gap:5px;flex-wrap:wrap;padding:3px 2px}
 .chip{
   display:flex;align-items:center;gap:5px;cursor:pointer;
@@ -74,27 +123,6 @@ header{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;padding:8px 2px
 .chip.reina .sim{background:#b04ad8;color:#fff}
 .chip .nom{color:#c9b99c;font-weight:600;white-space:nowrap}
 .chip.activo .nom{color:#ffd23f}
-.chip.malo{border-color:#4a2a24}
-.chip.malo .sim{background:#c2503a;color:#fff}
-.chip.malo.activo{border-color:#ff7a45;background:#2f201a}
-.chip.malo.activo .nom{color:#ff7a45}
-/* `previo`: el peldaño que tocaría si fallas, con el contador de fallos a cero.
-   Es un aviso, no un peligro en marcha, y marcado igual que el peligro real se
-   leía como «la varroa está activa» (playtest del 20-09). */
-.chip.malo.activo.previo{border-color:#4a2a24;background:transparent}
-.chip.malo.activo.previo .nom{color:#8c7f6a}
-.chip.malo.activo.previo .cuenta{color:#6d6150;font-weight:400}
-.chip .cuenta{color:#ffd23f;font-weight:700;font-variant-numeric:tabular-nums}
-.chip.malo .cuenta{color:#ff7a45}
-/* La escalera (v7): los cuatro desastres en orden y unidos por una flecha, en
-   tres tonos — por venir (apagado), subido (ya pisado desde la última cosecha
-   grande) y «si fallas» (el de arriba, `activo`). */
-#leyenda-des{align-items:center;gap:3px}
-#leyenda-des .flecha{color:#4a2a24;font-size:13px;line-height:1}
-.chip.malo:not(.activo):not(.subido) .sim{background:#4a2a24;color:#8c6a5e}
-.chip.malo.subido{border-color:#7a3a2c}
-.chip.malo.subido .sim{background:#a0442f;color:#f3d9cf}
-.chip.malo.subido .nom{color:#c98a78}
 @media (max-width:620px){
   /* Los tres modos tienen que caber en una fila de móvil: es el punto de todo
      el cambio. A 14 px suman 476 px y no caben en 390. */
@@ -199,6 +227,8 @@ footer .sem{font-variant-numeric:tabular-nums}
   <button id="semilla-btn" aria-label="Semilla"><span class="ico">#</span><span class="txt">Semilla</span></button>
 </nav>
 
+<!-- v8: paso y máx, grandes y juntos: si el máx es menor que el paso, se falla.
+     Lo demás baja a una línea pequeña. -->
 <header>
   <div class="stat" id="reloj-stat">
     <span class="lbl">Reloj</span>
@@ -206,22 +236,28 @@ footer .sem{font-variant-numeric:tabular-nums}
   </div>
   <div class="stat">
     <span class="lbl">Paso</span>
-    <span class="big" id="step">1</span>
+    <span><span class="big" id="step">1</span><s class="no-cupo" id="paso-fallo"></s></span>
   </div>
   <div class="stat">
-    <span class="lbl">Puntos</span>
-    <span class="v" id="score">0</span>
-  </div>
-  <div class="stat">
-    <span class="lbl">Racha</span>
-    <span class="v" id="streak">0</span>
+    <span class="lbl">Máx</span>
+    <span class="big" id="max">1</span>
   </div>
 </header>
+<div class="sub" id="datos"></div>
 
-<div class="sub" id="sub"></div>
-<div class="linea" id="linea"></div>
 <div class="leyenda" id="leyenda"></div>
-<div class="leyenda" id="leyenda-des"></div>
+<div class="linea" id="linea-items"></div>
+
+<!-- Lo que pasa si fallas, debajo de lo suyo: la fila de plagas en Contrarreloj,
+     la de helada en Invierno, y en los tres la línea del fallo. -->
+<div id="riesgo">
+  <div id="plagas">
+    <div class="plagas-cab"><span>Plagas · <b id="plagas-n">0</b> de <span id="plagas-tope">4</span></span><span class="espanta" id="espanta"></span></div>
+    <div class="plagas-fila" id="plagas-fila"></div>
+  </div>
+  <div class="sub" id="helada"></div>
+  <div class="linea" id="linea-fallo"></div>
+</div>
 
 <div id="wrap">
   <canvas id="board"></canvas>
@@ -245,7 +281,7 @@ footer .sem{font-variant-numeric:tabular-nums}
       <p>Si el paso no cabe en ninguna parte es un <b>fallo</b>: vuelve a 1 y pierdes la
       racha. Cada modo castiga el fallo a su manera.</p>
       <p>Pasa la cadena por una <b>gota</b> para recoger el ítem; se evaporan a los <span data-const="ITEM_TURNOS">2</span> turnos.
-      Toca cualquier ficha de las leyendas para ver qué hace.</p>
+      Toca cualquier ficha o plaga para ver qué hace.</p>
 
       <div class="m" data-ayuda="contrarreloj">
         <h3>Contrarreloj</h3>
@@ -254,14 +290,14 @@ footer .sem{font-variant-numeric:tabular-nums}
         <b>99 s</b>: lo que pase de ahí <b>se convierte en puntos</b>, así que cosechar con el
         reloj lleno nunca se desperdicia.</p>
         <p>Cada 10 turnos el reloj <b>acelera</b>: +10 % en normal, +20 % en difícil.</p>
-        <p>Cada fallo te sube un peldaño de la escalera de <b>desastres</b>: varroa → polilla →
-        seda → velutina. <b>Jugar bien no te baja</b>: sólo una <b>cosecha de
-        <span data-const="COSECHA_GRANDE">5</span> o más</b> te devuelve al primer peldaño (y
+        <p>Cada fallo enciende una <b>plaga</b> más de la fila: varroa → polilla →
+        seda → velutina. <b>Jugar bien no las apaga</b>: sólo una <b>cosecha de
+        <span data-const="COSECHA_GRANDE">5</span> o más</b> las espanta todas (y
         quita el capullo si aún no ha eclosionado).</p>
         <p>La seda, una vez suelta, no se quita: bloquea sus celdas
         <span data-const="SEDA_TURNOS">2</span> turnos. Y después de la velutina, cada fallo es
-        otra velutina hasta que cosechas <span data-const="COSECHA_GRANDE">5</span>. La leyenda
-        te dice qué te cae si fallas ahora.</p>
+        otra velutina hasta que cosechas <span data-const="COSECHA_GRANDE">5</span>. La plaga que
+        parpadea es la que te cae si fallas ahora.</p>
       </div>
 
       <div class="m" data-ayuda="invierno">

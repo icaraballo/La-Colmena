@@ -426,6 +426,7 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
     : pred === null || ((pred === 'varroa' || pred === 'velutina') && sinVictima(s));
   const cobertura = { calma: 0, ultimoCalma: 0, capullo: 0, contadorAlto: 0, bot: 0 };
   let comparados = 0, distintos = 0;
+  let fallosJugados = 0, pasoMalo = 0;   // el evento fallback trae paso y meseta (v8)
   for (let seed = 1; seed <= 300; seed++) {
     const s = T.createState('contrarreloj', seed % 2 ? 'normal' : 'dificil', seed);
     let r = seed;
@@ -450,6 +451,7 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
         && jugada.length >= T.COSECHA_GRANDE;
       T.commitTurn(s, jugada);
       const ev = s.eventos.find(e => e.type === 'fallback');
+      if (ev) { fallosJugados++; if (!(ev.paso > ev.meseta)) pasoMalo++; }
       if (!ev || grande) continue;
       comparados++;
       if (!coincide(s, pred, ev.desastre)) distintos++;
@@ -457,6 +459,8 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   }
   ok(comparados > 1000, `el test de propiedad compara muchos fallos (${comparados})`);
   eq(distintos, 0, `lo que anuncia siguienteDesastre es lo que cae, en ${comparados} fallos`);
+  ok(fallosJugados > 500, `el test de propiedad juega muchos fallos (${fallosJugados})`);
+  eq(pasoMalo, 0, `todo fallback lleva paso > meseta, en ${fallosJugados} fallos`);
   for (const [k, n] of Object.entries(cobertura)) ok(n > 0, `el test de propiedad pasa por «${k}» (${n})`);
 }
 

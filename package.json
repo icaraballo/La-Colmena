@@ -1,6 +1,6 @@
 {
   "name": "la-colmena",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "private": true,
   "description": "La Colmena: puzzle de panal hexagonal por niveles. Vanilla JS, sin framework: el navegador carga js/*.js como scripts clásicos, no hay bundler ni módulos.",
   "scripts": {

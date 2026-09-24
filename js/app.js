@@ -73,7 +73,7 @@ async function copiarTexto(txt) {
 
 function redraw(now = performance.now()) {
   draw(ctx, S, { cells: drag.cells, ready: dragReady(S), fuera: drag.fuera, abejas, destellos }, now);
-  updateHud();
+  updateHud(now);
   pintarFin();
 }
 
@@ -221,35 +221,56 @@ function panelChip(c) {
   return caja;
 }
 
-// Una ficha de la leyenda. `malo` la pinta en rojo (desastres). El texto del
-// efecto ya no va dentro: lo cuenta el panel flotante al tocarla o al pasarle
-// el ratón (v6). Dentro sólo queda lo que tiene que leerse de un vistazo.
-function chip(info, clave, malo) {
+// Tocar algo que tiene explicación (una ficha, una plaga) abre el panel. En el
+// escritorio basta pasar el ratón: se usa el panel propio y no el `title` del
+// navegador, que tarda un segundo y aparece donde quiere.
+function conPanel(el) {
+  el.addEventListener('click', () => {
+    if (popAncla === el) { cerrarPop(); return; }
+    cerrarPop(); abrirPop(el, panelChip(el));
+  });
+  if (matchMedia('(hover:hover)').matches) {
+    el.addEventListener('pointerenter', () => { cerrarPop(); abrirPop(el, panelChip(el)); });
+    el.addEventListener('pointerleave', () => { if (popAncla === el) cerrarPop(); });
+  }
+}
+
+// Una ficha de la leyenda de ítems. El texto del efecto no va dentro: lo cuenta
+// el panel flotante (v6). Dentro sólo queda lo que tiene que leerse de un vistazo.
+function chip(info, clave) {
   const c = document.createElement('div');
-  c.className = 'chip' + (malo ? ' malo' : '') + (clave === ITEMS.REINA ? ' reina' : '');
-  c.dataset[malo ? 'des' : 'item'] = clave;
+  c.className = 'chip' + (clave === ITEMS.REINA ? ' reina' : '');
+  c.dataset.item = clave;
   c.dataset.nom = info.nombre;
   c.dataset.que = info.que;
   c.setAttribute('aria-label', `${info.nombre}: ${info.que}`);
   c.innerHTML = '<span class="sim"></span><span class="nom"></span><span class="cuenta"></span>';
   c.querySelector('.sim').textContent = info.simbolo;
   c.querySelector('.nom').textContent = info.nombre;
-  c.addEventListener('click', () => {
-    if (popAncla === c) { cerrarPop(); return; }
-    cerrarPop(); abrirPop(c, panelChip(c));
-  });
-  // En el escritorio basta pasar el ratón. Se usa el panel propio y no el
-  // `title` del navegador, que tarda un segundo y aparece donde quiere.
-  if (matchMedia('(hover:hover)').matches) {
-    c.addEventListener('pointerenter', () => { cerrarPop(); abrirPop(c, panelChip(c)); });
-    c.addEventListener('pointerleave', () => { if (popAncla === c) cerrarPop(); });
-  }
+  conPanel(c);
   return c;
 }
 
-// Leyenda de ítems y de desastres, siempre a la vista (QA CR-02). Se reconstruye
-// al cambiar de modo, porque no todos existen en todos: el néctar necesita reloj
-// y el humo, helada. Nunca se anuncia algo que no puede salir.
+// Una celda de la fila de plagas (v8): un hexágono con su símbolo y, debajo, una
+// etiqueta que dice su estado. Mismo panel que las fichas al tocarla.
+const HEX = '23,1 45,11 45,29 23,39 1,29 1,11';
+function celdaPlaga(tipo) {
+  const info = DESASTRE_INFO[tipo];
+  const c = document.createElement('div');
+  c.className = 'plaga';
+  c.dataset.des = tipo;
+  c.dataset.nom = `${info.peldano}. ${info.nombre}`;
+  c.dataset.que = info.que;
+  c.setAttribute('aria-label', `${info.nombre}: ${info.que}`);
+  c.innerHTML = `<svg viewBox="0 0 46 40" aria-hidden="true"><polygon points="${HEX}"/><text x="23" y="20"></text></svg><span class="et"></span>`;
+  c.querySelector('text').textContent = info.simbolo;
+  conPanel(c);
+  return c;
+}
+
+// Leyenda de ítems y fila de plagas, siempre a la vista (QA CR-02). Se
+// reconstruyen al cambiar de modo, porque no todo existe en todos: el néctar
+// necesita reloj y el humo, helada. Nunca se anuncia algo que no puede salir.
 function pintarLeyenda() {
   const cfg = CONFIG_MODO[S.modo];
   const el = document.getElementById('leyenda');
@@ -258,28 +279,33 @@ function pintarLeyenda() {
     const info = ITEM_INFO[tipo];
     if (info.soloConReloj && !cfg.reloj) continue;
     if (info.soloConHelada && !cfg.helada) continue;
-    el.appendChild(chip(info, tipo, false));
+    el.appendChild(chip(info, tipo));
   }
-  // Los desastres, en la misma forma: hasta la v4 sólo se anunciaban en una
-  // línea de texto que se borraba al turno siguiente, así que la escalera de
-  // DESIGN §7 no había forma de aprendérsela.
-  // Desde la v7 van en orden y unidos por una flecha, para que se lean como
-  // peldaños y no como cuatro fichas sueltas: jugando, ni el autor entendía
-  // cuándo se saltaba de uno a otro.
-  const ed = document.getElementById('leyenda-des');
-  ed.innerHTML = '';
-  ed.hidden = !cfg.desastres;
-  if (cfg.desastres) DESASTRES_VISIBLES.forEach((tipo, k) => {
+  // Las plagas (v8), en fila y unidas por un trazo, de la leve a la grave. Hasta
+  // la v7 eran cuatro fichas con flechas y el jugador no entendía la escalera ni
+  // por qué fallaba: ahora se ve cuántas llevas y cuál viene.
+  document.getElementById('plagas').hidden = !cfg.desastres;
+  document.getElementById('helada').hidden = !cfg.helada;
+  const fila = document.getElementById('plagas-fila');
+  fila.innerHTML = '';
+  if (!cfg.desastres) return;
+  document.getElementById('plagas-tope').textContent = DESASTRES_VISIBLES.length;
+  document.getElementById('espanta').textContent = `cosecha ${COSECHA_GRANDE}+ las espanta`;
+  const extremo = (txt, cls) => {
+    const e = document.createElement('span');
+    e.className = 'extremo' + cls; e.textContent = txt;
+    return e;
+  };
+  fila.appendChild(extremo('leve', ''));
+  DESASTRES_VISIBLES.forEach((tipo, k) => {
     if (k) {
-      const f = document.createElement('span');
-      f.className = 'flecha';
-      f.textContent = '›';
-      f.setAttribute('aria-hidden', 'true');
-      ed.appendChild(f);
+      const t = document.createElement('span');
+      t.className = 'trazo'; t.dataset.hasta = DESASTRE_INFO[tipo].peldano;
+      fila.appendChild(t);
     }
-    const info = DESASTRE_INFO[tipo];
-    ed.appendChild(chip({ ...info, nombre: `${info.peldano}. ${info.nombre}` }, tipo, true));
+    fila.appendChild(celdaPlaga(tipo));
   });
+  fila.appendChild(extremo('grave', ' der'));
 }
 
 // Los números de la ayuda salen de las constantes (v7): la ayuda es HTML
@@ -347,12 +373,24 @@ function pintarFin() {
   el.hidden = false;
 }
 
-function updateHud() {
+// El relleno de una plaga pisada, más encendido cuanto más arriba (v8).
+const ROJO_PISADA = ['#a0442f', '#ab4832', '#b74c36', '#c2503a'];
+
+function updateHud(now = performance.now()) {
   const cfg = CONFIG_MODO[S.modo];
   const biggest = biggestCoherentArea(S);
+
+  // Paso y máx, grandes y juntos (v8): si el máx es menor que el paso, se falla.
+  // Ámbar en el máx cuando son iguales (la misma condición que «Última jugada
+  // posible»). En el turno de un fallo, los dos en rojo un segundo y el paso que
+  // no cupo tachado al lado: ese número lo trae el evento, no se deduce.
+  const destelloFallo = falloEn === S.turn && now - falloT0 < 1000;
   setText('step', S.danza ? '∞' : S.step);
-  setText('score', cfg.puntua ? S.score.toLocaleString('es-ES') : '—');
-  setText('streak', S.streak);
+  setText('max', biggest);
+  setText('paso-fallo', destelloFallo ? falloPaso : '');
+  document.getElementById('step').className = 'big' + (destelloFallo ? ' fallo' : '');
+  document.getElementById('max').className = 'big' +
+    (destelloFallo ? ' fallo' : !S.danza && biggest === S.step ? ' cuidado' : '');
 
   document.getElementById('reloj-stat').hidden = !cfg.reloj;
   if (cfg.reloj) {
@@ -362,34 +400,20 @@ function updateHud() {
     document.getElementById('reloj').className = 'big' + (S.reloj < 10 ? ' urgente' : '');
   }
 
-  // Lo secundario, en una línea de texto (v6). Como stats con etiqueta ocupaba
-  // una segunda fila de 40 px y no era información que se mire a menudo.
-  // Tiene que caber en UNA línea de 336 px (360 de móvil menos márgenes): si
-  // salta a dos, el panal pierde 17 px. Por eso desde la v7 la dificultad se
-  // fue al pie, junto a la semilla, y las celdas sólo salen donde cambian, que
-  // es con helada.
-  const sub = [`turno <b>${S.turn}</b>`];
-  // Invierno: lo que muerde la helada si fallas (v7). Hasta la v6 ponía
-  // «helada 0/1», que no se movía nunca porque HELADA_CADA vale 1.
-  if (cfg.helada) {
-    const muerde = Math.min(HELADA_MUERDE[S.dificultad], tilesPlayable(S));
-    sub.push(`<b>${tilesPlayable(S)}</b> celdas`, `si fallas <b>−${muerde}</b>`);
-  }
-  // «máx» y no «meseta» (v7.1): la palabra no se entendía jugando. Es sólo el
-  // texto; en el código sigue siendo biggestCoherentArea.
-  sub.push(`máx <b>${biggest}</b>`);
-  // Contrarreloj: el peldaño. Hasta la v6 decía «N fallos» y se leía como
-  // fallos SEGUIDOS, cuando cuenta los fallos desde la última cosecha grande
-  // aunque en medio haya veinte turnos buenos. Pasado el 4 todo es velutina,
-  // así que no sube de ahí.
-  if (cfg.desastres) {
-    const tope = DESASTRES_VISIBLES.length;
-    sub.push(`escalera <b>${Math.min(S.failStreak, tope)}/${tope}</b> · baja con ${COSECHA_GRANDE}+`);
-  }
-  setHtml('sub', sub.join(' · '));
+  // Lo secundario, en una línea pequeña. Tiene que caber en UNA línea de 336 px
+  // (360 de móvil menos márgenes): si salta a dos, el panal pierde 17 px.
+  const puntos = cfg.puntua ? S.score.toLocaleString('es-ES') : '—';
+  setHtml('datos', `Puntos <b>${puntos}</b> · Racha <b>${S.streak}</b> · Turno <b>${S.turn}</b>`);
   // La dificultad, en el pie: el récord es por modo Y dificultad, y su botón
   // no está a la vista desde la v6.
   setText('dif', cfg.puntua ? NOMBRE_DIF[S.dificultad].toLowerCase() : '');
+
+  // Invierno: lo que muerde la helada si fallas (v7), en su propia fila desde
+  // la v8, donde en Contrarreloj van las plagas.
+  if (cfg.helada) {
+    const muerde = Math.min(HELADA_MUERDE[S.dificultad], tilesPlayable(S));
+    setHtml('helada', `Panal <b>${tilesPlayable(S)}</b> celdas · si fallas <b>−${muerde}</b>`);
+  }
 
   // El ítem que está en el tablero se resalta, con los turnos que le quedan
   // antes de evaporarse.
@@ -399,108 +423,168 @@ function updateHud() {
     c.querySelector('.cuenta').textContent =
       suyo ? `${Math.max(0, S.item.caduca - S.turn)}t` : '';
   });
-  // La escalera (v7). Cada peldaño en uno de tres estados: SUBIDO (ya pisado
-  // desde la última cosecha grande), SI FALLAS (el siguiente) o POR VENIR.
-  //
-  // Qué cae si fallas lo dice el motor (siguienteDesastre), no una copia de sus
-  // reglas: hasta la v6 el HUD llevaba la suya y decía «calma» un turno de más
-  // (CR-07). Con el contador a cero el resaltado es tenue (`previo`): avisa de
-  // lo que pasaría, no de un peligro en marcha (CR-06).
+
+  if (cfg.desastres) pintarPlagas(now);
+  pintarLineas(cfg, biggest);
+}
+
+// La fila de plagas. Cada celda en uno de tres estados: PISADA (ya encendida
+// desde la última cosecha grande), SI FALLAS (la siguiente) o POR VENIR.
+// Qué cae si fallas lo dice el motor (siguienteDesastre), no una copia de sus
+// reglas: hasta la v6 el HUD llevaba la suya y decía «calma» un turno de más
+// (CR-07). Con el contador a cero el aviso es tenue (`previo`): avisa de lo que
+// pasaría, no de un peligro en marcha (CR-06).
+function pintarPlagas(now) {
   const n = S.failStreak;
+  const tope = DESASTRES_VISIBLES.length;
+  setText('plagas-n', Math.min(n, tope));
   const siguiente = siguienteDesastre(S);
+  // Al espantarlas (evento `baja`) se apagan en cascada de derecha a izquierda
+  // (v8): mientras dura, las que estaban encendidas siguen pisadas hasta su
+  // momento. Es cuando se aprende que la cosecha grande limpia la escalera.
+  const enCascada = p => cascada && now - cascada.t0 < CASCADA_MS && p <= cascada.desde &&
+    now - cascada.t0 < (cascada.desde - p + 1) * (CASCADA_MS / cascada.desde);
   // Turnos en los que fallar aún no trae nada. El fallo de la interfaz ocurre
   // en S.turn + 1, de ahí el −1: en el último turno de calma ya son 0.
   const calma = Math.max(0, S.calmaHasta - S.turn - 1);
   const capullo = S.desastres.some(d => d.tipo === 'capullo');
   const seda = S.desastres.find(d => d.tipo === 'seda');
-  document.querySelectorAll('#leyenda-des .chip').forEach(c => {
+  document.querySelectorAll('#plagas-fila .plaga').forEach(c => {
     const tipo = c.dataset.des;
-    const peldano = DESASTRE_INFO[tipo].peldano;
-    const act = tipo === siguiente;
-    c.classList.toggle('activo', act);
-    c.classList.toggle('previo', act && n === 0);
-    c.classList.toggle('subido', !act && peldano <= n);
-    let cuenta = act ? 'si fallas' : '', ahora = '';
+    const info = DESASTRE_INFO[tipo];
+    const p = info.peldano;
+    const sig = tipo === siguiente;
+    const pisada = (!sig && p <= n) || enCascada(p);
+    c.classList.toggle('siguiente', sig && !pisada);
+    c.classList.toggle('previo', sig && n === 0);
+    c.classList.toggle('pisada', pisada);
+    c.querySelector('polygon').style.fill = pisada ? ROJO_PISADA[p - 1] : '';
+    let et = pisada ? info.nombre : sig ? 'si fallas' : '·', ahora = '';
     if (tipo === 'polilla' && capullo) {
-      cuenta = 'capullo';
+      et = 'capullo';
       ahora = 'Hay un capullo en el panal: eclosiona si fallas. Una cosecha grande lo quita.';
     }
     if (tipo === 'seda' && seda) {
       const quedan = Math.max(0, seda.hasta - S.turn);
-      cuenta = `${quedan}t`;
+      et = `${quedan}t`;
       ahora = `La seda bloquea sus celdas ${quedan} ${quedan === 1 ? 'turno' : 'turnos'} más. No se quita.`;
     }
     if (tipo === 'velutina' && calma > 0) {
-      cuenta = `calma ${calma}t`;
+      et = `calma ${calma}t`;
       ahora = `Calma: si fallas en los próximos ${calma} turnos no cae nada. Después, cada fallo es otra velutina.`;
     }
-    c.querySelector('.cuenta').textContent = cuenta;
+    const e = c.querySelector('.et');
+    if (e.textContent !== et) e.textContent = et;
     c.dataset.ahora = ahora;
+    // La que se acaba de encender, con un destello: tiene que notarse.
+    const brilla = plagaNueva && plagaNueva.tipo === tipo && now >= plagaNueva.t0 && now - plagaNueva.t0 < 800;
+    c.classList.toggle('destello', brilla);
   });
+  document.querySelectorAll('#plagas-fila .trazo').forEach(t => {
+    const hasta = Number(t.dataset.hasta);
+    t.classList.toggle('on', hasta <= n || enCascada(hasta));
+  });
+}
 
-  // Una sola línea para todo lo que antes eran tres (v6), por orden de
-  // urgencia. Lo que se cae del orden no se pierde: el ítem que hay en el
-  // tablero ya está en su ficha con la cuenta atrás, y la gota, en el panal.
-  const l = document.getElementById('linea');
+// Las dos líneas de aviso (v8), cada una debajo de lo suyo. Lo del turno se
+// queda hasta el turno siguiente, como en la v6.
+function pintarLineas(cfg, biggest) {
   let txt = '', cls = 'linea';
+  if (logItemsEn === S.turn && logItems) txt = logItems;
+  else if (S.danza) { txt = 'Danza: este arrastre puede tener la longitud que quieras'; cls = 'linea bueno'; }
+  ponerLinea('linea-items', txt, cls);
+
+  txt = ''; cls = 'linea';
   if (S.gameOver) {
-    txt = cfg.reloj
-      ? `Se acabó el día · ${S.score.toLocaleString('es-ES')} puntos en ${S.turn} turnos`
-      : `El invierno se ha comido el panal · ${S.score.toLocaleString('es-ES')} puntos en ${S.turn} turnos`;
+    const pts = `${S.score.toLocaleString('es-ES')} puntos en ${S.turn} turnos`;
+    txt = cfg.reloj ? `Se acabó el día · ${pts}`
+        : cfg.helada ? `El invierno se ha comido el panal · ${pts}` : `Sin jugadas · ${S.turn} turnos`;
     cls = 'linea over';
-  } else if (logTurno && logTurnoEn === S.turn) {
-    txt = logTurno; cls = logClase;
-  } else if (S.danza) {
-    txt = 'Danza: este arrastre puede tener la longitud que quieras';
-    cls = 'linea bueno';
-  } else if (biggest === S.step) {
+  } else if (logFalloEn === S.turn && logFallo) {
+    txt = logFallo; cls = logFalloClase;
+  } else if (!S.danza && biggest === S.step) {
     // El juego sabe antes que tú que vas a fallar. Aprovecharlo.
     txt = 'Última jugada posible con este paso';
     cls = 'linea tight';
   } else if (cfg.desastres && S.failStreak > 0 && S.step >= COSECHA_GRANDE &&
              mesetaDeNivel(S, MAX_LEVEL) >= S.step) {
     // Enseña la regla en el momento exacto en que sirve (v7, E.5).
-    txt = 'Si cosechas ahora, bajas de la escalera';
+    txt = 'Si cosechas ahora, espantas las plagas';
     cls = 'linea bueno';
   }
-  if (l.textContent !== txt) { l.textContent = txt; l.title = txt; }
+  ponerLinea('linea-fallo', txt, cls);
+}
+// Las líneas llevan <b> (la frase del fallo); todo lo que entra lo compone el
+// propio juego. El `title` guarda el texto entero, que la elipsis corta.
+function ponerLinea(id, html, cls) {
+  const l = document.getElementById(id);
+  if (l.innerHTML !== html) { l.innerHTML = html; l.title = l.textContent; }
   l.className = cls;
 }
 
-// Lo que ha pasado en el último turno. Ya no tiene línea propia: se guarda y
-// updateHud lo coloca en la línea única mientras dure el turno.
-let logTurno = '', logTurnoEn = -1, logClase = 'linea';
+// Lo que ha pasado en el último turno, repartido en las dos líneas.
+let logItems = '', logItemsEn = -1;
+let logFallo = '', logFalloEn = -1, logFalloClase = 'linea';
+// El destello de paso y máx, la plaga que se enciende y la cascada al espantar.
+let falloEn = -1, falloT0 = 0, falloPaso = 0;
+let plagaNueva = null, cascada = null;
+const CASCADA_MS = 400;
+
+// Lo que viene tras la flecha en la frase del fallo (v8). Los números de regla
+// salen de su constante y los de la jugada, del evento.
+function trasElFallo(e) {
+  const cfg = CONFIG_MODO[S.modo];
+  if (cfg.helada && e.eaten !== undefined) {
+    const n = Math.min(HELADA_MUERDE[S.dificultad], S.heladas.length);
+    return n > 1 ? `la helada rompe ${n} celdas` : 'la helada rompe 1 celda';
+  }
+  if (!cfg.desastres) return 'el paso vuelve a 1';   // Panal libre (o helada que no muerde)
+  const d = e.desastre;
+  if (!d) return 'no cae nada';
+  if (d.tipo === 'varroa') return `<b>Varroa</b>: ${DESASTRE_INFO.varroa.que}`;
+  if (d.tipo === 'polilla') return '<b>Polilla</b>: deja un capullo';
+  if (d.tipo === 'seda') return `<b>Seda</b>: el capullo eclosiona, ${d.tiles.length} celdas bloqueadas ${SEDA_TURNOS} turnos`;
+  return `<b>¡Velutina!</b> ${d.tiles.length} celdas a cera · ${CALMA_TRAS_VELUTINA} turnos de calma`;
+}
+
 function contar(eventos) {
-  const txt = [];
+  const items = [], fallo = [];
+  const now = performance.now();
+  let hayCascada = false;
   for (const e of eventos) {
-    if (e.type === 'usa') txt.push(`✦ ${ITEM_INFO[e.tipo].nombre}`);
-    if (e.type === 'caduca') txt.push(`la gota de ${ITEM_INFO[e.tipo].nombre.toLowerCase()} se ha evaporado`);
-    if (e.type === 'deshiela') { txt.push('El humo empuja la helada: una celda vuelve como agua'); avisar('deshiela', [e.tile]); }
-    // Bajar de la escalera se cuenta (v7): hasta la v6 el contador volvía a 0 en
-    // silencio y el jugador no aprendía que la cosecha grande es su defensa.
+    // El humo lo cuenta su `deshiela`; si no había nada roto, se dice.
+    if (e.type === 'usa' && e.tipo === ITEMS.HUMO && !eventos.some(x => x.type === 'deshiela'))
+      items.push('✦ Humo: no había ninguna celda rota');
+    else if (e.type === 'usa' && e.tipo !== ITEMS.HUMO) items.push(`✦ ${ITEM_INFO[e.tipo].nombre}: ${ITEM_INFO[e.tipo].hecho}`);
+    if (e.type === 'caduca') items.push(`La gota de ${ITEM_INFO[e.tipo].nombre.toLowerCase()} se ha evaporado`);
+    if (e.type === 'deshiela') { items.push('El humo empuja la helada: una celda vuelve como agua'); avisar('deshiela', [e.tile]); }
+    // Espantar las plagas se cuenta (v7) y se ve apagarse (v8): hasta la v6 el
+    // contador volvía a 0 en silencio y el jugador no aprendía que la cosecha
+    // grande es su defensa.
     if (e.type === 'baja') {
       const quita = eventos.some(x => x.type === 'limpia');
-      txt.push(`Cosecha de ${e.cosecha}: vuelves al primer peldaño` + (quita ? ' y el capullo desaparece' : ''));
+      fallo.push(`Cosecha de ${e.cosecha}: las plagas se van` + (quita ? ' y el capullo desaparece' : ''));
+      cascada = { t0: now, desde: Math.min(e.desde, DESASTRES_VISIBLES.length) };
+      hayCascada = true;
     }
-    if (e.type === 'limpia' && !eventos.some(x => x.type === 'baja')) txt.push('La cosecha elimina el capullo');
+    if (e.type === 'limpia' && !eventos.some(x => x.type === 'baja')) fallo.push('La cosecha elimina el capullo');
     if (e.type === 'fallback') {
-      txt.push('Fallo: el paso vuelve a 1');
-      if (e.eaten !== undefined) {
-        const rotas = S.heladas.slice(-HELADA_MUERDE[S.dificultad]);
-        txt.push(rotas.length > 1 ? `la helada destruye ${rotas.length} celdas` : 'la helada destruye una celda');
-        avisar('helada', rotas);
-      }
+      fallo.push(`<b>Fallo</b> · paso ${e.paso} inalcanzable → ${trasElFallo(e)}`);
+      falloEn = S.turn; falloT0 = now; falloPaso = e.paso;
+      // Los destellos del panal (v7) se quedan tal cual.
+      if (e.eaten !== undefined) avisar('helada', S.heladas.slice(-HELADA_MUERDE[S.dificultad]));
       const d = e.desastre;
-      if (d && d.tipo === 'varroa') { txt.push('varroa: la celda más alta baja a cera'); avisar('varroa', d.tiles); }
-      if (d && d.tipo === 'polilla') { txt.push('polilla: aparece un capullo (eclosiona si vuelves a fallar)'); avisar('polilla', d.tiles); }
-      if (d && d.tipo === 'seda') { txt.push(`el capullo eclosiona: seda en ${d.tiles.length} celdas durante ${SEDA_TURNOS} turnos`); avisar('seda', d.tiles); }
-      if (d && d.tipo === 'velutina') { txt.push(`¡velutina! ${d.tiles.length} celdas barridas a cera`); avisar('velutina', d.tiles); }
+      if (d) {
+        avisar(d.tipo, d.tiles);
+        // Si en el mismo turno se espantaron, primero la cascada y luego ésta.
+        plagaNueva = { tipo: d.tipo, t0: now + (hayCascada ? CASCADA_MS : 0) };
+      }
     }
   }
-  logTurno = txt.join(' · ');
-  logTurnoEn = S.turn;
-  logClase = 'linea' + (eventos.some(e => e.type === 'fallback') ? ' tight'
-                      : eventos.some(e => e.type === 'baja') ? ' bueno' : '');
+  logItems = items.join(' · '); logItemsEn = S.turn;
+  logFallo = fallo.join(' · '); logFalloEn = S.turn;
+  logFalloClase = 'linea' + (eventos.some(e => e.type === 'fallback') ? ' tight'
+                           : eventos.some(e => e.type === 'baja') ? ' bueno' : '');
 }
 
 function onCommit(cells) {
@@ -552,7 +636,8 @@ function restart(semilla) {
   document.getElementById('fin').hidden = true;
   drag.cells = []; drag.desde = []; drag.trail = []; drag.deshaciendo = false; drag.fuera = false;
   abejas.length = 0;
-  logTurno = ''; logTurnoEn = -1;
+  logItems = ''; logItemsEn = -1; logFallo = ''; logFalloEn = -1;
+  falloEn = -1; plagaNueva = null; cascada = null;
   setText('seed', `semilla ${S.seed}`);
   document.querySelectorAll('[data-modo]').forEach(b =>
     b.classList.toggle('on', b.dataset.modo === partida.modo));

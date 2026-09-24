@@ -202,13 +202,20 @@ const ITEMS = {
 // ninguna parte, así que se recogían a ciegas (QA CR-02) — y DESIGN §8 dice que
 // a veces NO compensa recogerlos, decisión imposible sin saber cuál es.
 // `soloConReloj` y `soloConHelada` marcan los que no existen en todos los modos.
+// `que` dice lo que hace (panel de la ficha); `hecho`, lo que acaba de pasar al
+// recogerlo (línea de ítems, v8).
 const ITEM_INFO = {
-  jalea:    { simbolo: 'J', nombre: 'Jalea real', que: 'todo el panal sube un nivel, menos el agua' },
-  propoleo: { simbolo: 'P', nombre: 'Propóleo',   que: 'el agua sube un nivel' },
-  danza:    { simbolo: 'D', nombre: 'Danza',      que: 'el próximo arrastre, de la longitud que quieras' },
-  nectar:   { simbolo: 'N', nombre: 'Néctar',     que: `+${NECTAR_SEGUNDOS} s`, soloConReloj: true },
+  jalea:    { simbolo: 'J', nombre: 'Jalea real', que: 'todo el panal sube un nivel, menos el agua',
+              hecho: 'todo el panal ha subido un nivel' },
+  propoleo: { simbolo: 'P', nombre: 'Propóleo',   que: 'el agua sube un nivel',
+              hecho: 'el agua ha subido un nivel' },
+  danza:    { simbolo: 'D', nombre: 'Danza',      que: 'el próximo arrastre, de la longitud que quieras',
+              hecho: 'el próximo arrastre, de la longitud que quieras' },
+  nectar:   { simbolo: 'N', nombre: 'Néctar',     que: `+${NECTAR_SEGUNDOS} s`, soloConReloj: true,
+              hecho: `+${NECTAR_SEGUNDOS} s en el reloj` },
   humo:     { simbolo: 'H', nombre: 'Humo',       que: 'devuelve como agua la última celda rota', soloConHelada: true },
-  reina:    { simbolo: '♛', nombre: 'La reina',   que: 'la cadena la atraviesa aunque esté a otro nivel' },
+  reina:    { simbolo: '♛', nombre: 'La reina',   que: 'la cadena la atraviesa aunque esté a otro nivel',
+              hecho: 'la cadena la ha atravesado' },
 };
 
 // Los seis que se le enseñan al jugador. Cada uno con su bandera de modo: el
@@ -243,7 +250,7 @@ const NOMBRE_DIF = { normal: 'Normal', dificil: 'Difícil' };
 // La versión, a la vista en el pie junto a la semilla: jugando en el móvil no
 // hay forma de saber si lo que tienes delante es lo último que se subió.
 // Se mantiene a mano y tiene que coincidir con package.json (ver Recetas).
-const VERSION = 'v7.1';
+const VERSION = 'v8';
 
 const NOMBRE_MODO = {
   contrarreloj: 'Contrarreloj',
