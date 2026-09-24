@@ -243,7 +243,7 @@ const NOMBRE_DIF = { normal: 'Normal', dificil: 'Difícil' };
 // La versión, a la vista en el pie junto a la semilla: jugando en el móvil no
 // hay forma de saber si lo que tienes delante es lo último que se subió.
 // Se mantiene a mano y tiene que coincidir con package.json (ver Recetas).
-const VERSION = 'v7';
+const VERSION = 'v7.1';
 
 const NOMBRE_MODO = {
   contrarreloj: 'Contrarreloj',

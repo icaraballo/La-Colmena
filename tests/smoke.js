@@ -714,7 +714,9 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   // descuadran, el número que enseña el juego miente (T-28).
   const pkg = JSON.parse(raiz('package.json'));
   const enJs = /const VERSION = '([^']+)'/.exec(raiz('js/constants.js'))[1];
-  eq(enJs, 'v' + pkg.version.split('.')[1], 'VERSION coincide con package.json');
+  // 0.7.0 se enseña como «v7» y 0.7.1 como «v7.1».
+  const [, menor, parche] = pkg.version.split('.');
+  eq(enJs, 'v' + menor + (parche !== '0' ? '.' + parche : ''), 'VERSION coincide con package.json');
 }
 
 console.log(`${total - fallos}/${total} comprobaciones correctas`);

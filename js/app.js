@@ -294,6 +294,15 @@ function rellenarConstantes() {
 // Pantalla de fin de partida (T-17). Se pinta ENCIMA del tablero para que se
 // pueda ver cómo ha quedado el panal: el final es información, no un telón.
 let finPintado = false;
+// La duración de la partida (v7.1), en segundos. Se lleva aquí y no en el motor
+// (regla 3: state.js no depende del reloj del ordenador). Cuenta con el mismo
+// criterio que el reloj de Contrarreloj: desde el primer arrastre, y parada con
+// la pestaña oculta.
+let duracion = 0;
+function formatoDuracion(seg) {
+  const t = Math.floor(seg);
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+}
 function pintarFin() {
   const el = document.getElementById('fin');
   if (!S.gameOver) { el.hidden = true; finPintado = false; return; }
@@ -323,8 +332,11 @@ function pintarFin() {
 
   const det = document.getElementById('fin-detalle');
   det.innerHTML = '';
+  // «Jugada más larga» (v7.1) cuenta las celdas arrastradas. Hasta la v7 decía
+  // «Paso máximo» y guardaba S.step, que es el paso que se PIDE después (L + 1),
+  // y una jugada que acababa en fallo ni se registraba.
   const filas = [['Turnos', S.turn], ['Racha máxima', S.streakMax || S.streak],
-                 ['Paso máximo', S.pasoMax || S.step]];
+                 ['Jugada más larga', S.jugadaMax || 0], ['Duración', formatoDuracion(duracion)]];
   for (const [lbl, v] of filas) {
     const d = document.createElement('div');
     const b = document.createElement('b'); b.textContent = v;
@@ -363,7 +375,9 @@ function updateHud() {
     const muerde = Math.min(HELADA_MUERDE[S.dificultad], tilesPlayable(S));
     sub.push(`<b>${tilesPlayable(S)}</b> celdas`, `si fallas <b>−${muerde}</b>`);
   }
-  sub.push(`meseta <b>${biggest}</b>`);
+  // «máx» y no «meseta» (v7.1): la palabra no se entendía jugando. Es sólo el
+  // texto; en el código sigue siendo biggestCoherentArea.
+  sub.push(`máx <b>${biggest}</b>`);
   // Contrarreloj: el peldaño. Hasta la v6 decía «N fallos» y se leía como
   // fallos SEGUIDOS, cuando cuenta los fallos desde la última cosecha grande
   // aunque en medio haya veinte turnos buenos. Pasado el 4 todo es velutina,
@@ -495,7 +509,7 @@ function onCommit(cells) {
   // Máximos de la partida, sólo para la pantalla de fin: se llevan aquí para no
   // meter datos de interfaz en el estado del motor.
   S.streakMax = Math.max(S.streakMax || 0, S.streak);
-  S.pasoMax = Math.max(S.pasoMax || 0, S.step);
+  S.jugadaMax = Math.max(S.jugadaMax || 0, cells.length);
   if (S.last.type === 'harvest') {
     const t = performance.now();
     cells.forEach((i, k) => abejas.push({
@@ -509,7 +523,10 @@ function onCommit(cells) {
 function frame(now) {
   const dt = Math.min(0.25, (now - (ultimoFrame || now)) / 1000);
   ultimoFrame = now;
-  if (!document.hidden) tick(S, dt);
+  if (!document.hidden) {
+    if (S.arrancado && !S.gameOver) duracion += dt;
+    tick(S, dt);
+  }
   while (abejas.length && now - abejas[0].t0 > 1500) abejas.shift();
   while (destellos.length && now - destellos[0].t0 > 900) destellos.shift();
   redraw(now);
@@ -530,6 +547,7 @@ function resize() {
 function restart(semilla) {
   S = nuevaPartida(semilla);
   finPintado = false;
+  duracion = 0;
   destellos.length = 0;
   document.getElementById('fin').hidden = true;
   drag.cells = []; drag.desde = []; drag.trail = []; drag.deshaciendo = false; drag.fuera = false;
