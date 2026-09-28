@@ -81,10 +81,12 @@ function sidePath(ctx, x, y, R, D) {
   ctx.closePath();
 }
 
-// ui = { cells, ready, fuera, abejas, destellos }
+// ui = { cells, ready, fuera, abejas, destellos, sinNumeros, sinItem }
 //   ready   la cadena ya es una jugada válida
 //   fuera   el dedo está fuera del panal: soltar cancela
 //   abejas  partículas de la cosecha: { x, y, t0 } — las lleva app.js
+//   sinNumeros, sinItem   para el panal vivo del inicio (v9): es un decorado, así
+//           que ni el nivel escrito en las celdas ni la gota. Por defecto, no.
 function draw(ctx, s, ui, now) {
   const { width, height } = ctx.canvas;
   ctx.clearRect(0, 0, width, height);
@@ -119,11 +121,13 @@ function draw(ctx, s, ui, now) {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    ctx.fillStyle = h >= LARVA ? 'rgba(30,20,5,0.7)' : 'rgba(255,245,225,0.8)';
-    ctx.font = `600 ${Math.round(R * 0.55)}px system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(h), x, y);
+    if (!ui.sinNumeros) {
+      ctx.fillStyle = h >= LARVA ? 'rgba(30,20,5,0.7)' : 'rgba(255,245,225,0.8)';
+      ctx.font = `600 ${Math.round(R * 0.55)}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(h), x, y);
+    }
 
     // Seda: la celda está bloqueada unos turnos.
     if (s.sedaHasta[i] > s.turn) {
@@ -202,7 +206,7 @@ function draw(ctx, s, ui, now) {
 
   // Ítem: gota de néctar sobre su celda. Parpadea en su último turno: si no lo
   // coges ahora, se evapora (v5).
-  if (s.item) {
+  if (s.item && !ui.sinItem) {
     const x = layout.cx[s.item.tile];
     const y = topY(s, s.item.tile) - R * 0.1;
     const ultimo = (s.item.caduca - s.turn) <= 1;
@@ -226,7 +230,7 @@ function draw(ctx, s, ui, now) {
   // input.js para saber dónde está el dedo y para deshacer.
 
   // Cosecha: la abeja sale volando.
-  for (const a of ui.abejas) {
+  for (const a of (ui.abejas || [])) {
     const t = ((now || 0) - a.t0) / 900;
     if (t < 0 || t > 1) continue;
     const x = a.x + Math.sin(t * 9 + a.x) * R * 0.25;

@@ -701,6 +701,38 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   eq(T.mesetaDeNivel(s, 1), 19, '…y la de cera, por separado');
 }
 
+// --- el bot tonto, en js/ desde la v9 (T-40) ----------------------------------------------
+// Lo usa el panal vivo de la pantalla de inicio. Si el bundle no lo expusiera
+// saldría undefined, y el bot de mediciones fallaría sin avisar.
+{
+  for (const f of ['rng', 'shuffled', 'buscarJugada', 'elegirJugada'])
+    eq(typeof T[f], 'function', `el bundle expone ${f}`);
+  // Estados al azar de los tres modos: lo que devuelve es una jugada válida, y
+  // sólo devuelve null cuando de verdad no la hay.
+  let probados = 0, invalidas = 0, nullsFalsos = 0;
+  for (let seed = 1; probados < 200; seed++) {
+    const modo = ['contrarreloj', 'invierno', 'libre'][seed % 3];
+    const s = T.createState(modo, seed % 2 ? 'normal' : 'dificil', seed);
+    let r = seed;
+    const azar = n => { r ^= r << 13; r ^= r >>> 17; r ^= r << 5; return ((r >>> 0) % n); };
+    const vueltas = azar(40);
+    for (let k = 0; k < vueltas && !s.gameOver; k++) {
+      const j = jugadaAlAzar(s, azar);
+      if (!j || !T.commitTurn(s, j)) T.fallback(s);
+    }
+    if (s.gameOver) continue;
+    const c = T.elegirJugada(s, T.rng(seed));
+    probados++;
+    if (c && !T.isValidDrag(s, c)) invalidas++;
+    if (!c && T.biggestCoherentArea(s) >= s.step) nullsFalsos++;
+  }
+  eq(invalidas, 0, 'elegirJugada sólo devuelve jugadas válidas (200 estados)');
+  eq(nullsFalsos, 0, '…y null sólo cuando el paso no cabe');
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'bot-tonto.js'), 'utf8');
+  ok(!/document\.|window\.|Math\.random/.test(src.replace(/\/\/.*$/gm, '')),
+     'bot-tonto.js no usa DOM ni Math.random');
+}
+
 // --- el motor no toca el DOM ---------------------------------------------------------------
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'state.js'), 'utf8');

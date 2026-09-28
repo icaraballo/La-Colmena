@@ -18,17 +18,6 @@ function guardarRecord(clave, puntos) {
     return true;                       // es récord nuevo
   } catch { return false; }
 }
-// Las instrucciones se abren solas la primera vez y luego se quedan detrás de
-// un botón (v6): ocupaban cinco líneas de pie que en el móvil le hacían falta
-// al tablero. localStorage puede fallar; si falla, se dan por vistas.
-const AYUDA_KEY = 'colmena.ayuda.v1';
-function ayudaVista() {
-  try { return !!localStorage.getItem(AYUDA_KEY); } catch { return true; }
-}
-function marcarAyudaVista() {
-  try { localStorage.setItem(AYUDA_KEY, '1'); } catch { /* da igual */ }
-}
-
 let S = nuevaPartida();
 let canvas, ctx;
 const abejas = [];          // partículas de la cosecha
@@ -109,54 +98,10 @@ function abrirPop(ancla, contenido) {
   popAncla = ancla;
 }
 
-// El panel que cuelga de un modo. Elegir dificultad ES empezar la partida, así
-// que «Nueva partida» dejó de hacer falta: tocar un modo siempre acaba en
-// partida nueva de ese modo, con este paso intermedio cuando hay algo que
-// elegir. Panal libre no tiene dificultad: ver panelConfirmar.
-function panelDificultad(modo) {
-  const caja = document.createElement('div');
-  const titulo = document.createElement('b');
-  titulo.textContent = NOMBRE_MODO[modo];
-  const fila = document.createElement('div');
-  fila.className = 'difs';
-  for (const dif of ['normal', 'dificil']) {
-    const b = document.createElement('button');
-    b.textContent = NOMBRE_DIF[dif];
-    if (dif === partida.dificultad) b.classList.add('on');
-    b.addEventListener('click', () => {
-      partida.modo = modo; partida.dificultad = dif;
-      cerrarPop(); restart();
-    });
-    fila.appendChild(b);
-  }
-  caja.appendChild(titulo); caja.appendChild(fila);
-  return caja;
-}
-
-// Panal libre no tiene dificultad, así que no había panel de por medio y un
-// toque sin querer en la barra reiniciaba la partida sin red (v7, F.3). Con
-// partida empezada, se pregunta; con el panal recién puesto o la partida
-// acabada, no hay nada que perder y arranca directo.
+// Hay partida que perder: se ha jugado algún turno y no ha terminado. Con
+// ella, «‹ Menú» pregunta antes de salir (v9; hasta la v8.4 lo preguntaba la
+// fila de modos).
 function partidaEmpezada() { return S.turn > 0 && !S.gameOver; }
-function panelConfirmar(modo) {
-  const caja = document.createElement('div');
-  const t = document.createElement('b');
-  t.textContent = '¿Empezar una partida nueva?';
-  const nota = document.createElement('span');
-  nota.className = 'nota';
-  nota.textContent = 'Se pierde la de ahora.';
-  const fila = document.createElement('div');
-  fila.className = 'difs';
-  const si = document.createElement('button');
-  si.textContent = 'Sí, empezar';
-  si.addEventListener('click', () => { partida.modo = modo; cerrarPop(); restart(); });
-  const no = document.createElement('button');
-  no.textContent = 'No';
-  no.addEventListener('click', cerrarPop);
-  fila.appendChild(si); fila.appendChild(no);
-  caja.appendChild(t); caja.appendChild(fila); caja.appendChild(nota);
-  return caja;
-}
 
 // La semilla: copiar la de ahora o jugar otra. Es lo que le faltaba a QA para
 // poder reproducir un bug raro, y de paso deja rejugar una partida que salió
@@ -285,7 +230,10 @@ function pintarLeyenda() {
   // la v7 eran cuatro fichas con flechas y el jugador no entendía la escalera ni
   // por qué fallaba: ahora se ve cuántas llevas y cuál viene.
   document.getElementById('plagas').hidden = !cfg.desastres;
-  document.getElementById('helada').hidden = !cfg.helada;
+  document.getElementById('helada-fila').hidden = !cfg.helada;
+  // La (i) de la línea de datos sólo en Panal libre: en los otros ya están la
+  // del reloj y la de la helada (v9).
+  document.getElementById('datos-info').hidden = cfg.puntua;
   const fila = document.getElementById('plagas-fila');
   fila.innerHTML = '';
   if (!cfg.desastres) return;
@@ -307,20 +255,12 @@ function pintarLeyenda() {
   fila.appendChild(extremo('grave', ' der'));
 }
 
-// La tarjeta de las plagas (v8.4): la regla de la cosecha grande, una fila por
-// tamaño con las cuatro plagas y en verde las que apaga. Las filas salen de
-// peldanosQueBaja, nunca a mano: 5 o 6 → 1, 7 → 2, 8 → 3, 9 o más → todas.
-// Sale al empezar cada partida de Contrarreloj hasta que se marca «No volver a
-// enseñar» (se recuerda en el dispositivo) y se abre siempre tocando «Plagas».
-// Antes se probó la regla escrita fija en la cabecera, y no gustó: se decidió
-// con bocetos (A1).
-const TARJETA_KEY = 'colmena.tarjetaPlagas.v1';
-function tarjetaQuitada() {
-  try { return localStorage.getItem(TARJETA_KEY) === 'no'; } catch { return false; }
-}
-function recordarTarjeta(quitar) {
-  try { quitar ? localStorage.setItem(TARJETA_KEY, 'no') : localStorage.removeItem(TARJETA_KEY); } catch { /* da igual */ }
-}
+// La regla de la cosecha grande (v8.4), una fila por tamaño con las cuatro
+// plagas y en verde las que apaga. Las filas salen de peldanosQueBaja, nunca a
+// mano: 5 o 6 → 1, 7 → 2, 8 → 3, 9 o más → todas. Hasta la v8.4 era una tarjeta
+// suelta que salía al empezar cada Contrarreloj; desde la v9 es la pestaña
+// Plagas de la hoja (T-40). Antes se probó la regla escrita fija en la
+// cabecera, y no gustó: se decidió con bocetos (A1).
 function hexMini(tipo, estado) {
   const k = DESASTRES_VISIBLES.indexOf(tipo);
   const [relleno, borde, letra, raya] = estado === 'apaga'
@@ -335,27 +275,19 @@ function pintarTarjeta() {
     const n = Math.min(peldanosQueBaja(L), tope), ult = filas[filas.length - 1];
     if (ult && ult.n === n && n < tope) ult.hasta = L; else filas.push({ desde: L, hasta: L, n });
   }
-  document.getElementById('tarjeta-escala').innerHTML = filas.map(f => {
+  document.getElementById('plagas-escala').innerHTML = filas.map(f => {
     const nombre = f.n >= tope ? `${f.desde} o más` : f.hasta > f.desde ? `${f.desde} o ${f.hasta}` : `${f.desde}`;
     const hex = DESASTRES_VISIBLES.map((t, k) => hexMini(t, k >= tope - f.n ? 'apaga' : 'pisada')).join('');
     return `<div class="escalon"><span class="n">${nombre}<small>celdas</small></span>` +
       `<span class="mini">${hex}<em>${f.n >= tope ? 'todas' : '−' + f.n}</em></span></div>`;
   }).join('');
 }
-function abrirTarjeta() {
-  cerrarPop();
-  document.getElementById('tarjeta-no').checked = tarjetaQuitada();
-  document.getElementById('tarjeta').hidden = false;
-}
-function cerrarTarjeta() {
-  recordarTarjeta(document.getElementById('tarjeta-no').checked);
-  document.getElementById('tarjeta').hidden = true;
-}
-
-// Los números de la ayuda salen de las constantes (v7): la ayuda es HTML
-// estático y decía «4 celdas» a mano cuando el umbral ya era otro.
+// Los números de la hoja salen de las constantes (v7, regla 8): es HTML
+// estático, y la ayuda de antes decía «4 celdas» a mano cuando el umbral ya
+// era otro.
 function rellenarConstantes() {
-  const valores = { COSECHA_GRANDE, COSECHA_LIMPIA, SEDA_TURNOS, ITEM_TURNOS, CALMA_TRAS_VELUTINA };
+  const valores = { COSECHA_GRANDE, COSECHA_LIMPIA, SEDA_TURNOS, ITEM_TURNOS, CALMA_TRAS_VELUTINA,
+                    MAX_LEVEL, RELOJ_INICIAL, RELOJ_TECHO, RELOJ_ACELERA_CADA, PUNTOS_POR_SEGUNDO };
   document.querySelectorAll('[data-const]').forEach(el => {
     el.textContent = valores[el.dataset.const];
   });
@@ -448,9 +380,6 @@ function updateHud(now = performance.now()) {
   // (360 de móvil menos márgenes): si salta a dos, el panal pierde 17 px.
   const puntos = cfg.puntua ? S.score.toLocaleString('es-ES') : '—';
   setHtml('datos', `Puntos <b>${puntos}</b> · Racha <b>${S.streak}</b> · Turno <b>${S.turn}</b>`);
-  // La dificultad, en el pie: el récord es por modo Y dificultad, y su botón
-  // no está a la vista desde la v6.
-  setText('dif', cfg.puntua ? NOMBRE_DIF[S.dificultad].toLowerCase() : '');
 
   // Invierno: lo que muerde la helada si fallas (v7), en su propia fila desde
   // la v8, donde en Contrarreloj van las plagas.
@@ -652,17 +581,24 @@ function onCommit(cells) {
 function frame(now) {
   const dt = Math.min(0.25, (now - (ultimoFrame || now)) / 1000);
   ultimoFrame = now;
-  if (!document.hidden) {
+  // El reloj se para con la pestaña oculta, fuera de la partida y con la hoja o
+  // la pregunta de salir abiertas (v9): la hoja tapa el panal entero, así que
+  // no se puede pensar la jugada con el tiempo parado.
+  const enPausa = document.hidden || pantalla !== 'partida' || !!hojaAbierta || salirAbierto;
+  if (!enPausa) {
     if (S.arrancado && !S.gameOver) duracion += dt;
     tick(S, dt);
   }
   while (abejas.length && now - abejas[0].t0 > 1500) abejas.shift();
   while (destellos.length && now - destellos[0].t0 > 900) destellos.shift();
-  redraw(now);
+  if (pantalla === 'partida') redraw(now);
+  else if (!document.hidden) moverFondo(now);
   requestAnimationFrame(frame);
 }
 
 function resize() {
+  // Con la partida oculta el hueco mide 0; se vuelve a medir al entrar.
+  if (pantalla !== 'partida') return;
   const r = canvas.parentElement.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width = Math.round(r.width * dpr);
@@ -688,69 +624,432 @@ function restart(semilla) {
   logItems = ''; logItemsEn = -1; logFallo = ''; logFalloEn = -1;
   falloEn = -1; plagaNueva = null; cascada = null;
   setText('seed', `semilla ${S.seed}`);
-  document.querySelectorAll('[data-modo]').forEach(b =>
-    b.classList.toggle('on', b.dataset.modo === partida.modo));
+  pintarBarra();
   pintarLeyenda();
   if (canvas) resize(); else redraw();   // cada modo coloca el panal a su altura
-  // La tarjeta de las plagas, al empezar cada partida de Contrarreloj (v8.4).
-  document.getElementById('tarjeta').hidden = true;
-  if (CONFIG_MODO[S.modo].desastres && !tarjetaQuitada()) abrirTarjeta();
 }
 
+// La barra de la partida (v9): el modo y, si puntúa, la dificultad.
+function pintarBarra() {
+  const dif = CONFIG_MODO[S.modo].puntua ? ` <span>· ${NOMBRE_DIF[S.dificultad]}</span>` : '';
+  setHtml('barra-modo', NOMBRE_MODO[S.modo] + dif);
+}
+
+
+// ===========================================================================
+// Pantallas (v9, T-40)
+// ===========================================================================
+// Al abrir se ve el inicio; de él cuelgan los modos. La ficha de cada modo no
+// es otra pantalla: es la hoja abierta sobre el inicio. Todo esto vive sólo en
+// memoria: al recargar se vuelve siempre al inicio.
+let pantalla = 'inicio';     // 'inicio' | 'partida'
+let hojaAbierta = null;      // null | { desde: 'ficha' | 'partida', modo, pestana }
+let salirAbierto = false;    // la capa de «¿Salir de la partida?»
+
+// T-30 (compartir por enlace) entrará directo aquí con mostrarPantalla('partida').
+function mostrarPantalla(p) {
+  pantalla = p;
+  document.getElementById('inicio').hidden = p !== 'inicio';
+  document.getElementById('partida').hidden = p !== 'partida';
+  cerrarPop();
+  // Las dos pantallas dibujan con el mismo `layout` de render.js: al cambiar,
+  // cada una se vuelve a medir. Como sólo se ve una, no chocan.
+  if (p === 'partida') resize(); else medirFondo();
+}
+
+// Continuar llegará con el guardado (nota «Guardar partida»). Hasta entonces el
+// botón existe pero no sale nunca.
+function hayPartidaGuardada() { return false; }
+
+// Volver al inicio no toca S: el panal vivo sigue con su partida.
+function volverAlInicio() {
+  cerrarSalir();
+  mostrarPantalla('inicio');
+  document.getElementById('inicio').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
+}
+
+// «‹ Menú» en la partida: si hay algo que perder, se pregunta.
+function pedirMenu() {
+  if (partidaEmpezada()) abrirSalir(); else volverAlInicio();
+}
+function abrirSalir() {
+  cerrarPop();
+  salirAbierto = true;
+  document.getElementById('salir').hidden = false;
+  document.getElementById('salir-no').focus();
+}
+function cerrarSalir() {
+  if (!salirAbierto) return;
+  salirAbierto = false;
+  document.getElementById('salir').hidden = true;
+}
+
+// ---------------------------------------------------------------------------
+// El panal vivo del inicio
+// ---------------------------------------------------------------------------
+// Una partida de verdad de Panal libre (sin reloj, ni plagas, ni helada) que
+// juega el bot tonto de js/bot-tonto.js, una jugada cada FONDO_MS. La interfaz
+// no elige jugadas (regla 8). Se dibuja sin números ni gota: es un decorado.
+const FONDO_MS = 1200;
+const fondo = { canvas: null, ctx: null, s: null, rng: null, semilla: 0, ultima: 0 };
+function nuevoDemo(semilla) {
+  fondo.semilla = semilla >>> 0;
+  fondo.s = createState(MODOS.LIBRE, 'normal', fondo.semilla);
+  // El bot lleva su propio azar, aparte del de la partida (como en tests/bot.js).
+  fondo.rng = rng(fondo.semilla ^ 0x9e3779b9);
+}
+function moverFondo(now) {
+  if (now - fondo.ultima < FONDO_MS) return;
+  fondo.ultima = now;
+  const cells = fondo.s.gameOver ? null : elegirJugada(fondo.s, fondo.rng);
+  // Sin jugada, otra partida con la semilla siguiente.
+  if (!cells || !commitTurn(fondo.s, cells)) nuevoDemo(fondo.semilla + 1);
+  dibujarFondo(now);
+}
+function medirFondo() {
+  const c = fondo.canvas;
+  const r = c.parentElement.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  c.width = Math.round(r.width * dpr);
+  c.height = Math.round(r.height * dpr);
+  c.style.width = r.width + 'px';
+  c.style.height = r.height + 'px';
+  dibujarFondo(performance.now());
+}
+function dibujarFondo(now) {
+  const c = fondo.canvas;
+  if (pantalla !== 'inicio' || !c.width || !c.height) return;
+  computeLayout(c.width, c.height, 0.5);   // el layout es global: se pide cada vez
+  draw(fondo.ctx, fondo.s, { cells: [], sinNumeros: true, sinItem: true }, now);
+}
+
+// ---------------------------------------------------------------------------
+// La hoja: la ficha de cada modo y, desde la partida, la misma tarjeta en
+// modo consulta
+// ---------------------------------------------------------------------------
+// Cada modo enseña sólo sus pestañas: en Invierno no se llega a Plagas (CR-11).
+const PESTANAS = {
+  contrarreloj: ['basico', 'contrarreloj', 'plagas'],
+  invierno:     ['basico', 'invierno'],
+  libre:        ['basico', 'libre'],
+};
+const NOMBRE_PESTANA = { basico: 'Básico', plagas: 'Plagas', ...NOMBRE_MODO };
+const ORDEN_MODOS = [MODOS.CONTRARRELOJ, MODOS.INVIERNO, MODOS.LIBRE];
+
+// La primera ficha se abre en Básico; en cuanto se empieza una partida desde
+// una ficha, las siguientes se abren en la pestaña del modo. Se marca al pulsar
+// Empezar, no al abrir: quien abre y se vuelve sin jugar la verá otra vez en
+// Básico. Si localStorage falla, se da por vista.
+const BASICO_KEY = 'colmena.basicoVisto.v1';
+function basicoVisto() {
+  try { return localStorage.getItem(BASICO_KEY) === '1'; } catch { return true; }
+}
+function marcarBasicoVisto() {
+  try { localStorage.setItem(BASICO_KEY, '1'); } catch { /* da igual */ }
+}
+
+// La última dificultad elegida en cada modo, en el dispositivo.
+const DIF_KEY = 'colmena.dificultad.v1';
+function leerDificultades() {
+  try { return JSON.parse(localStorage.getItem(DIF_KEY)) || {}; } catch { return {}; }
+}
+function dificultadElegida(modo) {
+  const d = leerDificultades()[modo];
+  return d === 'dificil' ? 'dificil' : 'normal';
+}
+function guardarDificultad(modo, dif) {
+  try {
+    const d = leerDificultades();
+    d[modo] = dif;
+    localStorage.setItem(DIF_KEY, JSON.stringify(d));
+  } catch { /* da igual */ }
+}
+
+// Lo que cambia entre las dos dificultades, dicho con la constante (regla 8).
+function textoDificultad(modo, dif) {
+  if (CONFIG_MODO[modo].reloj) return `acelera un ${Math.round(RELOJ_ACELERA[dif] * 100)} %`;
+  const n = HELADA_MUERDE[dif];
+  return `${n} ${n === 1 ? 'celda' : 'celdas'} por fallo`;
+}
+
+let hojaOrigen = null;       // quien la abrió: al cerrar, el foco vuelve ahí
+let hojaCierre = 0;          // el temporizador de la animación de cierre
+
+function abrirHoja({ desde, modo, pestana }) {
+  cerrarPop();
+  clearTimeout(hojaCierre);
+  hojaAbierta = { desde, modo, pestana };
+  hojaOrigen = document.activeElement;
+  const hoja = document.getElementById('hoja');
+  const velo = document.getElementById('hoja-fondo');
+  // Alto: la ficha deja ver arriba el panal vivo (más alta la primera vez, que
+  // abre en Básico); la consulta tapa el panal entero, desde la barra.
+  hoja.classList.toggle('primera', desde === 'ficha' && pestana === 'basico' && !basicoVisto());
+  hoja.style.top = desde === 'partida'
+    ? Math.round(document.getElementById('barra').getBoundingClientRect().bottom + 6) + 'px' : '';
+  pintarHoja();
+  hoja.hidden = false; velo.hidden = false;
+  hoja.getBoundingClientRect();              // fuerza el estilo de partida para que haya transición
+  hoja.classList.add('abierta'); velo.classList.add('abierta');
+  const activa = hoja.querySelector('.hoja-tabs [aria-selected="true"]');
+  if (activa) activa.focus({ preventScroll: true });
+}
+
+function cerrarHoja() {
+  if (!hojaAbierta) return;
+  hojaAbierta = null;
+  const hoja = document.getElementById('hoja');
+  const velo = document.getElementById('hoja-fondo');
+  hoja.classList.remove('abierta', 'arrastrando'); velo.classList.remove('abierta');
+  hoja.style.transform = '';
+  hojaCierre = setTimeout(() => { hoja.hidden = true; velo.hidden = true; }, 250);
+  if (hojaOrigen && document.contains(hojaOrigen) && hojaOrigen.offsetParent) hojaOrigen.focus({ preventScroll: true });
+  hojaOrigen = null;
+}
+
+// Pinta la hoja según hojaAbierta: pestañas, panel, dificultad, indicador de
+// modos y botones. Las pestañas cambian el panel; la dificultad y los botones
+// son de la hoja y se ven en todas.
+function pintarHoja() {
+  const { desde, modo, pestana } = hojaAbierta;
+  const ficha = desde === 'ficha';
+  const hoja = document.getElementById('hoja');
+  hoja.style.setProperty('--acento', COLOR_MODO[pestana]);
+  hoja.style.setProperty('--resalte', modo === MODOS.INVIERNO ? '#1b2226' : '#2a2218');
+  hoja.style.setProperty('--color-modo', COLOR_MODO[modo]);
+  hoja.setAttribute('aria-labelledby', `hoja-titulo-${pestana}`);
+
+  const tabs = document.getElementById('hoja-tabs');
+  tabs.innerHTML = '';
+  tabs.classList.toggle('n2', PESTANAS[modo].length === 2);
+  for (const p of PESTANAS[modo]) {
+    const b = document.createElement('button');
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', String(p === pestana));
+    b.tabIndex = p === pestana ? 0 : -1;
+    b.textContent = NOMBRE_PESTANA[p];
+    b.addEventListener('click', () => cambiarPestana(p));
+    tabs.appendChild(b);
+  }
+  hoja.querySelectorAll('.hoja-panel').forEach(el => {
+    el.hidden = el.dataset.pestana !== pestana;
+    if (!el.hidden) el.querySelector('.hoja-filas').scrollTop = 0;
+  });
+
+  pintarDificultad(modo, ficha);
+
+  document.getElementById('hoja-modos').hidden = !ficha;
+  if (ficha) {
+    const k = ORDEN_MODOS.indexOf(modo);
+    const puntos = document.getElementById('hoja-puntos');
+    puntos.setAttribute('aria-label', `Modo ${k + 1} de ${ORDEN_MODOS.length}`);
+    puntos.innerHTML = ORDEN_MODOS.map((m, j) => `<span${j === k ? ' class="actual"' : ''}></span>`).join('');
+    document.getElementById('hoja-modo-ant').disabled = k === 0;
+    document.getElementById('hoja-modo-sig').disabled = k === ORDEN_MODOS.length - 1;
+  }
+  document.getElementById('hoja-menu').hidden = !ficha;
+  document.getElementById('hoja-empezar').hidden = !ficha;
+  document.getElementById('hoja-volver').hidden = ficha;
+  // En consulta de Contrarreloj, que se vea que el reloj no corre.
+  document.getElementById('reloj-parado').hidden = ficha || !CONFIG_MODO[modo].reloj;
+}
+
+function cambiarPestana(p) {
+  if (!hojaAbierta || hojaAbierta.pestana === p) return;
+  hojaAbierta.pestana = p;
+  pintarHoja();
+  const activa = document.querySelector('#hoja-tabs [aria-selected="true"]');
+  if (activa) activa.focus({ preventScroll: true });
+}
+
+// En la ficha, dos botones de radio: tocar uno lo elige y lo guarda, pero no
+// empieza (eso es de «Empezar»). En consulta, de sólo lectura con la de la
+// partida. Panal libre no tiene dificultad.
+function pintarDificultad(modo, ficha) {
+  const caja = document.getElementById('hoja-dif');
+  caja.innerHTML = '';
+  caja.hidden = !CONFIG_MODO[modo].puntua;
+  if (caja.hidden) return;
+  const elegida = ficha ? dificultadElegida(modo) : S.dificultad;
+  if (ficha) {
+    caja.setAttribute('role', 'radiogroup');
+    caja.setAttribute('aria-label', 'Dificultad');
+    const lbl = document.createElement('span');
+    lbl.className = 'lbl-dif'; lbl.textContent = 'Dificultad';
+    caja.appendChild(lbl);
+  } else {
+    caja.removeAttribute('role'); caja.removeAttribute('aria-label');
+  }
+  for (const dif of ['normal', 'dificil']) {
+    const op = document.createElement(ficha ? 'button' : 'div');
+    op.className = 'dif-op' + (dif === elegida ? ' on' : '') + (ficha ? '' : ' ro');
+    op.innerHTML = (ficha ? '<span class="radio"></span>' : '') + '<span class="nom"></span><span class="txt"></span>';
+    op.querySelector('.nom').textContent = NOMBRE_DIF[dif];
+    op.querySelector('.txt').textContent = textoDificultad(modo, dif);
+    if (ficha) {
+      op.setAttribute('role', 'radio');
+      op.setAttribute('aria-checked', String(dif === elegida));
+      op.addEventListener('click', () => { guardarDificultad(modo, dif); pintarDificultad(modo, true); });
+    }
+    caja.appendChild(op);
+  }
+}
+
+// Deslizar a los lados cambia de modo, sin dar la vuelta. Si se estaba en
+// Básico se sigue en Básico; si no, la pestaña del modo nuevo.
+function cambiarModoFicha(dir) {
+  if (!hojaAbierta || hojaAbierta.desde !== 'ficha') return;
+  const k = ORDEN_MODOS.indexOf(hojaAbierta.modo) + dir;
+  if (k < 0 || k >= ORDEN_MODOS.length) return;
+  const hoja = document.getElementById('hoja');
+  const cambiar = () => {
+    const modo = ORDEN_MODOS[k];
+    hojaAbierta.modo = modo;
+    if (hojaAbierta.pestana !== 'basico') hojaAbierta.pestana = modo;
+    pintarHoja();
+  };
+  if (!hoja.animate) { cambiar(); return; }
+  hoja.animate([{ transform: 'none', opacity: 1 }, { transform: `translateX(${-dir * 40}px)`, opacity: 0 }],
+               { duration: 100, easing: 'ease-in' }).onfinish = () => {
+    cambiar();
+    hoja.animate([{ transform: `translateX(${dir * 40}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }],
+                 { duration: 100, easing: 'ease-out' });
+  };
+}
+
+// «Empezar»: el modo y la dificultad de la ficha. La hoja baja y el inicio se
+// funde mientras aparece la partida. El fundido fino panal → panal es de T-14.
+function empezar() {
+  if (!hojaAbierta) return;
+  const modo = hojaAbierta.modo;
+  partida.modo = modo;
+  partida.dificultad = CONFIG_MODO[modo].puntua ? dificultadElegida(modo) : 'normal';
+  marcarBasicoVisto();
+  hojaOrigen = null;
+  cerrarHoja();
+  const entrar = () => {
+    mostrarPantalla('partida');
+    restart();
+    document.getElementById('partida').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, easing: 'ease-out' });
+  };
+  const inicio = document.getElementById('inicio');
+  if (!inicio.animate) { entrar(); return; }
+  inicio.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 250, easing: 'ease-in' }).onfinish = entrar;
+}
+
+// Los gestos de la hoja, con eventos pointer: arrastrar hacia abajo cierra
+// (fuera de la zona que se desplaza, que tiene su propio scroll) y, en la
+// ficha, deslizar a los lados cambia de modo. Cuál de los dos es se decide en
+// los primeros ~10 px.
+function gestosHoja(hoja) {
+  let g = null, tocado = false;
+  hoja.addEventListener('pointerdown', e => {
+    if (!hojaAbierta || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    g = { x: e.clientX, y: e.clientY, t: performance.now(), eje: null,
+          enFilas: !!e.target.closest('.hoja-filas'), id: e.pointerId };
+    tocado = false;
+  });
+  hoja.addEventListener('pointermove', e => {
+    if (!g || e.pointerId !== g.id) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (!g.eje) {
+      if (Math.hypot(dx, dy) < 10) return;
+      if (Math.abs(dx) > Math.abs(dy)) g.eje = hojaAbierta.desde === 'ficha' ? 'x' : 'nada';
+      else g.eje = dy > 0 && !g.enFilas ? 'y' : 'nada';
+      if (g.eje === 'y') { hoja.classList.add('arrastrando'); hoja.setPointerCapture(g.id); }
+      tocado = g.eje !== 'nada';
+    }
+    if (g.eje === 'y') hoja.style.transform = `translateY(${Math.max(0, dy)}px)`;
+  });
+  const soltar = e => {
+    if (!g || e.pointerId !== g.id) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    const v = dy / Math.max(1, performance.now() - g.t);   // px/ms
+    if (g.eje === 'y') {
+      hoja.classList.remove('arrastrando');
+      if (e.type !== 'pointercancel' && (dy > 80 || v > 0.6)) cerrarHoja();
+      else hoja.style.transform = '';
+    } else if (g.eje === 'x' && e.type !== 'pointercancel' && Math.abs(dx) > 60) {
+      cambiarModoFicha(dx < 0 ? 1 : -1);
+    }
+    g = null;
+    // El clic de un gesto llega justo después de soltar; pasado ese momento,
+    // la marca no puede comerse el toque siguiente.
+    setTimeout(() => { tocado = false; }, 50);
+  };
+  hoja.addEventListener('pointerup', soltar);
+  hoja.addEventListener('pointercancel', soltar);
+  // Un gesto que acaba encima de un botón no es un toque.
+  hoja.addEventListener('click', e => {
+    if (tocado) { e.stopPropagation(); e.preventDefault(); tocado = false; }
+  }, true);
+}
+
+// ===========================================================================
+// Arranque
+// ===========================================================================
 window.addEventListener('DOMContentLoaded', () => {
   canvas = document.getElementById('board');
   ctx = canvas.getContext('2d');
   initInput(canvas, () => S, onCommit, redraw);
-  setText('version', VERSION);
   rellenarConstantes();
-  document.getElementById('fin-otra').addEventListener('click', () => restart());
+  // Nombres y frases de los modos desde sus tablas: el inicio y la hoja no
+  // pueden discrepar.
+  document.querySelectorAll('[data-nombre]').forEach(el => { el.textContent = NOMBRE_MODO[el.dataset.nombre]; });
+  document.querySelectorAll('[data-frase]').forEach(el => {
+    el.textContent = FRASE_MODO[el.dataset.frase];
+    if (el.classList.contains('frase')) el.style.color = COLOR_MODO[el.dataset.frase];
+  });
+  setText('inicio-version', VERSION);
+  pintarTarjeta();
 
-  // Tocar un modo siempre acaba en partida nueva de ese modo. Si hay dificultad
-  // que elegir, con el panel de por medio; Panal libre pide confirmación si hay
-  // partida empezada (v7) y si no arranca directo.
-  document.querySelectorAll('[data-modo]').forEach(b => b.addEventListener('click', () => {
+  // El inicio: cada modo abre su ficha.
+  document.getElementById('continuar').hidden = !hayPartidaGuardada();
+  document.querySelectorAll('.modo-fila').forEach(b => b.addEventListener('click', () => {
     const modo = b.dataset.modo;
-    if (popAncla === b) { cerrarPop(); return; }   // segundo toque: se cierra
-    cerrarPop();
-    if (!CONFIG_MODO[modo].puntua) {
-      if (partidaEmpezada()) { abrirPop(b, panelConfirmar(modo)); return; }
-      partida.modo = modo; restart(); return;
-    }
-    abrirPop(b, panelDificultad(modo));
+    abrirHoja({ desde: 'ficha', modo, pestana: basicoVisto() ? modo : 'basico' });
   }));
 
-  // El panel se cierra al tocar fuera o con Escape. El canvas se lleva sus
-  // propios eventos, así que esto escucha en la fase de captura.
+  // La hoja.
+  const hoja = document.getElementById('hoja');
+  gestosHoja(hoja);
+  document.getElementById('hoja-fondo').addEventListener('click', cerrarHoja);
+  document.getElementById('hoja-menu').addEventListener('click', cerrarHoja);
+  document.getElementById('hoja-volver').addEventListener('click', cerrarHoja);
+  document.getElementById('hoja-empezar').addEventListener('click', empezar);
+  document.getElementById('hoja-modo-ant').addEventListener('click', () => cambiarModoFicha(-1));
+  document.getElementById('hoja-modo-sig').addEventListener('click', () => cambiarModoFicha(1));
+
+  // Las (i) de la partida abren la hoja en consulta, en su pestaña.
+  document.querySelectorAll('#partida [data-hoja]').forEach(b => b.addEventListener('click', () => {
+    abrirHoja({ desde: 'partida', modo: S.modo, pestana: b.dataset.hoja });
+  }));
+
+  // La barra, la pregunta de salir y la pantalla final.
+  document.getElementById('partida-menu').addEventListener('click', pedirMenu);
+  document.getElementById('salir-no').addEventListener('click', cerrarSalir);
+  document.getElementById('salir-si').addEventListener('click', volverAlInicio);
+  // «Otra vez»: el mismo modo y la misma dificultad, sin pasar por la ficha.
+  document.getElementById('fin-otra').addEventListener('click', () => restart());
+  document.getElementById('fin-menu').addEventListener('click', volverAlInicio);
+
+  // El panel flotante se cierra al tocar fuera. El canvas se lleva sus propios
+  // eventos, así que esto escucha en la fase de captura.
   document.addEventListener('pointerdown', e => {
     if (!popAncla) return;
     const p = document.getElementById('pop');
     if (!p.contains(e.target) && !popAncla.contains(e.target)) cerrarPop();
   }, true);
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarPop(); });
-
-  // La ayuda explica los tres modos, porque cada uno castiga el fallo a su
-  // manera y eso no se deduce jugando; el del modo en curso va resaltado.
-  const ayuda = document.getElementById('ayuda');
-  function abrirAyuda() {
-    document.querySelectorAll('#ayuda .m').forEach(m =>
-      m.classList.toggle('actual', m.dataset.ayuda === partida.modo));
-    cerrarPop();
-    ayuda.hidden = false;
-    ayuda.querySelector('.caja').scrollTop = 0;
-  }
-  document.getElementById('ayuda-btn').addEventListener('click', abrirAyuda);
-
-  pintarTarjeta();
-  const tarjeta = document.getElementById('tarjeta');
-  document.getElementById('plagas-titulo').addEventListener('click', abrirTarjeta);
-  document.getElementById('tarjeta-ok').addEventListener('click', cerrarTarjeta);
-  tarjeta.addEventListener('click', e => { if (e.target === tarjeta) cerrarTarjeta(); });
-  function cerrarAyuda() { ayuda.hidden = true; marcarAyudaVista(); }
-  document.getElementById('ayuda-cerrar').addEventListener('click', cerrarAyuda);
-  // Tocar fuera de la caja también cierra: en el móvil es el gesto que se hace
-  // sin pensar, y si no hace nada parece que se ha quedado colgado.
-  ayuda.addEventListener('click', e => { if (e.target === ayuda) cerrarAyuda(); });
-  if (!ayudaVista()) abrirAyuda();
+  // Escape cierra lo que esté encima; en la ficha, las flechas cambian de modo.
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (salirAbierto) cerrarSalir();
+      else if (hojaAbierta) cerrarHoja();
+      else cerrarPop();
+    } else if (hojaAbierta && hojaAbierta.desde === 'ficha' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      cambiarModoFicha(e.key === 'ArrowRight' ? 1 : -1);
+    }
+  });
 
   // La semilla: el botón abre el panel; la del pie se copia al tocarla.
   document.getElementById('semilla-btn').addEventListener('click', e => {
@@ -773,13 +1072,26 @@ window.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copiarSemilla(); }
   });
 
-  window.addEventListener('resize', () => { cerrarPop(); resize(); });
+  // El panal vivo.
+  fondo.canvas = document.getElementById('fondo');
+  fondo.ctx = fondo.canvas.getContext('2d');
+  nuevoDemo((Date.now() ^ (Math.random() * 0x7fffffff)) >>> 0);
+
+  window.addEventListener('resize', () => {
+    cerrarPop();
+    if (pantalla === 'partida') resize(); else medirFondo();
+    // La consulta va pegada a la barra: si cambia la ventana, se recoloca.
+    if (hojaAbierta && hojaAbierta.desde === 'partida')
+      hoja.style.top = Math.round(document.getElementById('barra').getBoundingClientRect().bottom + 6) + 'px';
+  });
   // El hueco del panal también cambia sin que cambie la ventana: cada modo tiene
   // su bloque de riesgo (plagas, helada o nada) y cada uno mide distinto. Hasta
   // la v8.1 sólo se medía al cargar, así que al pasar de Invierno a Contrarreloj
   // el panal se dibujaba 53 px más abajo de lo que tocaba (playtest de la v8).
-  if (window.ResizeObserver) new ResizeObserver(() => resize()).observe(document.getElementById('wrap'));
-  restart();
-  resize();
+  if (window.ResizeObserver) {
+    new ResizeObserver(() => resize()).observe(document.getElementById('wrap'));
+    new ResizeObserver(() => { if (pantalla === 'inicio') medirFondo(); }).observe(document.getElementById('fondo-wrap'));
+  }
+  mostrarPantalla('inicio');
   requestAnimationFrame(frame);
 });

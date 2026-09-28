@@ -260,15 +260,31 @@ const DESASTRES_VISIBLES = ['varroa', 'polilla', 'seda', 'velutina'];
 // «invierno» sí necesitan traducción.
 const NOMBRE_DIF = { normal: 'Normal', dificil: 'Difícil' };
 
-// La versión, a la vista en el pie junto a la semilla: jugando en el móvil no
-// hay forma de saber si lo que tienes delante es lo último que se subió.
+// La versión, a la vista (desde la v9, abajo del todo en la pantalla de inicio):
+// jugando en el móvil no hay forma de saber si lo que tienes delante es lo
+// último que se subió.
 // Se mantiene a mano y tiene que coincidir con package.json (ver Recetas).
-const VERSION = 'v8.4';
+const VERSION = 'v9';
 
 const NOMBRE_MODO = {
   contrarreloj: 'Contrarreloj',
   invierno:     'Invierno',
   libre:        'Panal libre',
+};
+
+// La frase de cada modo: el subtítulo de su tarjeta y de su fila en el inicio (v9).
+const FRASE_MODO = {
+  contrarreloj: 'Cosecha para ganar tiempo.',
+  invierno:     'Evita congelarte.',
+  libre:        'Para practicar.',
+};
+
+// El color de acento de cada pestaña de la hoja (v9, T-40): la raya de arriba,
+// la línea bajo la pestaña activa, la frase y el recuadro de la dificultad. Es
+// el de la pestaña y no el del modo: la ficha de Invierno abierta en Básico va
+// en miel. Básico es el nivel 4 del panal y Contrarreloj, el 5 (LEVEL_COLORS).
+const COLOR_MODO = {
+  basico: '#E3C87E', contrarreloj: '#F79A1F', plagas: '#F79A1F', invierno: '#9CC3D8', libre: '#9fd67a',
 };
 
 // Segundos que da una cosecha de L celdas: L·(L+3)/2 (DESIGN §9).
