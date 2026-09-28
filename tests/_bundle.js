@@ -8,11 +8,12 @@
 // por correctas.
 const fs = require('fs'), vm = require('vm'), path = require('path');
 
-// El motor, el bot tonto (v9: vive en js/ porque lo usa el panal del inicio)
+// El motor, el bot tonto (v9: vive en js/ porque lo usa el panal del inicio),
+// el guardado (v9.1: sólo convierte y valida, no toca localStorage)
 // y desde la v7 también input.js: al cargarse sólo declara funciones
 // (el DOM lo toca initInput, que aquí nadie llama), y así pasoDeCadena, la
 // lógica del arrastre, se puede probar. render.js y app.js necesitan canvas y DOM.
-const FILES = ['constants.js', 'state.js', 'bot-tonto.js', 'input.js'];
+const FILES = ['constants.js', 'state.js', 'bot-tonto.js', 'guardado.js', 'input.js'];
 
 const src = FILES
   .map(f => fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8'))
@@ -29,7 +30,8 @@ const FOOTER = `
      createState, isValidDrag, biggestCoherentArea, commitTurn, fallback, tilesPlayable,
      jugable, spawnItemIfEarned, usarItem, sumarTiempo, velocidadReloj, tick,
      siguienteDesastre, mesetaDeNivel, peldanosQueBaja, ESCALERA_TOPE, COSECHA_LIMPIA, DESASTRES_MAX_ACTIVOS, ITEM_INFO, ITEMS_VISIBLES, pasoDeCadena,
-     rng, shuffled, buscarJugada, elegirJugada })
+     rng, shuffled, buscarJugada, elegirJugada,
+     serializarPartida, restaurarPartida, GUARDADO_VERSION })
 `;
 
 module.exports = vm.runInNewContext(src + FOOTER, {});

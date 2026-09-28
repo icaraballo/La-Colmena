@@ -98,10 +98,55 @@ function abrirPop(ancla, contenido) {
   popAncla = ancla;
 }
 
-// Hay partida que perder: se ha jugado algún turno y no ha terminado. Con
-// ella, «‹ Menú» pregunta antes de salir (v9; hasta la v8.4 lo preguntaba la
-// fila de modos).
+// Hay partida que guardar: se ha jugado algún turno y no ha terminado. Es la
+// que se guarda para «Continuar» (v9.1). En la v9, con ella, «‹ Menú»
+// preguntaba antes de salir; desde que se guarda, ya no hay nada que perder.
 function partidaEmpezada() { return S.turn > 0 && !S.gameOver; }
+
+// ---------------------------------------------------------------------------
+// Guardar la partida (v9.1, T-41)
+// ---------------------------------------------------------------------------
+// Una sola partida guardada, la última empezada: empezar otra la sustituye.
+// Se guarda después de cada turno, al salir al menú, al ocultar la pestaña y,
+// en Contrarreloj, cada segundo mientras corre el reloj (un móvil puede cerrar
+// la pestaña sin avisar, y así al volver no se regalan segundos). Qué se
+// guarda y cómo se valida está en guardado.js; aquí sólo dónde y cuándo.
+// El reloj no corre fuera de la partida, así que al continuar sigue donde
+// estaba: salir no castiga.
+// Si localStorage falla (ventana privada, datos bloqueados), la partida se
+// guarda sólo en memoria: sirve para salir al menú y volver, no para recargar.
+const PARTIDA_KEY = 'colmena.partida.v1';
+let guardadaMem = null;
+let ultimoGuardado = 0;
+function guardarPartida() {
+  if (!partidaEmpezada()) { borrarPartida(); return; }
+  guardadaMem = serializarPartida(S, { duracion, version: VERSION });
+  ultimoGuardado = performance.now();
+  try { localStorage.setItem(PARTIDA_KEY, JSON.stringify(guardadaMem)); } catch { /* queda la de memoria */ }
+}
+function borrarPartida() {
+  guardadaMem = null;
+  try { localStorage.removeItem(PARTIDA_KEY); } catch { /* da igual */ }
+}
+// La partida guardada, ya validada, o null. Una que no valga se borra: si no,
+// el botón «Continuar» saldría para no llevar a ningún sitio.
+function leerPartida() {
+  let g = guardadaMem, t = null;
+  try { t = localStorage.getItem(PARTIDA_KEY); } catch { /* se queda la de memoria */ }
+  if (t) { try { g = JSON.parse(t); } catch { g = null; } }
+  if (!g) { if (t) borrarPartida(); return null; }
+  const s = restaurarPartida(g);
+  if (!s || s.gameOver || s.turn < 1) { borrarPartida(); return null; }
+  return { s, duracion: Number.isFinite(g.duracion) && g.duracion >= 0 ? g.duracion : 0 };
+}
+function hayPartidaGuardada() { return !!leerPartida(); }
+// «Invierno · Normal · turno 47 · 3.120 puntos». Panal libre no tiene
+// dificultad ni puntos.
+function describirPartida(s) {
+  const cfg = CONFIG_MODO[s.modo];
+  return [NOMBRE_MODO[s.modo], cfg.puntua && NOMBRE_DIF[s.dificultad], `turno ${s.turn}`,
+          cfg.puntua && `${s.score.toLocaleString('es-ES')} puntos`].filter(Boolean).join(' · ');
+}
 
 // La semilla: copiar la de ahora o jugar otra. Es lo que le faltaba a QA para
 // poder reproducir un bug raro, y de paso deja rejugar una partida que salió
@@ -310,6 +355,7 @@ function pintarFin() {
   if (!S.gameOver) { el.hidden = true; finPintado = false; return; }
   if (finPintado) return;
   finPintado = true;
+  borrarPartida();   // acabada no se continúa
 
   const cfg = CONFIG_MODO[S.modo];
   document.getElementById('fin-titulo').textContent = cfg.reloj
@@ -575,19 +621,22 @@ function onCommit(cells) {
     }));
   }
   contar(S.eventos);
+  guardarPartida();
 }
 
 // Bucle: el reloj de Contrarreloj corre en tiempo real, y las abejas y el ítem se animan.
 function frame(now) {
   const dt = Math.min(0.25, (now - (ultimoFrame || now)) / 1000);
   ultimoFrame = now;
-  // El reloj se para con la pestaña oculta, fuera de la partida y con la hoja o
-  // la pregunta de salir abiertas (v9): la hoja tapa el panal entero, así que
-  // no se puede pensar la jugada con el tiempo parado.
-  const enPausa = document.hidden || pantalla !== 'partida' || !!hojaAbierta || salirAbierto;
+  // El reloj se para con la pestaña oculta, fuera de la partida y con la hoja
+  // abierta (v9): la hoja tapa el panal entero, así que no se puede pensar la
+  // jugada con el tiempo parado.
+  const enPausa = document.hidden || pantalla !== 'partida' || !!hojaAbierta;
   if (!enPausa) {
     if (S.arrancado && !S.gameOver) duracion += dt;
     tick(S, dt);
+    // Con el reloj en marcha, lo guardado se queda viejo en segundos (v9.1).
+    if (CONFIG_MODO[S.modo].reloj && S.arrancado && now - ultimoGuardado > 1000) guardarPartida();
   }
   while (abejas.length && now - abejas[0].t0 > 1500) abejas.shift();
   while (destellos.length && now - destellos[0].t0 > 900) destellos.shift();
@@ -613,10 +662,18 @@ function resize() {
   redraw();
 }
 
+// Empezar otra partida sustituye a la guardada (v9.1): la de antes se borra ya,
+// aunque la nueva no se guarde hasta su primer turno.
 function restart(semilla) {
-  S = nuevaPartida(semilla);
+  borrarPartida();
+  prepararPartida(nuevaPartida(semilla), 0);
+}
+
+// Pone en juego un estado, nuevo o recuperado, con la interfaz limpia.
+function prepararPartida(estado, dur) {
+  S = estado;
   finPintado = false;
-  duracion = 0;
+  duracion = dur;
   destellos.length = 0;
   document.getElementById('fin').hidden = true;
   drag.cells = []; drag.desde = []; drag.trail = []; drag.deshaciendo = false; drag.fuera = false;
@@ -640,11 +697,10 @@ function pintarBarra() {
 // Pantallas (v9, T-40)
 // ===========================================================================
 // Al abrir se ve el inicio; de él cuelgan los modos. La ficha de cada modo no
-// es otra pantalla: es la hoja abierta sobre el inicio. Todo esto vive sólo en
-// memoria: al recargar se vuelve siempre al inicio.
+// es otra pantalla: es la hoja abierta sobre el inicio. Al recargar se vuelve
+// siempre al inicio; la partida a medias, con «Continuar» (v9.1).
 let pantalla = 'inicio';     // 'inicio' | 'partida'
 let hojaAbierta = null;      // null | { desde: 'ficha' | 'partida', modo, pestana }
-let salirAbierto = false;    // la capa de «¿Salir de la partida?»
 
 // T-30 (compartir por enlace) entrará directo aquí con mostrarPantalla('partida').
 function mostrarPantalla(p) {
@@ -654,34 +710,45 @@ function mostrarPantalla(p) {
   cerrarPop();
   // Las dos pantallas dibujan con el mismo `layout` de render.js: al cambiar,
   // cada una se vuelve a medir. Como sólo se ve una, no chocan.
-  if (p === 'partida') resize(); else medirFondo();
+  if (p === 'partida') resize(); else { pintarContinuar(); medirFondo(); }
 }
 
-// Continuar llegará con el guardado (nota «Guardar partida»). Hasta entonces el
-// botón existe pero no sale nunca.
-function hayPartidaGuardada() { return false; }
+// El botón «Continuar partida», encima de los modos, con lo que se va a
+// continuar. Sólo sale si hay una partida guardada que valga.
+function pintarContinuar() {
+  const g = leerPartida();
+  document.getElementById('continuar').hidden = !g;
+  if (g) setText('continuar-detalle', describirPartida(g.s));
+}
 
-// Volver al inicio no toca S: el panal vivo sigue con su partida.
+// «‹ Menú» (de la barra o de la pantalla final): se guarda y se vuelve, sin
+// preguntar, porque ya no se pierde nada (v9.1). Volver al inicio no toca S.
 function volverAlInicio() {
-  cerrarSalir();
+  guardarPartida();
   mostrarPantalla('inicio');
   document.getElementById('inicio').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
 }
 
-// «‹ Menú» en la partida: si hay algo que perder, se pregunta.
-function pedirMenu() {
-  if (partidaEmpezada()) abrirSalir(); else volverAlInicio();
+// Del inicio a la partida: el inicio se funde y la partida aparece. `preparar`
+// pone el estado en juego cuando la partida ya se ve, para que se mida bien.
+function entrarEnPartida(preparar) {
+  const entrar = () => {
+    mostrarPantalla('partida');
+    preparar();
+    document.getElementById('partida').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, easing: 'ease-out' });
+  };
+  const inicio = document.getElementById('inicio');
+  if (!inicio.animate) { entrar(); return; }
+  inicio.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 250, easing: 'ease-in' }).onfinish = entrar;
 }
-function abrirSalir() {
-  cerrarPop();
-  salirAbierto = true;
-  document.getElementById('salir').hidden = false;
-  document.getElementById('salir-no').focus();
-}
-function cerrarSalir() {
-  if (!salirAbierto) return;
-  salirAbierto = false;
-  document.getElementById('salir').hidden = true;
+
+// «Continuar partida»: la guardada, tal cual se dejó, sin pasar por la ficha.
+function continuarPartida() {
+  const g = leerPartida();
+  if (!g) { pintarContinuar(); return; }
+  partida.modo = g.s.modo;
+  partida.dificultad = g.s.dificultad;
+  entrarEnPartida(() => prepararPartida(g.s, g.duracion));
 }
 
 // ---------------------------------------------------------------------------
@@ -838,6 +905,12 @@ function pintarHoja() {
 
   pintarDificultad(modo, ficha);
 
+  // Empezar otra sustituye a la guardada (v9.1): que no pille por sorpresa.
+  const g = ficha ? leerPartida() : null;
+  const aviso = document.getElementById('hoja-aviso');
+  aviso.hidden = !g;
+  if (g) aviso.textContent = `Empezar sustituye tu partida guardada de ${NOMBRE_MODO[g.s.modo]} (turno ${g.s.turn}).`;
+
   document.getElementById('hoja-modos').hidden = !ficha;
   if (ficha) {
     const k = ORDEN_MODOS.indexOf(modo);
@@ -927,14 +1000,7 @@ function empezar() {
   marcarBasicoVisto();
   hojaOrigen = null;
   cerrarHoja();
-  const entrar = () => {
-    mostrarPantalla('partida');
-    restart();
-    document.getElementById('partida').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, easing: 'ease-out' });
-  };
-  const inicio = document.getElementById('inicio');
-  if (!inicio.animate) { entrar(); return; }
-  inicio.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 250, easing: 'ease-in' }).onfinish = entrar;
+  entrarEnPartida(() => restart());
 }
 
 // Los gestos de la hoja, con eventos pointer: arrastrar hacia abajo cierra
@@ -1004,7 +1070,7 @@ window.addEventListener('DOMContentLoaded', () => {
   pintarTarjeta();
 
   // El inicio: cada modo abre su ficha.
-  document.getElementById('continuar').hidden = !hayPartidaGuardada();
+  document.getElementById('continuar').addEventListener('click', continuarPartida);
   document.querySelectorAll('.modo-fila').forEach(b => b.addEventListener('click', () => {
     const modo = b.dataset.modo;
     abrirHoja({ desde: 'ficha', modo, pestana: basicoVisto() ? modo : 'basico' });
@@ -1025,10 +1091,8 @@ window.addEventListener('DOMContentLoaded', () => {
     abrirHoja({ desde: 'partida', modo: S.modo, pestana: b.dataset.hoja });
   }));
 
-  // La barra, la pregunta de salir y la pantalla final.
-  document.getElementById('partida-menu').addEventListener('click', pedirMenu);
-  document.getElementById('salir-no').addEventListener('click', cerrarSalir);
-  document.getElementById('salir-si').addEventListener('click', volverAlInicio);
+  // La barra y la pantalla final.
+  document.getElementById('partida-menu').addEventListener('click', volverAlInicio);
   // «Otra vez»: el mismo modo y la misma dificultad, sin pasar por la ficha.
   document.getElementById('fin-otra').addEventListener('click', () => restart());
   document.getElementById('fin-menu').addEventListener('click', volverAlInicio);
@@ -1043,8 +1107,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // Escape cierra lo que esté encima; en la ficha, las flechas cambian de modo.
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      if (salirAbierto) cerrarSalir();
-      else if (hojaAbierta) cerrarHoja();
+      if (hojaAbierta) cerrarHoja();
       else cerrarPop();
     } else if (hojaAbierta && hojaAbierta.desde === 'ficha' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
       cambiarModoFicha(e.key === 'ArrowRight' ? 1 : -1);
@@ -1071,6 +1134,13 @@ window.addEventListener('DOMContentLoaded', () => {
   seed.addEventListener('keydown', e => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copiarSemilla(); }
   });
+
+  // Al ocultar la pestaña o cerrar la página, se guarda (v9.1). Sólo desde la
+  // partida: en el inicio S puede ser una partida sin empezar, y guardarla
+  // borraría la que hay guardada.
+  const alSalir = () => { if (pantalla === 'partida') guardarPartida(); };
+  document.addEventListener('visibilitychange', () => { if (document.hidden) alSalir(); });
+  window.addEventListener('pagehide', alSalir);
 
   // El panal vivo.
   fondo.canvas = document.getElementById('fondo');

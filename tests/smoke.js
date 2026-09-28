@@ -733,6 +733,74 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
      'bot-tonto.js no usa DOM ni Math.random');
 }
 
+// --- guardar y continuar una partida (v9.1, T-41) -----------------------------------------
+// Lo que se guarda pasa por JSON (localStorage sólo guarda texto) y al volver
+// tiene que ser LA MISMA partida: mismo tablero y mismo azar, así que jugando
+// igual después sale exactamente lo mismo que sin haber salido.
+{
+  for (const f of ['serializarPartida', 'restaurarPartida'])
+    eq(typeof T[f], 'function', `el bundle expone ${f}`);
+  const foto = s => JSON.stringify(T.serializarPartida(s));
+  const avanzar = (s, R, n) => {
+    for (let k = 0; k < n && !s.gameOver; k++) {
+      T.tick(s, 2.5);
+      if (s.gameOver) break;
+      const c = T.elegirJugada(s, R);
+      if (!c || !T.commitTurn(s, c)) T.fallback(s);
+    }
+  };
+  let partidas = 0, distintasAlVolver = 0, distintasDespues = 0, conItem = 0, conDesastres = 0, conRotas = 0;
+  for (let seed = 1; seed <= 90; seed++) {
+    const modo = ['contrarreloj', 'invierno', 'libre'][seed % 3];
+    const s = T.createState(modo, seed % 2 ? 'normal' : 'dificil', seed);
+    avanzar(s, T.rng(seed), 5 + (seed * 7) % 60);
+    if (s.gameOver) continue;
+    s.streakMax = 3; s.jugadaMax = 7;
+    partidas++;
+    if (s.item) conItem++;
+    if (s.desastres.length) conDesastres++;
+    if (s.roto.some(Boolean)) conRotas++;
+    const texto = JSON.stringify(T.serializarPartida(s, { duracion: 12.5 }));
+    const r = T.restaurarPartida(JSON.parse(texto));
+    if (!r || foto(r) !== foto(s)) { distintasAlVolver++; continue; }
+    if (r.streakMax !== 3 || r.jugadaMax !== 7) distintasAlVolver++;
+    // Las dos siguen con las mismas jugadas: tienen que acabar igual.
+    avanzar(s, T.rng(seed + 1000), 40);
+    avanzar(r, T.rng(seed + 1000), 40);
+    if (foto(r) !== foto(s)) distintasDespues++;
+  }
+  ok(partidas >= 60, `se prueban partidas a medias de verdad (${partidas})`);
+  ok(conItem > 0 && conDesastres > 0 && conRotas > 0, 'entre ellas, con ítem en el panal, con plagas y con celdas rotas');
+  eq(distintasAlVolver, 0, 'guardar y leer (pasando por JSON) devuelve la misma partida');
+  eq(distintasDespues, 0, '…y seguir jugándola da lo mismo que sin haber salido (el azar también se guarda)');
+  const r0 = T.restaurarPartida(JSON.parse(JSON.stringify(T.serializarPartida(T.createState('invierno', 'normal', 5)))));
+  // instanceof no sirve: el motor vive en otro contexto de vm, con sus propios tipos.
+  ok(r0.height.constructor.name === 'Uint8Array' && r0.sedaHasta.constructor.name === 'Int32Array', 'los arrays vuelven con su tipo');
+  eq(r0.last, null, 'lo del último turno no se guarda');
+
+  // Una partida guardada rota no se juega: se descarta entera.
+  const buena = () => JSON.parse(JSON.stringify(T.serializarPartida(T.createState('contrarreloj', 'normal', 9))));
+  const rotas = [
+    ['nada', null], ['texto', 'hola'], ['vacío', {}],
+    ['otra versión', { ...buena(), v: 99 }],
+    ['modo que no existe', (g => (g.estado.modo = 'pecoreo', g))(buena())],
+    ['dificultad que no existe', (g => (g.estado.dificultad = 'dura', g))(buena())],
+    ['panal de 23 celdas', (g => (g.estado.height.pop(), g))(buena())],
+    ['nivel 9', (g => (g.estado.height[3] = 9, g))(buena())],
+    ['reloj que no es número', (g => (g.estado.reloj = null, g))(buena())],
+    ['paso 0', (g => (g.estado.step = 0, g))(buena())],
+    ['ítem fuera del panal', (g => (g.estado.item = { tile: 40, tipo: 'jalea' }, g))(buena())],
+    ['ítem que no existe', (g => (g.estado.item = { tile: 3, tipo: 'miel' }, g))(buena())],
+    ['plaga sin tipo', (g => (g.estado.desastres = [{ tile: 2 }], g))(buena())],
+    ['helada fuera del panal', (g => (g.estado.heladas = [30], g))(buena())],
+  ];
+  for (const [nombre, g] of rotas) eq(T.restaurarPartida(g), null, `se descarta una partida guardada con ${nombre}`);
+  ok(T.restaurarPartida(buena()) !== null, '…y la buena, no');
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'guardado.js'), 'utf8');
+  ok(!/document\.|window\.|localStorage|Math\.random/.test(src.replace(/\/\/.*$/gm, '')),
+     'guardado.js no toca DOM, localStorage ni Math.random');
+}
+
 // --- el motor no toca el DOM ---------------------------------------------------------------
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'state.js'), 'utf8');

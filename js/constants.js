@@ -264,7 +264,7 @@ const NOMBRE_DIF = { normal: 'Normal', dificil: 'Difícil' };
 // jugando en el móvil no hay forma de saber si lo que tienes delante es lo
 // último que se subió.
 // Se mantiene a mano y tiene que coincidir con package.json (ver Recetas).
-const VERSION = 'v9';
+const VERSION = 'v9.1';
 
 const NOMBRE_MODO = {
   contrarreloj: 'Contrarreloj',

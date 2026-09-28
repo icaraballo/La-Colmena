@@ -234,7 +234,7 @@ footer .sem.copiada{color:#9fd67a}
   background:rgba(18,16,12,.88);backdrop-filter:blur(2px);z-index:5;
 }
 .encima .caja{text-align:center;padding:20px;width:100%;max-width:420px}
-#fin h2,#salir h2{font-size:19px;font-weight:600;margin-bottom:12px;color:#ede4d3}
+#fin h2{font-size:19px;font-weight:600;margin-bottom:12px;color:#ede4d3}
 #fin .marcador{font-size:40px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:#F79A1F}
 #fin .record{font-size:12px;color:#8c7f6a;margin-top:4px;min-height:16px}
 #fin .record.nuevo{color:#9fd67a;font-weight:600}
@@ -243,10 +243,6 @@ footer .sem.copiada{color:#9fd67a}
 .fin-botones{display:flex;gap:10px;width:100%;max-width:320px;margin:0 auto}
 .fin-botones .secundario{flex:0 0 104px}
 .fin-botones .primario{flex-grow:1}
-/* «¿Salir de la partida?» (v9): una capa propia y no confirm(), que bloquea el
-   hilo. Tapa la pantalla entera, y mientras está abierta el reloj se para. */
-#salir{position:fixed;z-index:25}
-#salir p{font-size:13px;color:#8c7f6a;margin:-6px 0 18px}
 
 /* ---------------------------------------------------------------------------
    La hoja (v9, T-40): la ficha de cada modo desde el inicio, y la misma
@@ -280,7 +276,7 @@ footer .sem.copiada{color:#9fd67a}
 .hoja-tabs button[aria-selected="true"]{color:#ede4d3;font-weight:700;border-bottom-color:var(--acento)}
 /* Al abrir, el foco va a la pestaña activa (accesibilidad). Con el acento y
    no con el azul del navegador. */
-.hoja button:focus-visible,#salir button:focus-visible{outline:2px solid var(--acento,#F79A1F);outline-offset:2px}
+.hoja button:focus-visible{outline:2px solid var(--acento,#F79A1F);outline-offset:2px}
 .hoja-tabs button:focus-visible{outline-offset:-3px;border-radius:6px}
 .hoja-panel{display:flex;flex-direction:column;gap:15px;flex:1 1 auto;min-height:0}
 .hoja-cab{display:flex;align-items:center;gap:10px;flex:none}
@@ -329,6 +325,8 @@ footer .sem.copiada{color:#9fd67a}
 .hoja-botones{display:flex;gap:10px;flex:none}
 #hoja-menu{flex:0 0 104px}
 #hoja-empezar,#hoja-volver{flex-grow:1}
+/* Si hay partida guardada, la ficha avisa de que Empezar la sustituye (v9.1). */
+.hoja-aviso{font-size:12px;line-height:1.35;color:#8c7f6a;text-align:center;margin:-5px 0;flex:none}
 .reloj-parado{position:absolute;top:12px;right:16px;display:flex;align-items:center;gap:6px;font-size:11px;color:#c9b99c;
   border:1px solid #43372a;border-radius:999px;padding:3px 9px 3px 7px;background:#1c1710}
 
@@ -359,7 +357,7 @@ footer .sem{font-variant-numeric:tabular-nums}
   <div id="fondo-wrap"><canvas id="fondo" aria-hidden="true"></canvas></div>
 
   <div class="inicio-botones">
-    <!-- Sale cuando exista el guardado (nota «Guardar partida»). Hoy, nunca. -->
+    <!-- La partida guardada (v9.1, T-41): sólo sale si hay una que valga. -->
     <button id="continuar" hidden>
       <span class="play"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M4 2l8 5-8 5z" fill="#F79A1F"/></svg></span>
       <span class="txt"><b>Continuar partida</b><span id="continuar-detalle"></span></span>
@@ -453,18 +451,6 @@ footer .sem{font-variant-numeric:tabular-nums}
   <span class="sem" id="seed" role="button" tabindex="0" title="Tócala para copiarla"></span>
 </footer>
 
-</div>
-
-<!-- «¿Salir de la partida?» (v9). -->
-<div id="salir" class="encima" hidden>
-  <div class="caja" role="dialog" aria-modal="true" aria-labelledby="salir-titulo">
-    <h2 id="salir-titulo">¿Salir de la partida?</h2>
-    <p>Se perderá la partida.</p>
-    <div class="fin-botones">
-      <button id="salir-si" class="secundario">Salir</button>
-      <button id="salir-no" class="primario">Seguir jugando</button>
-    </div>
-  </div>
 </div>
 
 <!-- La hoja (v9, T-40). Desde el inicio es la ficha del modo; desde una (i) de
@@ -582,6 +568,8 @@ footer .sem{font-variant-numeric:tabular-nums}
     <button id="hoja-modo-sig" aria-label="Modo siguiente"><svg width="8" height="12" viewBox="0 0 8 12" aria-hidden="true"><path d="M2 1l5 5-5 5" stroke="#6d6150" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></button>
   </div>
 
+  <p class="hoja-aviso" id="hoja-aviso" hidden></p>
+
   <div class="hoja-botones">
     <button id="hoja-menu" class="secundario">‹ Menú</button>
     <button id="hoja-empezar" class="primario">Empezar</button>
@@ -594,6 +582,7 @@ footer .sem{font-variant-numeric:tabular-nums}
 <script src="js/constants.js"></script>
 <script src="js/state.js"></script>
 <script src="js/bot-tonto.js"></script>
+<script src="js/guardado.js"></script>
 <script src="js/render.js"></script>
 <script src="js/input.js"></script>
 <script src="js/app.js"></script>
