@@ -305,6 +305,11 @@ footer .sem.copiada{color:#9fd67a}
   overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;--col:58px}
 .hoja-filas.basico{--col:78px}
 .hoja-fila{display:grid;grid-template-columns:var(--col) 1fr;gap:12px;align-items:center}
+.hoja-fila.arriba{align-items:start}
+/* Contagio (v10.1): qué huella deja cada plaga, una por línea. */
+.huellas-lista{list-style:none;margin:3px 0 0;padding:0}
+.huellas-lista li{font-size:14px;line-height:1.4;color:#c9b99c}
+.huellas-lista li::before{content:"· ";color:#C79BD9}
 .hoja-filas p{font-size:14px;line-height:1.4;color:#c9b99c}
 .hoja-filas b{color:#ede4d3}
 .hoja-filas .escalon{grid-template-columns:70px 1fr}
@@ -606,17 +611,25 @@ footer .sem{font-variant-numeric:tabular-nums}
         <span class="ico-seg" aria-hidden="true"><span data-const="TURNOS_CONTAGIO">65</span><small> t</small></span>
         <p>Sin reloj. La partida dura <b><span data-const="TURNOS_CONTAGIO">65</span> turnos</b>: se ve venir el final.</p>
       </div>
-      <div class="hoja-fila">
+      <div class="hoja-fila arriba">
         <svg width="26" height="23" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#C8A14A" stroke="#1c1710" stroke-width="2"/><polygon points="23,9 36,15 36,26 23,32 10,26 10,15" fill="none" stroke="#e5484d" stroke-width="3.5"/></svg>
-        <p>Las mismas plagas que en Contrarreloj, pero cada una deja <b>huella</b> en el panal (la seda, no).</p>
+        <div>
+        <p>Las plagas son las de Contrarreloj, pero dejan <b>huella</b>:</p>
+        <ul class="huellas-lista">
+          <li><b>Varroa</b>, la celda que baja a cera</li>
+          <li><b>Polilla</b>, el capullo</li>
+          <li><b>Velutina</b>, las 3-4 celdas que baja a cera</li>
+          <li><b>Seda</b>, no deja</li>
+        </ul>
+        </div>
       </div>
       <div class="hoja-fila">
-        <svg width="52" height="22" viewBox="0 0 92 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#C8A14A" stroke="#1c1710" stroke-width="2"/><polygon points="23,9 36,15 36,26 23,32 10,26 10,15" fill="none" stroke="#e5484d" stroke-width="3.5"/><polygon points="68,1 90,11 90,29 68,39 46,29 46,11" fill="#9C7F3C" stroke="#1c1710" stroke-width="2"/><polygon points="68,9 81,15 81,26 68,32 55,26 55,15" fill="none" stroke="#e5484d" stroke-width="3" stroke-dasharray="4 3"/></svg>
-        <p>Si la dejas, <b>se contagia</b> a una celda de cría vecina cada pocos turnos. Parpadea el turno antes.</p>
+        <svg width="52" height="22" viewBox="0 0 92 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#C8A14A" stroke="#1c1710" stroke-width="2"/><polygon points="23,9 36,15 36,26 23,32 10,26 10,15" fill="none" stroke="#e5484d" stroke-width="3.5"/><polygon points="68,1 90,11 90,29 68,39 46,29 46,11" fill="#6E5A32" stroke="#1c1710" stroke-width="2"/><polygon points="68,9 81,15 81,26 68,32 55,26 55,15" fill="none" stroke="#e5484d" stroke-width="3" stroke-dasharray="4 3"/></svg>
+        <p>Cada <b><span data-const="CONTAGIO_CADA_NORMAL">5</span> turnos</b> (<span data-const="CONTAGIO_CADA_DIFICIL">4</span> en difícil), cada mancha de varroa o velutina <b>se extiende a una celda de cría vecina y la baja a cera</b>. Parpadea el turno antes.</p>
       </div>
       <div class="hoja-fila">
         <span class="ico-mas" aria-hidden="true"><svg width="24" height="21" viewBox="0 0 46 40"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#F79A1F" stroke="#1c1710" stroke-width="2"/><text x="23" y="21" text-anchor="middle" dominant-baseline="central" font-size="18" font-weight="700" fill="#3a2a00" data-const="MAX_LEVEL">5</text></svg></span>
-        <p><b>Cosechar limpia</b> la huella de cada celda cosechada. Al capullo basta con cosechar a su lado.</p>
+        <p><b>Cosecha la celda marcada</b> para limpiarla: subirla de nivel no basta. El capullo, con cualquier cosecha que lo toque o esté a su lado.</p>
       </div>
       <div class="hoja-fila">
         <span class="ico-seg" aria-hidden="true" style="color:#C79BD9">−<span data-const="HUELLA_RESTA">1.000</span></span>
@@ -641,8 +654,8 @@ footer .sem{font-variant-numeric:tabular-nums}
       </div>
       <div id="expansion-escala"></div>
       <div class="hoja-fila">
-        <span class="ico-seg" aria-hidden="true"><span data-const="TOPE_EXPANSION">150</span><small> t</small></span>
-        <p>Sin reloj ni plagas. Gana quien <b>completa el panal en menos turnos</b>. Si en <span data-const="TOPE_EXPANSION">150</span> no lo has completado, se acaba.</p>
+        <span class="ico-seg" aria-hidden="true"><span data-tope>150</span><small> t</small></span>
+        <p>Sin reloj ni plagas. Gana quien <b>completa el panal en menos turnos</b>. Si en <span data-tope>150</span> no lo has completado, se acaba.</p>
       </div>
     </div>
   </div>

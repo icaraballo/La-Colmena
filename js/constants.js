@@ -149,7 +149,10 @@ const CONFIG_MODO = {
 // varroa, la zona de la velutina y el capullo quedan marcadas; cada grupo de
 // varroa o velutina crece una celda cada CONTAGIO_CADA turnos, sólo sobre cría,
 // y al final cada celda marcada resta HUELLA_RESTA puntos. Se limpian cosechando.
-// Los tres números son provisionales: los calibra el bot (Modos-nuevos §3.8).
+// Desde la v10.1 (T-47) la celda contagiada, además de quedar marcada, baja a
+// cera: con el contagio que sólo marcaba, la huella no se notaba hasta el final
+// (al humano le restaba un 5,8 %; con la bajada, un 11,8 %, dentro del 10-20 %
+// buscado). Ver Balance § v10.1.
 // ---------------------------------------------------------------------------
 // Cada cuántos turnos crece un grupo. **Es la dificultad de Contagio**: escala su
 // propia fuente de presión (Instrucciones §5.14).
@@ -176,8 +179,18 @@ const ARRANQUE_EXPANSION = [
   { nivel: HUEVO, casillas: 3 },
 ];
 // Si el panal no se completa en tantos turnos, la partida acaba sin completar:
-// así el récord no mezcla a quien lo acaba con quien se queda a medias.
-const TOPE_EXPANSION = 150;
+// así el récord no mezcla a quien lo acaba con quien se queda a medias. Por
+// dificultad desde la v10.1 (T-47). Medido sin tope (Balance § v10.1): el p90
+// del bot humano es 175 turnos en normal y 228 en difícil, así que los dos topes
+// cortan a propósito una parte de sus partidas (22 % y ~15-20 %).
+const TOPE_EXPANSION = { normal: 150, dificil: 200 };
+// Cuántas celdas abre una cosecha de COSECHA_GRANDE, +1, +2… que toque el
+// anillo; el último valor vale para todas las más grandes. **Es la dificultad de
+// Expansión** (v10.1, T-47). Normal es la escala de peldanosQueBaja (5-6 → 1,
+// 7 → 2, 8 → 3, 9+ → 4): la cosecha grande vale lo mismo en los dos modos.
+// Difícil es la D3 de las sondas, dos pasos más cara: 5 y 6 no abren nada,
+// 7 → 1, 8 → 2, 9 → 3, 10+ → 4.
+const ABRE_EXPANSION = { normal: [1, 1, 2, 3, 4], dificil: [0, 0, 1, 2, 3, 4] };
 // Cuántas abre una cosecha de 1-4 que toque el anillo. 0 por defecto (§5.9).
 const ABRE_COSECHA_PEQUENA = 0;
 
@@ -328,12 +341,18 @@ const DESASTRES_VISIBLES = ['varroa', 'polilla', 'seda', 'velutina'];
 // igual que «dura» pasó a «dificil». Esta tabla se queda porque «libre» y
 // «invierno» sí necesitan traducción.
 const NOMBRE_DIF = { normal: 'Normal', dificil: 'Difícil' };
+// Los modos con dificultad: los que puntúan y, desde la v10.1, Expansión, que
+// no puntúa pero cuenta turnos. Panal libre no tiene.
+function tieneDificultad(modo) {
+  const c = CONFIG_MODO[modo];
+  return c.puntua || c.abre;
+}
 
 // La versión, a la vista (desde la v9, abajo del todo en la pantalla de inicio):
 // jugando en el móvil no hay forma de saber si lo que tienes delante es lo
 // último que se subió.
 // Se mantiene a mano y tiene que coincidir con package.json (ver Recetas).
-const VERSION = 'v10';
+const VERSION = 'v10.1';
 
 const NOMBRE_MODO = {
   contrarreloj: 'Contrarreloj',
@@ -348,8 +367,8 @@ const FRASE_MODO = {
   contrarreloj: 'Cosecha para ganar tiempo.',
   invierno:     'Evita congelarte.',
   libre:        'Para practicar.',
-  contagio:     'Limpia antes de que se extienda.',
-  expansion:    'Cosecha en el borde para crecer.',
+  contagio:     'Que no se te extienda.',
+  expansion:    'Abre el panal, celda a celda.',
 };
 
 // El color de acento de cada pestaña de la hoja (v9, T-40): la raya de arriba,

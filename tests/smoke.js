@@ -865,7 +865,22 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
     ok(s.huellas[0].tiles.includes(12), 'en su turno crece hacia la única vecina con cría');
     eq(s.huellas[0].proximo, 5 + T.CONTAGIO_CADA.normal, 'y el periodo vuelve a empezar');
     ok(s.eventos.some(e => e.type === 'contagia' && e.tile === 12), 'con el evento contagia');
-    eq(s.height[12], T.LARVA, 'la celda contagiada no baja de nivel');
+    eq(s.height[12], T.CERA, 'la celda contagiada baja a cera (v10.1)');
+    ok(s.eventos.some(e => e.type === 'contagia' && e.desde === T.LARVA), 'y el evento dice de qué nivel bajó');
+  }
+  // v10.1: al bajar a cera, el contagio puede romper la meseta en ese mismo turno.
+  {
+    const s = tablero('contagio', T.CERA, { 0: T.LARVA, 1: T.LARVA, 2: T.LARVA, 3: T.LARVA, 23: T.AGUA });
+    s.huellas = [{ tipo: 'varroa', tiles: [5], proximo: 1 }];
+    s.height[5] = T.CERA;
+    for (const i of [4, 6]) s.height[i] = T.AGUA;
+    // Las cuatro larvas de la fila de arriba son la única meseta de 4; la huella
+    // de 5 toca 0 y 1: al contagiar una, el paso 4 deja de caber y hay fallo.
+    for (let i = 7; i < 24; i++) if (s.height[i] === T.CERA) s.height[i] = (i % 2 ? T.AGUA : T.MAX_LEVEL);
+    s.step = 1; s.eventos = [];
+    T.commitTurn(s, [23]);   // agua → cera; turno 1: le toca al grupo
+    const c = s.eventos.find(e => e.type === 'contagia');
+    ok(c && [0, 1].includes(c.tile) && s.height[c.tile] === T.CERA, 'el contagio baja a cera una larva de la meseta');
   }
   {
     const s = tablero('contagio', T.CERA, { 12: T.MAX_LEVEL, 13: T.AGUA });
@@ -923,6 +938,14 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   eq(T.celdasQueGana(4), T.ABRE_COSECHA_PEQUENA, 'una cosecha pequeña abre ABRE_COSECHA_PEQUENA');
   ok(T.celdasQueGana(5) === 1 && T.celdasQueGana(7) === 2 && T.celdasQueGana(8) === 3 && T.celdasQueGana(9) === 4 && T.celdasQueGana(12) === 4,
      'la escala: 5-6 → 1, 7 → 2, 8 → 3, 9 o más → 4');
+  // v10.1: normal es la escala de peldanosQueBaja; difícil, la D3.
+  ok([5, 6, 7, 8, 9, 10, 15].every(L => T.celdasQueGana(L, 'normal') === Math.min(T.peldanosQueBaja(L), T.ESCALERA_TOPE)),
+     'en normal, la escala es la de peldanosQueBaja');
+  eq([4, 5, 6, 7, 8, 9, 10, 15].map(L => T.celdasQueGana(L, 'dificil')).join(','), '0,0,0,1,2,3,4,4',
+     'en difícil (D3): 5 y 6 no abren, 7 → 1, 8 → 2, 9 → 3, 10 o más → 4');
+  ok(T.abreDesde('normal') === 5 && T.abreDesde('dificil') === 7, 'abre desde una cosecha de 5 en normal y de 7 en difícil');
+  ok(T.TOPE_EXPANSION.normal === 150 && T.TOPE_EXPANSION.dificil === 200, 'topes 150 y 200');
+  ok(T.tieneDificultad('expansion') && T.tieneDificultad('contagio') && !T.tieneDificultad('libre'), 'Expansión tiene dificultad; Panal libre no');
 
   const preparar = (celdas) => {
     const s = T.createState('expansion', 'normal', 11);
@@ -978,11 +1001,27 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
     ok(s.gameOver && s.completado, 'abrir la última completa el panal y acaba la partida');
     ok(s.eventos.some(e => e.type === 'fin' && e.completado), 'con el evento fin');
   }
-  {
+  for (const dif of ['normal', 'dificil']) {
     const s = preparar([]);
-    s.turn = T.TOPE_EXPANSION - 1; s.step = 1;
+    s.dificultad = dif;
+    s.turn = T.TOPE_EXPANSION[dif] - 2; s.step = 1;
     T.commitTurn(s, [18]);
-    ok(s.gameOver && !s.completado, `en el turno ${T.TOPE_EXPANSION} acaba sin completar`);
+    ok(!s.gameOver, `en ${dif}, un turno antes del tope sigue`);
+    s.step = 1; T.commitTurn(s, [17]);
+    ok(s.gameOver && !s.completado, `en ${dif}, en el turno ${T.TOPE_EXPANSION[dif]} acaba sin completar`);
+  }
+  {
+    // En difícil una cosecha de 6 que toca el borde no abre nada; una de 7, 1.
+    const seis = [6, 11, 12, 17, 18, 24];
+    const s = preparar(seis);
+    s.dificultad = 'dificil';
+    ok(T.celdasQueAbriria(s, seis).gana === 0, 'en difícil una cosecha de 6 no gana celdas');
+    T.commitTurn(s, seis);
+    eq(T.abiertas(s), 0, '…y no abre nada aunque toque el borde');
+    const s2 = preparar(siete);
+    s2.dificultad = 'dificil';
+    T.commitTurn(s2, siete);
+    eq(T.abiertas(s2), 1, 'en difícil una de 7 que toca 2 abre 1');
   }
   {
     const s = preparar([]);
@@ -1046,6 +1085,13 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   const rellena = /const valores = \{([^}]+)\}/.exec(js)[1];
   for (const c of new Set(consts)) ok(rellena.includes(c), `app.js rellena el data-const «${c}»`);
   ok(!/4 celdas o más/.test(html), 'la ayuda ya no lleva el umbral escrito a mano');
+  // v10.1: la tarjeta de Contagio lee el periodo del contagio de CONTAGIO_CADA, y
+  // el tope de Expansión lo pone la dificultad (data-tope, no data-const).
+  ok(consts.includes('CONTAGIO_CADA_NORMAL') && consts.includes('CONTAGIO_CADA_DIFICIL'), 'la tarjeta de Contagio lee CONTAGIO_CADA');
+  ok(/CONTAGIO_CADA_NORMAL: CONTAGIO_CADA\.normal/.test(rellena) && /CONTAGIO_CADA_DIFICIL: CONTAGIO_CADA\.dificil/.test(rellena), '…de las dos dificultades');
+  ok(!consts.includes('TOPE_EXPANSION') && (html.match(/data-tope/g) || []).length === 2, 'el tope de la tarjeta de Expansión va por dificultad');
+  ok(/TOPE_EXPANSION\[dif\]/.test(js) && /\[data-tope\]/.test(js), 'y lo rellena pintarEscalaExpansion');
+  ok(/baja a cera/.test(html.split('data-pestana="contagio"')[1].split('hoja-panel')[0]), 'la tarjeta de Contagio dice que el contagio baja a cera');
 
   // La versión que se ve en el pie tiene que ser la del paquete: si se
   // descuadran, el número que enseña el juego miente (T-28).

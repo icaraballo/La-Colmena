@@ -9,10 +9,13 @@ const RECORD_KEY = 'colmena.records.v1';
 function leerRecords() {
   try { return JSON.parse(localStorage.getItem(RECORD_KEY)) || {}; } catch { return {}; }
 }
-function guardarRecord(clave, puntos) {
+// `menos`: gana el valor más bajo (los turnos de Expansión, v10.1); si no, el
+// más alto (los puntos).
+function guardarRecord(clave, puntos, menos = false) {
   try {
     const r = leerRecords();
-    if (!(puntos > (r[clave] || 0))) return false;
+    const antes = r[clave];
+    if (menos ? antes && !(puntos < antes) : !(puntos > (antes || 0))) return false;
     r[clave] = puntos;
     localStorage.setItem(RECORD_KEY, JSON.stringify(r));
     return true;                       // es récord nuevo
@@ -154,10 +157,10 @@ function leerPartida() {
 }
 function hayPartidaGuardada() { return !!leerPartida(); }
 // «Invierno · Normal · turno 47 · 3.120 puntos». Panal libre no tiene
-// dificultad ni puntos.
+// dificultad ni puntos; Expansión tiene dificultad (v10.1) pero no puntos.
 function describirPartida(s) {
   const cfg = CONFIG_MODO[s.modo];
-  return [NOMBRE_MODO[s.modo], cfg.puntua && NOMBRE_DIF[s.dificultad], `turno ${s.turn}`,
+  return [NOMBRE_MODO[s.modo], tieneDificultad(s.modo) && NOMBRE_DIF[s.dificultad], `turno ${s.turn}`,
           cfg.puntua && `${s.score.toLocaleString('es-ES')} puntos`,
           cfg.abre && `${abiertas(s)} de ${CERRADAS_EXPANSION.length} abiertas`].filter(Boolean).join(' · ');
 }
@@ -342,21 +345,24 @@ function pintarTarjeta() {
   }).join('');
 }
 // La misma escala en la pestaña de Expansión (v10): celdas que se abren en vez
-// de plagas que se apagan. Sale de celdasQueGana, que usa peldanosQueBaja.
-function pintarEscalaExpansion() {
-  const filas = [];
-  for (let L = COSECHA_GRANDE; L <= COSECHA_LIMPIA; L++) {
-    const n = celdasQueGana(L), ult = filas[filas.length - 1];
-    if (ult && ult.n === n && L < COSECHA_LIMPIA) ult.hasta = L; else filas.push({ desde: L, hasta: L, n });
+// de plagas que se apagan. Sale de celdasQueGana, de la dificultad que se ve en
+// la hoja (v10.1): la elegida en la ficha o la de la partida en consulta. En
+// difícil se ve que 5 y 6 no abren nada. El tope de turnos de la tarjeta, igual.
+function pintarEscalaExpansion(dif) {
+  const filas = [], ultimo = COSECHA_GRANDE + ABRE_EXPANSION[dif].length - 1;
+  for (let L = COSECHA_GRANDE; L <= ultimo; L++) {
+    const n = celdasQueGana(L, dif), ult = filas[filas.length - 1];
+    if (ult && ult.n === n && L < ultimo) ult.hasta = L; else filas.push({ desde: L, hasta: L, n });
   }
   const hex = abre => `<svg viewBox="0 0 46 40" aria-hidden="true"><polygon points="${HEX}" fill="${abre ? '#2E4756' : 'none'}" stroke="${abre ? '#E6B872' : '#6d6150'}" stroke-width="2" ${abre ? '' : 'stroke-dasharray="3 2"'}/></svg>`;
-  const tope = celdasQueGana(COSECHA_LIMPIA);
+  const tope = celdasQueGana(ultimo, dif);
   document.getElementById('expansion-escala').innerHTML = filas.map(f => {
-    const nombre = f.hasta === COSECHA_LIMPIA ? `${f.desde} o más` : f.hasta > f.desde ? `${f.desde} o ${f.hasta}` : `${f.desde}`;
+    const nombre = f.hasta === ultimo ? `${f.desde} o más` : f.hasta > f.desde ? `${f.desde} o ${f.hasta}` : `${f.desde}`;
     const mini = Array.from({ length: tope }, (_, k) => hex(k < f.n)).join('');
     return `<div class="escalon"><span class="n">${nombre}<small>celdas</small></span>` +
-      `<span class="mini">${mini}<em style="color:#E6B872">abre ${f.n}</em></span></div>`;
+      `<span class="mini">${mini}<em style="color:${f.n ? '#E6B872' : '#8c7f6a'}">${f.n ? `abre ${f.n}` : 'nada'}</em></span></div>`;
   }).join('');
+  document.querySelectorAll('[data-tope]').forEach(el => { el.textContent = TOPE_EXPANSION[dif]; });
 }
 
 // Los números de la hoja salen de las constantes (v7, regla 8): es HTML
@@ -366,7 +372,8 @@ function rellenarConstantes() {
   const valores = { COSECHA_GRANDE, COSECHA_LIMPIA, SEDA_TURNOS, ITEM_TURNOS, CALMA_TRAS_VELUTINA,
                     MAX_LEVEL, RELOJ_INICIAL, RELOJ_TECHO, RELOJ_ACELERA_CADA, PUNTOS_POR_SEGUNDO,
                     TURNOS_CONTAGIO, HUELLA_RESTA: HUELLA_RESTA.toLocaleString('es-ES'),
-                    TOPE_EXPANSION, N_CERRADAS: CERRADAS_EXPANSION.length };
+                    CONTAGIO_CADA_NORMAL: CONTAGIO_CADA.normal, CONTAGIO_CADA_DIFICIL: CONTAGIO_CADA.dificil,
+                    N_CERRADAS: CERRADAS_EXPANSION.length };
   document.querySelectorAll('[data-const]').forEach(el => {
     el.textContent = valores[el.dataset.const];
   });
@@ -400,9 +407,15 @@ function pintarFin() {
 
   const rec = document.getElementById('fin-record');
   if (cfg.abre) {
-    // El récord de Expansión (menos turnos es mejor) espera al historial (§5.9).
-    rec.textContent = S.completado ? 'Panal completo' : `Sin completar: ${abiertas(S)} de ${CERRADAS_EXPANSION.length} celdas abiertas`;
-    rec.className = 'record' + (S.completado ? ' nuevo' : '');
+    // El récord de Expansión (v10.1): los turnos, menos es mejor, uno por
+    // dificultad y sólo con el panal completo.
+    const clave = `${S.modo}.${S.dificultad}`;
+    const antes = leerRecords()[clave];
+    const nuevo = S.completado && guardarRecord(clave, S.turn, true);
+    rec.textContent = nuevo ? (antes ? `¡Récord! El anterior era ${antes} turnos` : '¡Primer récord!')
+      : S.completado ? `Panal completo · tu récord: ${antes} turnos`
+      : `Sin completar: ${abiertas(S)} de ${CERRADAS_EXPANSION.length} celdas abiertas` + (antes ? ` · tu récord: ${antes} turnos` : '');
+    rec.className = 'record' + (nuevo ? ' nuevo' : '');
   } else if (cfg.puntua) {
     const clave = `${S.modo}.${S.dificultad}`;
     const antes = leerRecords()[clave] || 0;
@@ -486,7 +499,7 @@ function updateHud(now = performance.now()) {
   // Lo secundario, en una línea pequeña. Tiene que caber en UNA línea de 336 px
   // (360 de móvil menos márgenes): si salta a dos, el panal pierde 17 px.
   const puntos = cfg.puntua ? S.score.toLocaleString('es-ES') : '—';
-  if (cfg.abre) setHtml('datos', `Turno <b>${S.turn}</b> de ${TOPE_EXPANSION} · Racha <b>${S.streak}</b>`);
+  if (cfg.abre) setHtml('datos', `Turno <b>${S.turn}</b> de ${TOPE_EXPANSION[S.dificultad]} · Racha <b>${S.streak}</b>`);
   else setHtml('datos', `Puntos <b>${puntos}</b> · Racha <b>${S.streak}</b> · Turno <b>${S.turn}</b>`);
 
   // Contagio: cuánto restarían las huellas si acabara ahora, leído del motor.
@@ -675,7 +688,10 @@ function contar(eventos) {
       avisar('limpiaHuella', e.tiles);
     }
     if (e.type === 'contagia') {
-      fallo.push(`<b>Contagio</b>: la ${e.tipo === 'velutina' ? 'huella de la velutina' : 'varroa'} se extiende`);
+      // Desde la v10.1 la celda contagiada baja a cera: se dice, para que se
+      // entienda por qué bajó.
+      // Corta: puede compartir las dos líneas con el fallo que provoca.
+      fallo.push(`<b>Contagio</b>: la ${e.tipo === 'velutina' ? 'velutina' : 'varroa'} baja ${e.desde === HUEVO ? 'un' : 'una'} ${NOMBRE_NIVEL[e.desde]} a cera`);
       avisar('contagia', [e.tile]);
     }
     // Expansión (v10): lo que abre la cosecha, y si se pierde algo, por qué.
@@ -784,9 +800,9 @@ function prepararPartida(estado, dur) {
   if (canvas) resize(); else redraw();   // cada modo coloca el panal a su altura
 }
 
-// La barra de la partida (v9): el modo y, si puntúa, la dificultad.
+// La barra de la partida (v9): el modo y, si la tiene, la dificultad.
 function pintarBarra() {
-  const dif = CONFIG_MODO[S.modo].puntua ? ` <span>· ${NOMBRE_DIF[S.dificultad]}</span>` : '';
+  const dif = tieneDificultad(S.modo) ? ` <span>· ${NOMBRE_DIF[S.dificultad]}</span>` : '';
   setHtml('barra-modo', NOMBRE_MODO[S.modo] + dif);
 }
 
@@ -942,6 +958,7 @@ function guardarDificultad(modo, dif) {
 // Lo que cambia entre las dos dificultades, dicho con la constante (regla 8).
 function textoDificultad(modo, dif) {
   if (CONFIG_MODO[modo].huellas) return `se contagia cada ${CONTAGIO_CADA[dif]} turnos`;
+  if (CONFIG_MODO[modo].abre) return `abre desde una cosecha de ${abreDesde(dif)} · ${TOPE_EXPANSION[dif]} turnos`;
   if (CONFIG_MODO[modo].reloj) return `acelera un ${Math.round(RELOJ_ACELERA[dif] * 100)} %`;
   const n = HELADA_MUERDE[dif];
   return `${n} ${n === 1 ? 'celda' : 'celdas'} por fallo`;
@@ -1012,6 +1029,7 @@ function pintarHoja() {
   });
 
   pintarDificultad(modo, ficha);
+  if (CONFIG_MODO[modo].abre) pintarEscalaExpansion(ficha ? dificultadElegida(modo) : S.dificultad);
 
   // Empezar otra sustituye a la guardada (v9.1): que no pille por sorpresa.
   const g = ficha ? leerPartida() : null;
@@ -1049,7 +1067,7 @@ function cambiarPestana(p) {
 function pintarDificultad(modo, ficha) {
   const caja = document.getElementById('hoja-dif');
   caja.innerHTML = '';
-  caja.hidden = !CONFIG_MODO[modo].puntua;
+  caja.hidden = !tieneDificultad(modo);
   if (caja.hidden) return;
   const elegida = ficha ? dificultadElegida(modo) : S.dificultad;
   if (ficha) {
@@ -1070,7 +1088,11 @@ function pintarDificultad(modo, ficha) {
     if (ficha) {
       op.setAttribute('role', 'radio');
       op.setAttribute('aria-checked', String(dif === elegida));
-      op.addEventListener('click', () => { guardarDificultad(modo, dif); pintarDificultad(modo, true); });
+      op.addEventListener('click', () => {
+        guardarDificultad(modo, dif); pintarDificultad(modo, true);
+        // La tarjeta de Expansión cambia con la dificultad (v10.1).
+        if (CONFIG_MODO[modo].abre) pintarEscalaExpansion(dif);
+      });
     }
     caja.appendChild(op);
   }
@@ -1104,7 +1126,7 @@ function empezar() {
   if (!hojaAbierta) return;
   const modo = hojaAbierta.modo;
   partida.modo = modo;
-  partida.dificultad = CONFIG_MODO[modo].puntua ? dificultadElegida(modo) : 'normal';
+  partida.dificultad = tieneDificultad(modo) ? dificultadElegida(modo) : 'normal';
   marcarBasicoVisto();
   hojaOrigen = null;
   cerrarHoja();
@@ -1176,7 +1198,7 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   setText('inicio-version', VERSION);
   pintarTarjeta();
-  pintarEscalaExpansion();
+  pintarEscalaExpansion('normal');
 
   document.getElementById('inicio').addEventListener('scroll', marcarHayMas, { passive: true });
 

@@ -295,8 +295,8 @@ function commitTurn(s, cells) {
   spawnItemIfEarned(s);
 
   // Contagio: después de pasar el turno y antes del fallo, crecen los grupos a
-  // los que les toca. El contagio sólo marca, no baja niveles, así que no cambia
-  // si cabe el paso.
+  // los que les toca. Desde la v10.1 la celda contagiada baja a cera, así que
+  // tiene que ir antes de mirar si cabe el paso: puede romper la meseta.
   if (cfg.huellas) contagiar(s);
 
   // ¿Cabe el siguiente paso en algún sitio? Con danza, cualquier longitud vale.
@@ -307,7 +307,7 @@ function commitTurn(s, cells) {
   if (!s.gameOver && cfg.turnosFijos && s.turn >= TURNOS_CONTAGIO) cerrarPorTurnos(s);
   if (!s.gameOver && cfg.abre) {
     if (!s.cerrada.some(Boolean)) terminarExpansion(s, true);
-    else if (s.turn >= TOPE_EXPANSION) terminarExpansion(s, false);
+    else if (s.turn >= TOPE_EXPANSION[s.dificultad]) terminarExpansion(s, false);
   }
   return true;
 }
@@ -538,6 +538,10 @@ function contagiable(s, i) {
 // válidas de todo el grupo. Sin ninguna, no crece y el periodo vuelve a empezar
 // (no se queda «cargado» esperando cría: eso sería contagio por sorpresa). Así,
 // rodear una huella de celdas bajas hace de cortafuegos.
+// La celda contagiada baja a cera (v10.1, T-47), igual que la que marca la
+// plaga al caer: el contagio rompe mesetas durante la partida y no sólo resta al
+// final. Y se frena algo solo, porque la cera ya no es cría. El evento dice de
+// qué nivel bajó, para que la pantalla lo cuente.
 function contagiar(s) {
   s.huellas.forEach((g, k) => {
     if (g.proximo > s.turn) return;
@@ -547,7 +551,9 @@ function contagiar(s) {
     const tile = elegir(s, cand);
     if (tile === undefined) return;
     g.tiles.push(tile);
-    s.eventos.push({ type: 'contagia', tile, grupo: k, tipo: g.tipo });
+    const desde = s.height[tile];
+    s.height[tile] = CERA;
+    s.eventos.push({ type: 'contagia', tile, grupo: k, tipo: g.tipo, desde });
   });
 }
 
@@ -597,11 +603,19 @@ function cerrarPorTurnos(s) {
 // ---------------------------------------------------------------------------
 // Expansión (v10, T-44): la cosecha abre las cerradas que toca.
 // ---------------------------------------------------------------------------
-// Cuántas celdas gana una cosecha de L: la misma escala que baja la escalera
-// (5-6 → 1, 7 → 2, 8 → 3, 9 o más → 4), así la cosecha grande vale lo mismo en
-// los dos modos. Las pequeñas, ABRE_COSECHA_PEQUENA.
-function celdasQueGana(L) {
-  return L < COSECHA_GRANDE ? ABRE_COSECHA_PEQUENA : Math.min(peldanosQueBaja(L), ESCALERA_TOPE);
+// Cuántas celdas gana una cosecha de L en cada dificultad (ABRE_EXPANSION): en
+// normal, la misma escala que baja la escalera; en difícil, la D3 (v10.1). Las
+// pequeñas, ABRE_COSECHA_PEQUENA.
+function celdasQueGana(L, dificultad = 'normal') {
+  if (L < COSECHA_GRANDE) return ABRE_COSECHA_PEQUENA;
+  const t = ABRE_EXPANSION[dificultad];
+  return t[Math.min(L - COSECHA_GRANDE, t.length - 1)];
+}
+// La cosecha más pequeña que abre algo: lo que dice la ficha de cada dificultad.
+function abreDesde(dificultad) {
+  let L = COSECHA_GRANDE;
+  while (!celdasQueGana(L, dificultad)) L++;
+  return L;
 }
 // Las cerradas que tocan alguna celda de la cosecha.
 function cerradasQueToca(s, cells) {
@@ -613,7 +627,7 @@ function cerradasQueToca(s, cells) {
 // Se abren min(gana, tocadas); si toca más de las que gana, cuáles se decide al
 // azar al cosechar.
 function celdasQueAbriria(s, cells) {
-  const tocadas = cerradasQueToca(s, cells), gana = celdasQueGana(cells.length);
+  const tocadas = cerradasQueToca(s, cells), gana = celdasQueGana(cells.length, s.dificultad);
   return { tocadas, gana, abre: Math.min(gana, tocadas.length) };
 }
 function abrirCeldas(s, cells) {
