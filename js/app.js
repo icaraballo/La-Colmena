@@ -25,7 +25,8 @@ const abejas = [];          // partículas de la cosecha
 // cambio y no sólo el HUD (T-16). Cada uno vive 900 ms.
 const destellos = [];
 const COLOR_AVISO = { helada: '#7fd4ff', varroa: '#ff7a45', velutina: '#ff4d4d',
-                      seda: '#f5f5f5', polilla: '#d8d2c4', deshiela: '#9fd67a' };
+                      seda: '#f5f5f5', polilla: '#d8d2c4', deshiela: '#9fd67a',
+                      contagia: '#e5484d', limpiaHuella: '#9fd67a', abre: '#E6B872' };
 function avisar(tipo, tiles) {
   if (!tiles || !tiles.length) return;
   destellos.push({ tiles, color: COLOR_AVISO[tipo] || '#ffd23f', t0: performance.now() });
@@ -61,9 +62,21 @@ async function copiarTexto(txt) {
 }
 
 function redraw(now = performance.now()) {
-  draw(ctx, S, { cells: drag.cells, ready: dragReady(S), fuera: drag.fuera, abejas, destellos }, now);
+  const ready = dragReady(S);
+  const q = abririaAhora(ready);
+  draw(ctx, S, { cells: drag.cells, ready, fuera: drag.fuera, abejas, destellos, abriria: q && q.tocadas }, now);
   updateHud(now);
   pintarFin();
+}
+
+// Expansión: mientras arrastras una cosecha que abriría celdas, se resaltan las
+// cerradas que toca (v10). Lo dice el motor (celdasQueAbriria), no la interfaz.
+// Si toca más de las que gana, se resaltan todas: cuáles se abren es al azar.
+function abririaAhora(ready) {
+  if (!ready || !CONFIG_MODO[S.modo].abre || drag.fuera) return null;
+  if (nivelCadena(S, drag.cells) !== MAX_LEVEL) return null;
+  const q = celdasQueAbriria(S, drag.cells);
+  return q.abre ? q : null;
 }
 
 function setText(id, v) {
@@ -145,7 +158,8 @@ function hayPartidaGuardada() { return !!leerPartida(); }
 function describirPartida(s) {
   const cfg = CONFIG_MODO[s.modo];
   return [NOMBRE_MODO[s.modo], cfg.puntua && NOMBRE_DIF[s.dificultad], `turno ${s.turn}`,
-          cfg.puntua && `${s.score.toLocaleString('es-ES')} puntos`].filter(Boolean).join(' · ');
+          cfg.puntua && `${s.score.toLocaleString('es-ES')} puntos`,
+          cfg.abre && `${abiertas(s)} de ${CERRADAS_EXPANSION.length} abiertas`].filter(Boolean).join(' · ');
 }
 
 // La semilla: copiar la de ahora o jugar otra. Es lo que le faltaba a QA para
@@ -278,7 +292,7 @@ function pintarLeyenda() {
   document.getElementById('helada-fila').hidden = !cfg.helada;
   // La (i) de la línea de datos sólo en Panal libre: en los otros ya están la
   // del reloj y la de la helada (v9).
-  document.getElementById('datos-info').hidden = cfg.puntua;
+  document.getElementById('datos-info').hidden = cfg.puntua || cfg.abre;
   const fila = document.getElementById('plagas-fila');
   fila.innerHTML = '';
   if (!cfg.desastres) return;
@@ -327,12 +341,32 @@ function pintarTarjeta() {
       `<span class="mini">${hex}<em>${f.n >= tope ? 'todas' : '−' + f.n}</em></span></div>`;
   }).join('');
 }
+// La misma escala en la pestaña de Expansión (v10): celdas que se abren en vez
+// de plagas que se apagan. Sale de celdasQueGana, que usa peldanosQueBaja.
+function pintarEscalaExpansion() {
+  const filas = [];
+  for (let L = COSECHA_GRANDE; L <= COSECHA_LIMPIA; L++) {
+    const n = celdasQueGana(L), ult = filas[filas.length - 1];
+    if (ult && ult.n === n && L < COSECHA_LIMPIA) ult.hasta = L; else filas.push({ desde: L, hasta: L, n });
+  }
+  const hex = abre => `<svg viewBox="0 0 46 40" aria-hidden="true"><polygon points="${HEX}" fill="${abre ? '#2E4756' : 'none'}" stroke="${abre ? '#E6B872' : '#6d6150'}" stroke-width="2" ${abre ? '' : 'stroke-dasharray="3 2"'}/></svg>`;
+  const tope = celdasQueGana(COSECHA_LIMPIA);
+  document.getElementById('expansion-escala').innerHTML = filas.map(f => {
+    const nombre = f.hasta === COSECHA_LIMPIA ? `${f.desde} o más` : f.hasta > f.desde ? `${f.desde} o ${f.hasta}` : `${f.desde}`;
+    const mini = Array.from({ length: tope }, (_, k) => hex(k < f.n)).join('');
+    return `<div class="escalon"><span class="n">${nombre}<small>celdas</small></span>` +
+      `<span class="mini">${mini}<em style="color:#E6B872">abre ${f.n}</em></span></div>`;
+  }).join('');
+}
+
 // Los números de la hoja salen de las constantes (v7, regla 8): es HTML
 // estático, y la ayuda de antes decía «4 celdas» a mano cuando el umbral ya
 // era otro.
 function rellenarConstantes() {
   const valores = { COSECHA_GRANDE, COSECHA_LIMPIA, SEDA_TURNOS, ITEM_TURNOS, CALMA_TRAS_VELUTINA,
-                    MAX_LEVEL, RELOJ_INICIAL, RELOJ_TECHO, RELOJ_ACELERA_CADA, PUNTOS_POR_SEGUNDO };
+                    MAX_LEVEL, RELOJ_INICIAL, RELOJ_TECHO, RELOJ_ACELERA_CADA, PUNTOS_POR_SEGUNDO,
+                    TURNOS_CONTAGIO, HUELLA_RESTA: HUELLA_RESTA.toLocaleString('es-ES'),
+                    TOPE_EXPANSION, N_CERRADAS: CERRADAS_EXPANSION.length };
   document.querySelectorAll('[data-const]').forEach(el => {
     el.textContent = valores[el.dataset.const];
   });
@@ -358,14 +392,18 @@ function pintarFin() {
   borrarPartida();   // acabada no se continúa
 
   const cfg = CONFIG_MODO[S.modo];
-  document.getElementById('fin-titulo').textContent = cfg.reloj
-    ? 'Se acabó el día' : cfg.helada ? 'El invierno se ha comido el panal' : 'Sin jugadas';
+  document.getElementById('fin-titulo').textContent = tituloFin(cfg);
 
   const sc = document.getElementById('fin-score');
-  sc.textContent = cfg.puntua ? S.score.toLocaleString('es-ES') : '—';
+  sc.textContent = cfg.puntua ? S.score.toLocaleString('es-ES')
+    : cfg.abre ? (S.completado ? `${S.turn} turnos` : `${abiertas(S)} de ${CERRADAS_EXPANSION.length}`) : '—';
 
   const rec = document.getElementById('fin-record');
-  if (cfg.puntua) {
+  if (cfg.abre) {
+    // El récord de Expansión (menos turnos es mejor) espera al historial (§5.9).
+    rec.textContent = S.completado ? 'Panal completo' : `Sin completar: ${abiertas(S)} de ${CERRADAS_EXPANSION.length} celdas abiertas`;
+    rec.className = 'record' + (S.completado ? ' nuevo' : '');
+  } else if (cfg.puntua) {
     const clave = `${S.modo}.${S.dificultad}`;
     const antes = leerRecords()[clave] || 0;
     const nuevo = guardarRecord(clave, S.score);
@@ -385,6 +423,10 @@ function pintarFin() {
   // y una jugada que acababa en fallo ni se registraba.
   const filas = [['Turnos', S.turn], ['Racha máxima', S.streakMax || S.streak],
                  ['Jugada más larga', S.jugadaMax || 0], ['Duración', formatoDuracion(duracion)]];
+  // Contagio: los puntos antes de las huellas y lo que han restado (lo trae el motor).
+  if (cfg.huellas && S.cierre) filas.unshift(
+    ['Puntos', S.cierre.bruto.toLocaleString('es-ES')],
+    ['Huellas', `${S.cierre.marcadas} · −${S.cierre.resta.toLocaleString('es-ES')}`]);
   for (const [lbl, v] of filas) {
     const d = document.createElement('div');
     const b = document.createElement('b'); b.textContent = v;
@@ -393,6 +435,14 @@ function pintarFin() {
     det.appendChild(d);
   }
   el.hidden = false;
+}
+
+function tituloFin(cfg) {
+  if (cfg.reloj) return 'Se acabó el día';
+  if (cfg.helada) return 'El invierno se ha comido el panal';
+  if (cfg.turnosFijos) return 'Se acabaron los turnos';
+  if (cfg.abre) return S.completado ? '¡Panal completo!' : 'Se acabaron los turnos';
+  return 'Sin jugadas';
 }
 
 // El relleno de una plaga pisada, más encendido cuanto más arriba (v8).
@@ -422,10 +472,31 @@ function updateHud(now = performance.now()) {
     document.getElementById('reloj').className = 'big' + (S.reloj < 10 ? ' urgente' : '');
   }
 
+  // Contagio: los turnos que quedan, donde el Contrarreloj pone el reloj (v10).
+  document.getElementById('quedan-stat').hidden = !cfg.turnosFijos;
+  if (cfg.turnosFijos) {
+    const q = turnosRestantes(S);
+    setText('quedan', q);
+    document.getElementById('quedan').className = 'big' + (q <= 5 && !S.gameOver ? ' urgente' : '');
+  }
+  // Expansión: las abiertas del anillo (v10).
+  document.getElementById('abiertas-stat').hidden = !cfg.abre;
+  if (cfg.abre) { setText('abiertas', abiertas(S)); setText('abiertas-de', `/ ${CERRADAS_EXPANSION.length}`); }
+
   // Lo secundario, en una línea pequeña. Tiene que caber en UNA línea de 336 px
   // (360 de móvil menos márgenes): si salta a dos, el panal pierde 17 px.
   const puntos = cfg.puntua ? S.score.toLocaleString('es-ES') : '—';
-  setHtml('datos', `Puntos <b>${puntos}</b> · Racha <b>${S.streak}</b> · Turno <b>${S.turn}</b>`);
+  if (cfg.abre) setHtml('datos', `Turno <b>${S.turn}</b> de ${TOPE_EXPANSION} · Racha <b>${S.streak}</b>`);
+  else setHtml('datos', `Puntos <b>${puntos}</b> · Racha <b>${S.streak}</b> · Turno <b>${S.turn}</b>`);
+
+  // Contagio: cuánto restarían las huellas si acabara ahora, leído del motor.
+  const hc = document.getElementById('huellas-cab');
+  hc.hidden = !cfg.huellas;
+  if (cfg.huellas) {
+    const n = celdasMarcadas(S);
+    const html = `Huellas <b>${n}</b>` + (n ? ` · <b>−${penalizacionHuellas(S).toLocaleString('es-ES')}</b>` : '');
+    if (hc.innerHTML !== html) hc.innerHTML = html;
+  }
 
   // Invierno: lo que muerde la helada si fallas (v7), en su propia fila desde
   // la v8, donde en Contrarreloj van las plagas.
@@ -518,8 +589,18 @@ function pintarLineas(cfg, biggest) {
   if (S.gameOver) {
     const pts = `${S.score.toLocaleString('es-ES')} puntos en ${S.turn} turnos`;
     txt = cfg.reloj ? `Se acabó el día · ${pts}`
-        : cfg.helada ? `El invierno se ha comido el panal · ${pts}` : `Sin jugadas · ${S.turn} turnos`;
+        : cfg.helada ? `El invierno se ha comido el panal · ${pts}`
+        : cfg.turnosFijos ? `Se acabaron los turnos · ${S.score.toLocaleString('es-ES')} puntos`
+        : cfg.abre ? (S.completado ? `¡Panal completo en ${S.turn} turnos!` : `Sin completar · ${abiertas(S)} de ${CERRADAS_EXPANSION.length} celdas`)
+        : `Sin jugadas · ${S.turn} turnos`;
     cls = 'linea over';
+  } else if (cfg.abre && abririaAhora(dragReady(S))) {
+    // Expansión: lo que abre la cosecha que estás arrastrando. Manda sobre lo
+    // del turno anterior: es lo que estás decidiendo ahora.
+    const q = abririaAhora(dragReady(S));
+    txt = `Esta cosecha abre ${q.abre === 1 ? '1 celda' : `${q.abre} celdas`}` +
+      (q.tocadas.length > q.abre ? ` de las ${q.tocadas.length} que toca` : '');
+    cls = 'linea bueno';
   } else if (logFalloEn === S.turn && logFallo) {
     txt = logFallo; cls = logFalloClase;
   } else if (!S.danza && biggest === S.step) {
@@ -588,6 +669,23 @@ function contar(eventos) {
       hayCascada = true;
     }
     if (e.type === 'limpia' && !eventos.some(x => x.type === 'baja')) fallo.push('La cosecha elimina el capullo');
+    // Contagio (v10).
+    if (e.type === 'limpiaHuella') {
+      fallo.push(`Cosecha: ${e.tiles.length === 1 ? 'limpias 1 huella' : `limpias ${e.tiles.length} huellas`}`);
+      avisar('limpiaHuella', e.tiles);
+    }
+    if (e.type === 'contagia') {
+      fallo.push(`<b>Contagio</b>: la ${e.tipo === 'velutina' ? 'huella de la velutina' : 'varroa'} se extiende`);
+      avisar('contagia', [e.tile]);
+    }
+    // Expansión (v10): lo que abre la cosecha, y si se pierde algo, por qué.
+    if (e.type === 'abre') {
+      const n = e.tiles.length, pierde = e.gana - n, cosecha = S.last.path.length;
+      fallo.push(n === 0 ? `Cosecha de ${cosecha}: no toca el borde, no abre nada`
+        : `Cosecha de ${cosecha}: ${n === 1 ? 'abres 1 celda' : `abres ${n} celdas`}` +
+          (pierde > 0 ? ` (${pierde === 1 ? 'otra no tocaba' : `otras ${pierde} no tocaban`} el borde)` : ''));
+      avisar('abre', e.tiles);
+    }
     if (e.type === 'fallback') {
       fallo.push(`<b>Fallo</b> · paso ${e.paso} inalcanzable → ${trasElFallo(e)}`);
       falloEn = S.turn; falloT0 = now; falloPaso = e.paso;
@@ -603,8 +701,8 @@ function contar(eventos) {
   }
   logItems = items.join(' · '); logItemsEn = S.turn;
   logFallo = fallo.join(' · '); logFalloEn = S.turn;
-  logFalloClase = 'linea' + (eventos.some(e => e.type === 'fallback') ? ' tight'
-                           : eventos.some(e => e.type === 'baja') ? ' bueno' : '');
+  logFalloClase = 'linea' + (eventos.some(e => e.type === 'fallback' || e.type === 'contagia') ? ' tight'
+                           : eventos.some(e => e.type === 'baja' || e.type === 'limpiaHuella' || (e.type === 'abre' && e.tiles.length)) ? ' bueno' : '');
 }
 
 function onCommit(cells) {
@@ -657,8 +755,8 @@ function resize() {
   // En el móvil, Contrarreloj pega el panal a la fila de plagas (v8.3): con el
   // bloque de riesgo más alto, a un 30 % todavía se veía caído.
   const vertical = r.height > r.width * 1.1;
-  const arriba = !vertical ? 0.5 : S.modo === MODOS.CONTRARRELOJ ? 0.1 : 0.3;
-  computeLayout(canvas.width, canvas.height, arriba);
+  const arriba = !vertical ? 0.5 : CONFIG_MODO[S.modo].desastres ? 0.1 : 0.3;
+  computeLayout(canvas.width, canvas.height, arriba, TABLEROS[S.tablero].filas);
   redraw();
 }
 
@@ -710,7 +808,7 @@ function mostrarPantalla(p) {
   cerrarPop();
   // Las dos pantallas dibujan con el mismo `layout` de render.js: al cambiar,
   // cada una se vuelve a medir. Como sólo se ve una, no chocan.
-  if (p === 'partida') resize(); else { pintarContinuar(); medirFondo(); }
+  if (p === 'partida') resize(); else { pintarContinuar(); medirFondo(); marcarHayMas(); }
 }
 
 // El botón «Continuar partida», encima de los modos, con lo que se va a
@@ -719,6 +817,13 @@ function pintarContinuar() {
   const g = leerPartida();
   document.getElementById('continuar').hidden = !g;
   if (g) setText('continuar-detalle', describirPartida(g.s));
+}
+
+// El inicio se desplaza con el dedo cuando los modos no caben (v10): la franja
+// de abajo sólo se ve si queda algo por debajo.
+function marcarHayMas() {
+  const el = document.getElementById('inicio');
+  el.classList.toggle('hay-mas', el.scrollTop + el.clientHeight < el.scrollHeight - 4);
 }
 
 // «‹ Menú» (de la barra o de la pantalla final): se guarda y se vuelve, sin
@@ -799,9 +904,11 @@ const PESTANAS = {
   contrarreloj: ['basico', 'contrarreloj', 'plagas'],
   invierno:     ['basico', 'invierno'],
   libre:        ['basico', 'libre'],
+  contagio:     ['basico', 'contagio', 'plagas'],
+  expansion:    ['basico', 'expansion'],
 };
 const NOMBRE_PESTANA = { basico: 'Básico', plagas: 'Plagas', ...NOMBRE_MODO };
-const ORDEN_MODOS = [MODOS.CONTRARRELOJ, MODOS.INVIERNO, MODOS.LIBRE];
+const ORDEN_MODOS = [MODOS.CONTRARRELOJ, MODOS.INVIERNO, MODOS.LIBRE, MODOS.CONTAGIO, MODOS.EXPANSION];
 
 // La primera ficha se abre en Básico; en cuanto se empieza una partida desde
 // una ficha, las siguientes se abren en la pestaña del modo. Se marca al pulsar
@@ -834,6 +941,7 @@ function guardarDificultad(modo, dif) {
 
 // Lo que cambia entre las dos dificultades, dicho con la constante (regla 8).
 function textoDificultad(modo, dif) {
+  if (CONFIG_MODO[modo].huellas) return `se contagia cada ${CONTAGIO_CADA[dif]} turnos`;
   if (CONFIG_MODO[modo].reloj) return `acelera un ${Math.round(RELOJ_ACELERA[dif] * 100)} %`;
   const n = HELADA_MUERDE[dif];
   return `${n} ${n === 1 ? 'celda' : 'celdas'} por fallo`;
@@ -1068,6 +1176,9 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   setText('inicio-version', VERSION);
   pintarTarjeta();
+  pintarEscalaExpansion();
+
+  document.getElementById('inicio').addEventListener('scroll', marcarHayMas, { passive: true });
 
   // El inicio: cada modo abre su ficha.
   document.getElementById('continuar').addEventListener('click', continuarPartida);
@@ -1149,7 +1260,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   window.addEventListener('resize', () => {
     cerrarPop();
-    if (pantalla === 'partida') resize(); else medirFondo();
+    if (pantalla === 'partida') resize(); else { medirFondo(); marcarHayMas(); }
     // La consulta va pegada a la barra: si cambia la ventana, se recoloca.
     if (hojaAbierta && hojaAbierta.desde === 'partida')
       hoja.style.top = Math.round(document.getElementById('barra').getBoundingClientRect().bottom + 6) + 'px';

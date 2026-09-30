@@ -45,7 +45,7 @@ function pasoDeCadena(s, cadena, i) {
   if (i < 0 || cells.length === 0) return cadena;
   const aqui = trail[trail.length - 1];
   if (i === aqui) return cadena;
-  if (!ADJ[aqui].includes(i)) return cadena;              // sólo a una vecina
+  if (!vecinas(s, aqui).includes(i)) return cadena;              // sólo a una vecina
 
   // Quitar: el dedo está en la última celda añadida y vuelve a la celda desde
   // la que llegó a ella. Se usa `desde` y no «la penúltima de cells»: con
@@ -81,8 +81,8 @@ function initInput(canvas, getState, onCommit, redraw) {
   // poco del borde al arrastrar deprisa cancelaría jugadas sin querer.
   const fuera = (s, x, y) => {
     if (x >= 0 && y >= 0 && x <= canvas.width && y <= canvas.height) return false;
-    for (let i = 0; i < TILE_COUNT; i++) {
-      if (s.roto[i]) continue;
+    for (let i = 0; i < s.height.length; i++) {
+      if (!existe(s, i)) continue;
       if (Math.hypot(x - layout.cx[i], y - topY(s, i)) <= 1.5 * layout.R) return false;
     }
     return true;

@@ -76,15 +76,19 @@ function jugable(s, i) { return T.jugable(s, i); }
 //   item             la jugada recoge el ítem
 //   abeja            por cada abeja de la mayor meseta de abejas que queda
 //   despiste         (humano) probabilidad de jugar cualquier jugada válida
+//   huella           (Contagio, v10) por cada celda marcada que la jugada quita
+//                    (negativo si las deja crecer)
+//   abre             (Expansión, v10) por cada celda cerrada que la jugada abre
 //
 // Los números se acordaron el 24-09-2026 y están en el vault, en LC-Tests-y-Bot.
 // Cambiar uno es cambiar de jugador: las cifras de antes y de después no se mezclan.
 const PESOS = {
-  prudente:  { fallo: -100, cosechaPequeña: 10, cosechaGrande: 10, margen: 1, margenTope: 5, item: 3, abeja: 0 },
+  prudente:  { fallo: -100, cosechaPequeña: 10, cosechaGrande: 10, margen: 1, margenTope: 5, item: 3, abeja: 0,
+               huella: 4, abre: 12 },
   humano:    { fallo: -100, cosechaPequeña: 10, cosechaGrande: 10, margen: 1, margenTope: 5, item: 3, abeja: 0,
-               despiste: 0.20 },
+               huella: 4, abre: 12, despiste: 0.20 },
   codicioso: { fallo: -30, falloGratis: 0, cosechaPequeña: -5, cosechaGrande: 25, margen: 1, margenTope: 5,
-               item: 15, abeja: 3 },
+               item: 15, abeja: 3, huella: 3, abre: 15 },
   // Opción B (T-34, 24-09): al final de lo que mira, pone nota al tablero que deja.
   // Medido con 2000 partidas: gana al codicioso en Contrarreloj (371.000 contra
   // 296.000 puntos) y no empeora en Invierno (172.000 contra 169.000 sin B).
@@ -98,15 +102,19 @@ const PESOS = {
   // que el reloj corra en sus copias, y así ve venir el final.
   planificador: { profundidad: 3, haz: 3, puntosPorNivel: 200, nivelesPorRota: 10, margenTope: 5,
                   b: 1, potencial: 0.5, racha: 1, cosechaMedia: 4,
-                  escalera: 1, nivelesPorDesastre: 3, turnosReloj: 3, relojRiesgo: 2000 },
+                  escalera: 1, nivelesPorDesastre: 3, turnosReloj: 3, relojRiesgo: 2000,
+                  // v10: una celda marcada vale lo que resta al final (HUELLA_RESTA),
+                  // y una celda abierta en Expansión, que no puntúa, esto.
+                  puntosPorAbierta: 3000 },
 };
 
 // Una copia del estado que se puede jugar sin tocar el de verdad.
 function copia(s, R) {
   return { ...s,
-    height: s.height.slice(), roto: s.roto.slice(), sedaHasta: s.sedaHasta.slice(),
+    height: s.height.slice(), roto: s.roto.slice(), cerrada: s.cerrada.slice(), sedaHasta: s.sedaHasta.slice(),
     item: s.item && { ...s.item }, heladas: s.heladas.slice(),
     desastres: s.desastres.map(d => ({ ...d, tiles: d.tiles && d.tiles.slice() })),
+    huellas: s.huellas.map(g => ({ ...g, tiles: g.tiles.slice() })),
     eventos: [], last: null,
     rng: (R() * 4294967296) >>> 0 || 1,   // azar nuevo: el bot no ve el futuro
   };
@@ -120,19 +128,19 @@ function candidatas(s, R) {
   const reina = (s.item && s.item.tipo === T.ITEMS.REINA && jugable(s, s.item.tile)) ? s.item.tile : -1;
   const vistas = new Map();
   const inicios = [];
-  for (let i = 0; i < T.TILE_COUNT; i++) if (jugable(s, i)) inicios.push(i);
+  for (let i = 0; i < s.height.length; i++) if (jugable(s, i)) inicios.push(i);
   for (const inicio of shuffled(inicios, R)) {
     const niveles = inicio === reina
-      ? [...new Set([s.height[inicio], ...T.ADJ[inicio].filter(v => jugable(s, v)).map(v => s.height[v])])]
+      ? [...new Set([s.height[inicio], ...T.vecinas(s, inicio).filter(v => jugable(s, v)).map(v => s.height[v])])]
       : [s.height[inicio]];
     for (const h of niveles) {
       const de = i => jugable(s, i) && (s.height[i] === h || i === reina);
       const L = s.danza ? T.mesetaDeNivel(s, h) : s.step;
-      const visto = new Uint8Array(T.TILE_COUNT); visto[inicio] = 1;
+      const visto = new Uint8Array(s.height.length); visto[inicio] = 1;
       const c = [inicio], cola = [inicio];
       while (cola.length && c.length < L) {
         const u = cola.shift();
-        for (const v of shuffled(T.ADJ[u], R)) {
+        for (const v of shuffled(T.vecinas(s, u), R)) {
           if (visto[v] || !de(v)) continue;
           visto[v] = 1; c.push(v); cola.push(v);
           if (c.length === L) break;
@@ -161,10 +169,19 @@ function efecto(s, c, k) {
   };
 }
 
+// Acabar la partida es malo salvo que sea ganarla: completar el panal de
+// Expansión, o el final por turnos de Contagio, que no se puede evitar.
+const finMalo = k => k.gameOver && !k.completado && !k.cierre;
+
 function nota1(s, c, k, P) {
   const e = efecto(s, c, k);
   let v = 0;
-  if (k.gameOver) v -= 1e6;
+  if (finMalo(k)) v -= 1e6;
+  // Sólo en su modo: celdasMarcadas cuenta también el capullo, que en
+  // Contrarreloj existe y no es huella. Sin la bandera, el codicioso cambiaba.
+  const cfg = T.CONFIG_MODO[k.modo];
+  if (P.huella && cfg.huellas) v += P.huella * (T.celdasMarcadas(s) - T.celdasMarcadas(k));
+  if (P.abre && cfg.abre) v += P.abre * (T.abiertas(k) - T.abiertas(s));
   if (e.fallo) v += (e.gratis && P.falloGratis !== undefined) ? P.falloGratis : P.fallo;
   if (e.cosecha) v += e.L >= T.COSECHA_GRANDE ? P.cosechaGrande : P.cosechaPequeña;
   v += P.margen * Math.max(0, Math.min(e.margen, P.margenTope));
@@ -191,7 +208,12 @@ function mejorA1(s, R, P) {
 function valorPlan(s, c, k, P) {
   const e = efecto(s, c, k);
   let v = k.score - s.score;
-  if (k.gameOver) v -= 1e9;
+  if (finMalo(k)) v -= 1e9;
+  const cfg = T.CONFIG_MODO[k.modo];
+  // El recuento final de Contagio ya está en k.score cuando acaba; antes, cada
+  // celda marcada que se gana o se quita cuenta lo que restaría.
+  if (cfg.huellas && !k.cierre) v -= T.HUELLA_RESTA * (T.celdasMarcadas(k) - T.celdasMarcadas(s));
+  if (cfg.abre) v += P.puntosPorAbierta * (T.abiertas(k) - T.abiertas(s));
   if (e.fallo) v -= P.puntosPorNivel * (e.niveles + e.rotas * P.nivelesPorRota);
   return v;
 }
@@ -272,13 +294,19 @@ function jugarUna(seed, modo, dificultad, bot, segPorTurno) {
   const s = T.createState(modo, dificultad, seed);
   const st = { pasoMax: 0, cosechas: 0, fallos: 0, fantasmas: 0, mayorCosecha: 0, items: 0, caducados: 0,
                varroa: 0, polilla: 0, seda: 0, sedaCeldas: 0, velutina: 0, enCalma: 0,
-               perdidos: 0, subidos: 0, grandes: 0, dosAmenazas: 0 };
+               perdidos: 0, subidos: 0, grandes: 0, dosAmenazas: 0,
+               huellas: 0, contagios: 0, limpiadas: 0, abiertasCosecha: 0, perdidas: 0 };
   for (const t of T.ITEMS_VISIBLES) { st['sale_' + t] = 0; st['usa_' + t] = 0; }
   // Lo que cuentan los eventos del motor (v7, H.4): desastres por tipo, lo que
   // cuestan en niveles y los ítems por tipo. Se leen los eventos, no se toca el
   // motor para medir.
   const leer = () => {
     for (const e of s.eventos) {
+      // v10: huellas y contagio (Contagio), celdas abiertas y perdidas (Expansión).
+      if (e.type === 'marca') st.huellas++;
+      if (e.type === 'contagia') st.contagios++;
+      if (e.type === 'limpiaHuella') st.limpiadas += e.tiles.length;
+      if (e.type === 'abre') { st.abiertasCosecha += e.tiles.length; st.perdidas += e.gana - e.tiles.length; }
       if (e.type === 'item') st['sale_' + e.tipo]++;
       if (e.type === 'usa') st['usa_' + e.tipo]++;
       if (e.type !== 'fallback' || !T.CONFIG_MODO[modo].desastres) continue;
@@ -331,7 +359,10 @@ function jugarUna(seed, modo, dificultad, bot, segPorTurno) {
   }
 
   if (guard >= 3000) st.colgada = true;
-  return { turn: s.turn, score: s.score, ...st };
+  const cierre = s.cierre || { bruto: s.score, marcadas: 0, resta: 0 };
+  return { turn: s.turn, score: s.score, ...st,
+           bruto: cierre.bruto, marcadasFin: cierre.marcadas, resta: cierre.resta,
+           completado: s.completado, abiertas: T.abiertas(s) };
 }
 
 // ---------------------------------------------------------------------------
@@ -449,6 +480,23 @@ function comparar(porBot) {
     fila('fallos en calma',     c => dec(media(c('enCalma')), 2));
     fila('coste de desastres',  c => dec(media(c('perdidos')) / Math.max(1, media(c('subidos'))) * 100) + ' %');
   }
+  if (T.CONFIG_MODO[modoId].huellas) {
+    fila('puntos antes de huellas', c => num(pct(c('bruto'), .5)));
+    fila('huellas creadas',     c => dec(media(c('huellas'))));
+    fila('contagios',           c => dec(media(c('contagios'))));
+    fila('celdas limpiadas',    c => dec(media(c('limpiadas'))));
+    fila('marcadas al final (med.)', c => String(pct(c('marcadasFin'), .5)));
+    fila('marcadas p10–p90',    c => `${pct(c('marcadasFin'), .1)}–${pct(c('marcadasFin'), .9)}`);
+    fila('acaban sin huellas',  (c, r) => dec(r.filter(x => x.marcadasFin === 0).length / r.length * 100) + ' %');
+    fila('penalización / puntos', c => dec(media(c('resta')) / Math.max(1, media(c('bruto'))) * 100) + ' %');
+  }
+  if (T.CONFIG_MODO[modoId].abre) {
+    fila('completan el panal',  (c, r) => dec(r.filter(x => x.completado).length / r.length * 100) + ' %');
+    fila('turnos si completa (med.)', (c, r) => { const t = r.filter(x => x.completado).map(x => x.turn); return t.length ? String(pct(t, .5)) : '—'; });
+    fila('turnos si completa p10–p90', (c, r) => { const t = r.filter(x => x.completado).map(x => x.turn); return t.length ? `${pct(t, .1)}–${pct(t, .9)}` : '—'; });
+    fila('abiertas al acabar',  c => dec(media(c('abiertas'))));
+    fila('celdas perdidas',     c => dec(media(c('perdidas'))));
+  }
   fila('cuelgues fantasma',     (c, r) => dec(r.filter(x => x.fantasmas > 0).length / r.length * 100) + ' %');
   fila('sin terminar',          (c, r) => String(r.filter(x => x.colgada).length));
   fila('tiempo de cálculo',     (c, r, b) => dec(porBot[b].cpu, 0) + ' s');
@@ -503,6 +551,20 @@ function informe(res, bot) {
     console.log(`desastres por partida   varroa ${f('varroa')} · polilla ${f('polilla')} · seda ${f('seda')} (${media(col('sedaCeldas')).toFixed(1)} celdas) · velutina ${f('velutina')} · en calma ${f('enCalma')}`);
     console.log(`coste                   niveles perdidos ${media(col('perdidos')).toFixed(1)} de ${media(col('subidos')).toFixed(0)} subidos = ${(coste * 100).toFixed(1)} % · cosechas grandes ${media(col('grandes')).toFixed(1)} · con velutina ${(conVel / N * 100).toFixed(1)} %`);
     if (res.some(r => r.dosAmenazas)) console.log(`                        turnos con ${T.DESASTRES_MAX_ACTIVOS} amenazas a la vez: ${f('dosAmenazas')} por partida`);
+  }
+
+  // Contagio (v10): las huellas por dentro.
+  if (T.CONFIG_MODO[modoId].huellas) {
+    const mf = col('marcadasFin');
+    console.log(`huellas                 creadas ${media(col('huellas')).toFixed(1)} · contagios ${media(col('contagios')).toFixed(1)} · celdas limpiadas ${media(col('limpiadas')).toFixed(1)}`);
+    console.log(`al final                marcadas mediana ${pct(mf, .5)} (p10 ${pct(mf, .1)}, p90 ${pct(mf, .9)}) · sin huellas ${(mf.filter(x => !x).length / N * 100).toFixed(1)} % · resta ${(media(col('resta')) / Math.max(1, media(col('bruto'))) * 100).toFixed(1)} % de ${num(media(col('bruto')))} puntos`);
+  }
+  // Expansión (v10): cuánto se tarda en completar el panal.
+  if (T.CONFIG_MODO[modoId].abre) {
+    const t = res.filter(r => r.completado).map(r => r.turn);
+    console.log(`panal completo          ${(t.length / N * 100).toFixed(1)} % de las partidas` +
+      (t.length ? ` · turnos p10 ${pct(t, .1)} · mediana ${pct(t, .5)} · p90 ${pct(t, .9)}` : ''));
+    console.log(`celdas                  abiertas al acabar ${media(col('abiertas')).toFixed(1)} de ${T.CERRADAS_EXPANSION.length} · perdidas (las ganaba y no tocaban) ${media(col('perdidas')).toFixed(1)}`);
   }
 
   // --- test de regresión de la regla del arrastre ---

@@ -45,7 +45,7 @@ button.on{background:#F79A1F;color:#231500;border-color:#F79A1F;font-weight:600}
 .inicio-cab{padding:46px 20px 0;display:flex;flex-direction:column;align-items:center;gap:2px;flex:none}
 .inicio-cab h1{font-size:34px;font-weight:800;letter-spacing:-.02em;color:#ede4d3;line-height:1.15}
 .inicio-cab span{font-size:13px;color:#9a8d77}
-#fondo-wrap{flex:1;min-height:0;position:relative}
+#fondo-wrap{flex:1 0 auto;min-height:clamp(170px,26dvh,260px);position:relative}
 #fondo{opacity:.9;pointer-events:none}
 .inicio-botones{padding:0 16px 18px;display:flex;flex-direction:column;gap:8px;flex:none;
   width:100%;max-width:480px;margin:0 auto}
@@ -69,6 +69,16 @@ button.on{background:#F79A1F;color:#231500;border-color:#F79A1F;font-weight:600}
 #historial .pronto{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#6d6150;
   border:1px solid #33291d;border-radius:999px;padding:1px 7px}
 #inicio-version{align-self:center;font-size:11px;color:#6d6150;font-variant-numeric:tabular-nums}
+/* v10: con cinco modos los botones ya no caben debajo del panal vivo en una
+   pantalla baja (a 360x640, con «Continuar», el panal se quedaba en 8 px). En vez
+   de encoger nada, el inicio se desplaza con el dedo: el panal vivo guarda un alto
+   mínimo y los modos que no caben se ven deslizando hacia arriba. La franja de
+   abajo avisa de que hay más. */
+#inicio{overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain}
+#inicio::after{content:"";position:sticky;bottom:0;flex:none;height:28px;margin-top:-28px;
+  pointer-events:none;background:linear-gradient(transparent,#12100C);
+  opacity:0;transition:opacity .2s}
+#inicio.hay-mas::after{opacity:1}
 
 /* La barra de la partida (v9): sustituye a la fila de modos. Menú, el modo y
    la dificultad, y la semilla. */
@@ -104,6 +114,12 @@ button.on{background:#F79A1F;color:#231500;border-color:#F79A1F;font-weight:600}
 .stat{display:flex;flex-direction:column;gap:1px}
 .stat .v{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
 .ritmo{font-size:12px;color:#ff9f45;margin-left:4px}
+/* «7 / 18» de Expansión: el total, pequeño al lado. */
+.de{font-size:15px;color:#8c7f6a;margin-left:2px;font-variant-numeric:tabular-nums}
+/* Las huellas de Contagio, a la derecha de la cabecera de plagas: no le quitan
+   una fila al panal (v10). */
+.huellas-cab{color:#8c7f6a}
+.huellas-cab b{color:#C79BD9}
 
 /* Segunda fila de datos: una línea de texto, no nueve columnas con etiqueta.
    Desde la v8 lleva puntos, racha y turno; lo que era de la escalera se fue a
@@ -379,6 +395,17 @@ footer .sem{font-variant-numeric:tabular-nums}
       <span class="txt"><span class="nom" data-nombre="libre"></span><span class="frase" data-frase="libre"></span></span>
       <svg width="9" height="14" viewBox="0 0 10 16" aria-hidden="true"><path d="M2 2l6 6-6 6" stroke="#6d6150" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
+    <!-- Los dos modos de la v10 (LC-Modos-nuevos). Entran desbloqueados. -->
+    <button class="modo-fila" data-modo="contagio">
+      <svg width="34" height="30" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#C79BD9"/><g fill="#1c1710"><circle cx="19" cy="22" r="6"/><circle cx="30" cy="15" r="3"/><circle cx="31" cy="27" r="2.3"/></g></svg>
+      <span class="txt"><span class="nom" data-nombre="contagio"></span><span class="frase" data-frase="contagio"></span></span>
+      <svg width="9" height="14" viewBox="0 0 10 16" aria-hidden="true"><path d="M2 2l6 6-6 6" stroke="#6d6150" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="modo-fila" data-modo="expansion">
+      <svg width="34" height="30" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#E6B872"/><polygon points="23,14 29,17 29,24 23,27 17,24 17,17" fill="#1c1710"/><g stroke="#1c1710" stroke-width="2.4" stroke-linecap="round"><path d="M23 11V6M34 16l4-2M34 26l4 2M23 30v5M12 26l-4 2M12 16l-4-2"/></g></svg>
+      <span class="txt"><span class="nom" data-nombre="expansion"></span><span class="frase" data-frase="expansion"></span></span>
+      <svg width="9" height="14" viewBox="0 0 10 16" aria-hidden="true"><path d="M2 2l6 6-6 6" stroke="#6d6150" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
 
     <!-- El historial se hará más adelante (idea del §9); el botón ya existe. -->
     <button id="historial" disabled>
@@ -406,6 +433,16 @@ footer .sem{font-variant-numeric:tabular-nums}
     <span class="lbl">Reloj<button class="info-btn" data-hoja="contrarreloj" aria-label="Cómo se juega Contrarreloj"><span class="info">i</span></button></span>
     <span><span class="big" id="reloj">90</span><span class="ritmo" id="ritmo"></span></span>
   </div>
+  <!-- Contagio (v10): donde el Contrarreloj pone el reloj, los turnos que quedan. -->
+  <div class="stat" id="quedan-stat" hidden>
+    <span class="lbl">Quedan<button class="info-btn" data-hoja="contagio" aria-label="Cómo se juega Contagio"><span class="info">i</span></button></span>
+    <span class="big" id="quedan">0</span>
+  </div>
+  <!-- Expansión (v10): las celdas del borde abiertas. -->
+  <div class="stat" id="abiertas-stat" hidden>
+    <span class="lbl">Abiertas<button class="info-btn" data-hoja="expansion" aria-label="Cómo se juega Expansión"><span class="info">i</span></button></span>
+    <span><span class="big" id="abiertas">0</span><span class="de" id="abiertas-de"></span></span>
+  </div>
   <div class="stat">
     <span class="lbl">Paso</span>
     <span><span class="big" id="step">1</span><s class="no-cupo" id="paso-fallo"></s></span>
@@ -424,7 +461,7 @@ footer .sem{font-variant-numeric:tabular-nums}
      la de helada en Invierno, y en los tres la línea del fallo. -->
 <div id="riesgo">
   <div id="plagas">
-    <div class="plagas-cab"><button type="button" class="plagas-titulo" id="plagas-titulo" data-hoja="plagas" aria-label="Cómo se espantan las plagas">Plagas · <b id="plagas-n">0</b> de <span id="plagas-tope">4</span><span class="info" aria-hidden="true">i</span></button></div>
+    <div class="plagas-cab"><button type="button" class="plagas-titulo" id="plagas-titulo" data-hoja="plagas" aria-label="Cómo se espantan las plagas">Plagas · <b id="plagas-n">0</b> de <span id="plagas-tope">4</span><span class="info" aria-hidden="true">i</span></button><span class="huellas-cab" id="huellas-cab" hidden></span></div>
     <div class="plagas-fila" id="plagas-fila"></div>
   </div>
   <div class="sub-con-info" id="helada-fila"><span class="sub" id="helada"></span><button class="info-btn" data-hoja="invierno" aria-label="Cómo se juega Invierno"><span class="info">i</span></button></div>
@@ -556,6 +593,57 @@ footer .sem{font-variant-numeric:tabular-nums}
     </div>
     <div class="hoja-filas">
       <p>Sin reloj, sin helada, sin desastres y <b>sin puntos</b>. Está para practicar la mecánica sin que nada te muerda.</p>
+    </div>
+  </div>
+
+  <div class="hoja-panel" data-pestana="contagio" role="tabpanel" hidden>
+    <div class="hoja-cab">
+      <svg width="30" height="26" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#C79BD9"/><g fill="#1c1710"><circle cx="19" cy="22" r="6"/><circle cx="30" cy="15" r="3"/><circle cx="31" cy="27" r="2.3"/></g></svg>
+      <div><h2 id="hoja-titulo-contagio" data-nombre="contagio"></h2><span data-frase="contagio"></span></div>
+    </div>
+    <div class="hoja-filas">
+      <div class="hoja-fila">
+        <span class="ico-seg" aria-hidden="true"><span data-const="TURNOS_CONTAGIO">65</span><small> t</small></span>
+        <p>Sin reloj. La partida dura <b><span data-const="TURNOS_CONTAGIO">65</span> turnos</b>: se ve venir el final.</p>
+      </div>
+      <div class="hoja-fila">
+        <svg width="26" height="23" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#C8A14A" stroke="#1c1710" stroke-width="2"/><polygon points="23,9 36,15 36,26 23,32 10,26 10,15" fill="none" stroke="#e5484d" stroke-width="3.5"/></svg>
+        <p>Las mismas plagas que en Contrarreloj, pero cada una deja <b>huella</b> en el panal (la seda, no).</p>
+      </div>
+      <div class="hoja-fila">
+        <svg width="52" height="22" viewBox="0 0 92 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#C8A14A" stroke="#1c1710" stroke-width="2"/><polygon points="23,9 36,15 36,26 23,32 10,26 10,15" fill="none" stroke="#e5484d" stroke-width="3.5"/><polygon points="68,1 90,11 90,29 68,39 46,29 46,11" fill="#9C7F3C" stroke="#1c1710" stroke-width="2"/><polygon points="68,9 81,15 81,26 68,32 55,26 55,15" fill="none" stroke="#e5484d" stroke-width="3" stroke-dasharray="4 3"/></svg>
+        <p>Si la dejas, <b>se contagia</b> a una celda de cría vecina cada pocos turnos. Parpadea el turno antes.</p>
+      </div>
+      <div class="hoja-fila">
+        <span class="ico-mas" aria-hidden="true"><svg width="24" height="21" viewBox="0 0 46 40"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#F79A1F" stroke="#1c1710" stroke-width="2"/><text x="23" y="21" text-anchor="middle" dominant-baseline="central" font-size="18" font-weight="700" fill="#3a2a00" data-const="MAX_LEVEL">5</text></svg></span>
+        <p><b>Cosechar limpia</b> la huella de cada celda cosechada. Al capullo basta con cosechar a su lado.</p>
+      </div>
+      <div class="hoja-fila">
+        <span class="ico-seg" aria-hidden="true" style="color:#C79BD9">−<span data-const="HUELLA_RESTA">1.000</span></span>
+        <p>Al final, <b>cada celda marcada resta <span data-const="HUELLA_RESTA">1.000</span> puntos</b>.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="hoja-panel" data-pestana="expansion" role="tabpanel" hidden>
+    <div class="hoja-cab">
+      <svg width="30" height="26" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#E6B872"/><polygon points="23,14 29,17 29,24 23,27 17,24 17,17" fill="#1c1710"/><g stroke="#1c1710" stroke-width="2.4" stroke-linecap="round"><path d="M23 11V6M34 16l4-2M34 26l4 2M23 30v5M12 26l-4 2M12 16l-4-2"/></g></svg>
+      <div><h2 id="hoja-titulo-expansion" data-nombre="expansion"></h2><span data-frase="expansion"></span></div>
+    </div>
+    <div class="hoja-filas">
+      <div class="hoja-fila">
+        <svg width="52" height="22" viewBox="0 0 92 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#F79A1F" stroke="#1c1710" stroke-width="2"/><polygon points="68,1 90,11 90,29 68,39 46,29 46,11" fill="none" stroke="#8c7f6a" stroke-width="2" stroke-dasharray="4 3"/></svg>
+        <p>Empiezas en un panal pequeño, rodeado de <b><span data-const="N_CERRADAS">18</span> celdas cerradas</b>.</p>
+      </div>
+      <div class="hoja-fila">
+        <svg width="52" height="22" viewBox="0 0 92 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#F79A1F" stroke="#1c1710" stroke-width="2"/><polygon points="68,1 90,11 90,29 68,39 46,29 46,11" fill="#2E4756" stroke="#E6B872" stroke-width="2"/></svg>
+        <p>Una cosecha de <b><span data-const="COSECHA_GRANDE">5</span> o más</b> abre cerradas <b>que toque</b>, y salen como agua. Cuanto más grande, más abre:</p>
+      </div>
+      <div id="expansion-escala"></div>
+      <div class="hoja-fila">
+        <span class="ico-seg" aria-hidden="true"><span data-const="TOPE_EXPANSION">150</span><small> t</small></span>
+        <p>Sin reloj ni plagas. Gana quien <b>completa el panal en menos turnos</b>. Si en <span data-const="TOPE_EXPANSION">150</span> no lo has completado, se acaba.</p>
+      </div>
     </div>
   </div>
 

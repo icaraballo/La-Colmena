@@ -27,21 +27,25 @@ function shade(hex, f) {
   return `rgb(${r},${g},${b})`;
 }
 
-// Calcula el centro de cada celda para el tamaño actual del canvas.
-function computeLayout(width, height, arriba = height > width * 1.1 ? 0.3 : 0.5) {
-  const R = Math.min(width / (6 * Math.sqrt(3) + 1), height / 10.5);
+// Calcula el centro de cada celda para el tamaño actual del canvas y el perfil
+// de filas del tablero (v10, T-43: hasta la v9.1 suponía el panal de 24, con 6
+// celdas en la fila más ancha y 5 filas; para él las cuentas dan lo mismo que
+// antes, 6·√3+1 de ancho y 10,5 de alto).
+function computeLayout(width, height, arriba = height > width * 1.1 ? 0.3 : 0.5, filas = ROW_WIDTHS) {
+  const ancha = Math.max(...filas);
+  const R = Math.min(width / (ancha * Math.sqrt(3) + 1), height / (1.5 * (filas.length - 1) + 4.5));
   const w = Math.sqrt(3) * R;
   layout.R = R; layout.w = w;
   layout.cx.length = 0; layout.cy.length = 0;
 
-  const totalH = 1.5 * R * (ROW_WIDTHS.length - 1) + 2 * R;
+  const totalH = 1.5 * R * (filas.length - 1) + 2 * R;
   // `arriba`: qué parte del hueco libre queda encima del panal. En pantalla
   // vertical (el móvil) no va centrado sino más arriba: centrado quedaba bajo,
   // lejos del HUD (playtest de la v8). En horizontal (el PC), centrado. app.js
   // lo afina por modo.
   const top = (height - totalH) * arriba + R + MAX_LEVEL * LIFT * 0.5;
 
-  ROW_WIDTHS.forEach((n, r) => {
+  filas.forEach((n, r) => {
     const rowW = n * w;
     for (let c = 0; c < n; c++) {
       layout.cx.push((width - rowW) / 2 + w / 2 + c * w);
@@ -96,10 +100,34 @@ function draw(ctx, s, ui, now) {
   const capullos = new Set(s.desastres.filter(d => d.tipo === 'capullo').map(d => d.tile));
 
   // Orden por índice = de arriba abajo, que es el que hace solapar bien el 2.5D.
-  for (let i = 0; i < TILE_COUNT; i++) {
+  for (let i = 0; i < s.height.length; i++) {
     // Celda rota: no existe. Ni hexágono ni borde. El panal encoge de verdad y se
     // ve que encoge.
     if (s.roto[i]) continue;
+    // Celda cerrada (Expansión, v10): el hueco donde crecerá el panal, con un
+    // contorno tenue. Sin número y sin relleno: no es un nivel, es sitio.
+    if (s.cerrada[i]) {
+      if (ui.abriria && ui.abriria.includes(i)) {
+        // La cosecha que estás arrastrando la abriría (leído del motor).
+        ctx.save();
+        ctx.globalAlpha = 0.55 + 0.25 * Math.sin((now || 0) / 140);
+        hexPath(ctx, layout.cx[i], layout.cy[i], R * 0.94);
+        ctx.fillStyle = 'rgba(46,71,86,0.55)';
+        ctx.fill();
+        ctx.strokeStyle = '#E6B872';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        hexPath(ctx, layout.cx[i], layout.cy[i], R * 0.94);
+        ctx.strokeStyle = 'rgba(237,228,211,0.16)';
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([R * 0.18, R * 0.14]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      continue;
+    }
 
     const x = layout.cx[i];
     const h = s.height[i];
@@ -154,6 +182,30 @@ function draw(ctx, s, ui, now) {
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
+  }
+
+  // Huellas (Contagio, v10): un anillo rojizo por dentro de la celda. No toca el
+  // relleno, porque el brillo es el nivel (Tema y estética §3), y va más hacia
+  // el centro que la cadena, que es blanca y pega al borde: se ven las dos a la
+  // vez. El grupo que crece al pasar el turno parpadea (avisa, nunca por sorpresa).
+  if (s.huellas && s.huellas.length) {
+    const inminentes = new Set(contagioInminente(s));
+    ctx.save();
+    ctx.lineJoin = 'round';
+    for (const g of s.huellas) {
+      ctx.globalAlpha = inminentes.has(g) ? 0.35 + 0.65 * (0.5 + 0.5 * Math.sin((now || 0) / 160)) : 0.9;
+      for (const i of g.tiles) {
+        if (!existe(s, i)) continue;
+        hexPath(ctx, layout.cx[i], topY(s, i), R * 0.62);
+        ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+        ctx.lineWidth = R * 0.17;
+        ctx.stroke();
+        ctx.strokeStyle = '#e5484d';
+        ctx.lineWidth = R * 0.1;
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
   }
 
   // La cadena: un contorno grueso, «la negrita del borde» (v7). No se oscurece
@@ -251,11 +303,11 @@ function draw(ctx, s, ui, now) {
 
 // Qué celda hay bajo un punto. Por distancia al centro, no por polígono exacto:
 // en un móvil los hexágonos son pequeños y el dedo es gordo. Las celdas rotas no
-// cuentan (no existen); el agua sí, es jugable.
+// cuentan (no existen), ni las cerradas (v10); el agua sí, es jugable.
 function tileAt(s, px, py) {
   let best = -1, bestD = layout.R * 0.95;
-  for (let i = 0; i < TILE_COUNT; i++) {
-    if (s.roto[i]) continue;
+  for (let i = 0; i < s.height.length; i++) {
+    if (!existe(s, i)) continue;
     const d = Math.hypot(px - layout.cx[i], py - topY(s, i));
     if (d < bestD) { bestD = d; best = i; }
   }

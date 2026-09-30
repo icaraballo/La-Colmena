@@ -100,17 +100,86 @@ const ADJ = [
 const SPIRAL = [23, 19, 14, 8, 3, 2, 1, 0, 4, 9, 15, 20, 21, 22,
                 18, 13, 7, 6, 5, 10, 16, 17, 12, 11];
 
+// Los tableros (v10, T-43). Hasta la v9.1 el panal de 24 era el de todo el
+// juego; desde que Expansión juega en un hexágono de 37, cada partida lleva el
+// suyo (s.tablero, desde CONFIG_MODO) y el motor pregunta a su tablero cuántas
+// celdas hay y quién es vecina de quién. TILE_COUNT, ROW_WIDTHS y ADJ se quedan
+// porque describen el de siempre, pero el motor ya no los usa para recorrer.
+//
+//          0   1   2   3              hex37: hexágono de lado 4, 4-5-6-7-6-5-4
+//        4   5   6   7   8
+//      9  10  11  12  13  14
+//   15  16  17  18  19  20  21
+//     22  23  24  25  26  27
+//       28  29  30  31  32
+//         33  34  35  36
+const TABLEROS = {
+  panal24: { filas: ROW_WIDTHS },            // el de siempre; ADJ es su tabla, comprobada contra buildAdjacency
+  hex37:   { filas: [4, 5, 6, 7, 6, 5, 4] },
+};
+for (const t of Object.values(TABLEROS)) {
+  t.n = t.filas.reduce((a, b) => a + b, 0);
+  t.adj = t.filas === ROW_WIDTHS ? ADJ : buildAdjacency(t.filas);
+}
+
 // ---------------------------------------------------------------------------
 // Modos (DESIGN §5). Cada uno con UNA sola fuente de presión. Son configuración,
 // no código distinto: las reglas consultan estas banderas.
 // ---------------------------------------------------------------------------
-const MODOS = { CONTRARRELOJ: 'contrarreloj', INVIERNO: 'invierno', LIBRE: 'libre' };
+const MODOS = { CONTRARRELOJ: 'contrarreloj', INVIERNO: 'invierno', LIBRE: 'libre',
+                CONTAGIO: 'contagio', EXPANSION: 'expansion' };
 
+// Las banderas de la v10 (LC-Modos-nuevos): cada sistema nuevo es una bandera y
+// no un `if (modo === …)` repartido por el código (Recetas §4).
+//   huellas      las plagas dejan huella y la huella se contagia (Contagio, T-42)
+//   turnosFijos  la partida dura TURNOS_CONTAGIO turnos (Contagio)
+//   abre         la cosecha abre las celdas cerradas del borde (Expansión, T-44)
+//   tablero      el de TABLEROS en que se juega (T-43)
 const CONFIG_MODO = {
-  contrarreloj: { reloj: true,  helada: false, desastres: true,  puntua: true  },
-  invierno:     { reloj: false, helada: true,  desastres: false, puntua: true  },
-  libre:        { reloj: false, helada: false, desastres: false, puntua: false },
+  contrarreloj: { reloj: true,  helada: false, desastres: true,  puntua: true,  huellas: false, turnosFijos: false, abre: false, tablero: 'panal24' },
+  invierno:     { reloj: false, helada: true,  desastres: false, puntua: true,  huellas: false, turnosFijos: false, abre: false, tablero: 'panal24' },
+  libre:        { reloj: false, helada: false, desastres: false, puntua: false, huellas: false, turnosFijos: false, abre: false, tablero: 'panal24' },
+  contagio:     { reloj: false, helada: false, desastres: true,  puntua: true,  huellas: true,  turnosFijos: true,  abre: false, tablero: 'panal24' },
+  expansion:    { reloj: false, helada: false, desastres: false, puntua: false, huellas: false, turnosFijos: false, abre: true,  tablero: 'hex37' },
 };
+
+// ---------------------------------------------------------------------------
+// Contagio (v10, T-42). Las mismas plagas y la misma escalera que Contrarreloj,
+// sin reloj y con turnos fijos. Lo nuevo son las HUELLAS: la celda que baja la
+// varroa, la zona de la velutina y el capullo quedan marcadas; cada grupo de
+// varroa o velutina crece una celda cada CONTAGIO_CADA turnos, sólo sobre cría,
+// y al final cada celda marcada resta HUELLA_RESTA puntos. Se limpian cosechando.
+// Los tres números son provisionales: los calibra el bot (Modos-nuevos §3.8).
+// ---------------------------------------------------------------------------
+// Cada cuántos turnos crece un grupo. **Es la dificultad de Contagio**: escala su
+// propia fuente de presión (Instrucciones §5.14).
+const CONTAGIO_CADA = { normal: 5, dificil: 4 };
+const TURNOS_CONTAGIO = 65;
+const HUELLA_RESTA = 1000;
+// Sólo se contagia la cría: sobre agua y cera no hay nada que infectar, y la
+// abeja ya ha salido.
+const NIVELES_CONTAGIABLES = [HUEVO, LARVA, OPERCULADA];
+
+// ---------------------------------------------------------------------------
+// Expansión (v10, T-44). Un panal que crece: se empieza en el hexágono de 19 del
+// centro de hex37 y la cosecha abre las celdas cerradas del anillo que toca,
+// con la misma escala que baja la escalera (peldanosQueBaja). Gana quien lo
+// completa en menos turnos.
+// ---------------------------------------------------------------------------
+// El anillo de fuera del hexágono de 37: las 18 cerradas del arranque. Las 6
+// esquinas (0, 3, 15, 21, 33, 36) sólo tocan una celda de dentro.
+const CERRADAS_EXPANSION = [0, 1, 2, 3, 4, 8, 9, 14, 15, 21, 22, 27, 28, 32, 33, 34, 35, 36];
+// Cupos de las 19 de dentro (en el panal de 24 son 12/8/4). Provisionales.
+const ARRANQUE_EXPANSION = [
+  { nivel: AGUA,  casillas: 10 },
+  { nivel: CERA,  casillas: 6 },
+  { nivel: HUEVO, casillas: 3 },
+];
+// Si el panal no se completa en tantos turnos, la partida acaba sin completar:
+// así el récord no mezcla a quien lo acaba con quien se queda a medias.
+const TOPE_EXPANSION = 150;
+// Cuántas abre una cosecha de 1-4 que toque el anillo. 0 por defecto (§5.9).
+const ABRE_COSECHA_PEQUENA = 0;
 
 // Helada (DESIGN §6): avanza en CADA fallo desde la v3 (la palanca 2 del cambio
 // agua/celda rota). HELADA_CADA se queda en 1 para las dos dificultades: lo que
@@ -264,12 +333,14 @@ const NOMBRE_DIF = { normal: 'Normal', dificil: 'Difícil' };
 // jugando en el móvil no hay forma de saber si lo que tienes delante es lo
 // último que se subió.
 // Se mantiene a mano y tiene que coincidir con package.json (ver Recetas).
-const VERSION = 'v9.1';
+const VERSION = 'v10';
 
 const NOMBRE_MODO = {
   contrarreloj: 'Contrarreloj',
   invierno:     'Invierno',
   libre:        'Panal libre',
+  contagio:     'Contagio',
+  expansion:    'Expansión',
 };
 
 // La frase de cada modo: el subtítulo de su tarjeta y de su fila en el inicio (v9).
@@ -277,14 +348,18 @@ const FRASE_MODO = {
   contrarreloj: 'Cosecha para ganar tiempo.',
   invierno:     'Evita congelarte.',
   libre:        'Para practicar.',
+  contagio:     'Limpia antes de que se extienda.',
+  expansion:    'Cosecha en el borde para crecer.',
 };
 
 // El color de acento de cada pestaña de la hoja (v9, T-40): la raya de arriba,
 // la línea bajo la pestaña activa, la frase y el recuadro de la dificultad. Es
 // el de la pestaña y no el del modo: la ficha de Invierno abierta en Básico va
 // en miel. Básico es el nivel 4 del panal y Contrarreloj, el 5 (LEVEL_COLORS).
+// Contagio en lila y Expansión en ámbar claro (v10, opción C de la maqueta).
 const COLOR_MODO = {
   basico: '#E3C87E', contrarreloj: '#F79A1F', plagas: '#F79A1F', invierno: '#9CC3D8', libre: '#9fd67a',
+  contagio: '#C79BD9', expansion: '#E6B872',
 };
 
 // Segundos que da una cosecha de L celdas: L·(L+3)/2 (DESIGN §9).

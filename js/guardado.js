@@ -61,9 +61,15 @@ function restaurarPartida(g) {
     for (const k of EXTRAS_GUARDADO) if (Number.isFinite(e[k])) s[k] = e[k];
 
     // Lo que no puede estar fuera de rango sin romper el motor.
-    const celda = t => esEntero(t) && t >= 0 && t < TILE_COUNT;
+    const celda = t => esEntero(t) && t >= 0 && t < s.height.length;
     if (![...s.height].every(h => h >= AGUA && h <= MAX_LEVEL)) return null;
     if (![...s.roto].every(r => r === 0 || r === 1)) return null;
+    // v10: el tablero es el del modo, y las celdas cerradas sólo 0 o 1.
+    if (s.tablero !== CONFIG_MODO[s.modo].tablero) return null;
+    if (![...s.cerrada].every(r => r === 0 || r === 1)) return null;
+    // Las huellas de Contagio: cada grupo, con su tipo, sus celdas y su turno.
+    if (!s.huellas.every(g => g && typeof g.tipo === 'string' && Array.isArray(g.tiles) &&
+        g.tiles.length > 0 && g.tiles.every(celda) && esEntero(g.proximo))) return null;
     if (!esEntero(s.step) || s.step < 1 || !esEntero(s.turn) || s.turn < 0) return null;
     if (!s.heladas.every(celda)) return null;
     if (s.item && (!celda(s.item.tile) || !ITEM_INFO[s.item.tipo])) return null;

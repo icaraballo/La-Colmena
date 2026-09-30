@@ -10,11 +10,19 @@
 // cosa rara que aparezca jugando.
 
 function createState(modo = MODOS.INVIERNO, dificultad = 'normal', seed = 1) {
+  const cfg = CONFIG_MODO[modo];
+  const n = TABLEROS[cfg.tablero].n;
   const s = {
     // --- tablero ---
-    height:    new Uint8Array(TILE_COUNT),   // 0 agua … 5 abeja
-    roto:      new Uint8Array(TILE_COUNT),   // 1 = destruida por la helada: fuera del panal
-    sedaHasta: new Int32Array(TILE_COUNT),   // bloqueada mientras sedaHasta > turn
+    // Cada partida lleva el suyo desde la v10 (T-43): los recorridos van hasta
+    // s.height.length y las vecinas se piden con vecinas(s, u).
+    tablero:   cfg.tablero,
+    height:    new Uint8Array(n),   // 0 agua … 5 abeja
+    roto:      new Uint8Array(n),   // 1 = destruida por la helada: fuera del panal
+    // 1 = todavía no abierta (Expansión, T-44). No es una celda rota: la rota es
+    // de la helada y no vuelve; la cerrada se abre cosechando a su lado.
+    cerrada:   new Uint8Array(n),
+    sedaHasta: new Int32Array(n),   // bloqueada mientras sedaHasta > turn
     item:      null,                          // { tile, tipo } — néctar sobre una celda
 
     // --- progresión del turno ---
@@ -36,6 +44,18 @@ function createState(modo = MODOS.INVIERNO, dificultad = 'normal', seed = 1) {
     desastres:   [],  // { tipo: 'capullo', tile } | { tipo: 'seda', tiles, hasta }
     calmaHasta:  0,   // sin desastres mientras turn < calmaHasta
 
+    // --- huellas (Contagio, T-42) ---
+    // Grupos de celdas marcadas: { tipo: 'varroa' | 'velutina', tiles, proximo }.
+    // `proximo` es el turno en que crece. El capullo no está aquí: sigue en
+    // s.desastres, y cuenta como huella mientras no eclosione.
+    huellas: [],
+    // El recuento del final: { bruto, marcadas, resta }. Lo pone el motor para
+    // que la pantalla final no calcule nada.
+    cierre: null,
+
+    // --- Expansión (T-44) ---
+    completado: false,   // se abrió el panal entero antes del tope
+
     // --- reloj (Contrarreloj) ---
     reloj: CONFIG_MODO[modo].reloj ? RELOJ_INICIAL : 0,
 
@@ -50,6 +70,18 @@ function createState(modo = MODOS.INVIERNO, dificultad = 'normal', seed = 1) {
     last: null,
     eventos: [],
   };
+
+  // Expansión: el anillo empieza cerrado (a AGUA, que no se ve ni se toca) y los
+  // cupos se reparten sólo entre las 19 de dentro.
+  if (cfg.abre) {
+    for (const i of CERRADAS_EXPANSION) s.cerrada[i] = 1;
+    const dentro = [];
+    for (let i = 0; i < n; i++) if (!s.cerrada[i]) dentro.push(i);
+    const reparto = [];
+    for (const { nivel, casillas } of ARRANQUE_EXPANSION) for (let k = 0; k < casillas; k++) reparto.push(nivel);
+    barajar(s, reparto).forEach((h, k) => { s.height[dentro[k]] = h; });
+    return s;
+  }
 
   // Cupos fijos (12 agua, 8 cera, 4 huevo), posiciones al azar. Las celdas rotas
   // del arranque (T-19) salen del cupo de agua: el reparto sigue sumando 24.
@@ -93,12 +125,19 @@ function barajar(s, arr) {
 // arrastra como cualquier nivel y sube a cera. Lo que no se puede tocar nunca es
 // una celda rota, y eso es lo que mantiene finita la partida (DESIGN §2).
 function jugable(s, i) {
-  return !s.roto[i] && !(s.sedaHasta[i] > s.turn);
+  return existe(s, i) && !(s.sedaHasta[i] > s.turn);
 }
+
+// La celda es parte del panal vivo: ni rota por la helada ni cerrada todavía
+// (v10). Es lo que hasta la v9.1 era `!s.roto[i]`.
+function existe(s, i) { return !s.roto[i] && !s.cerrada[i]; }
+
+// Las vecinas de una celda en el tablero de la partida (T-43).
+function vecinas(s, u) { return TABLEROS[s.tablero].adj[u]; }
 
 function tilesPlayable(s) {
   let n = 0;
-  for (let i = 0; i < TILE_COUNT; i++) if (!s.roto[i]) n++;
+  for (let i = 0; i < s.height.length; i++) if (existe(s, i)) n++;
   return n;
 }
 
@@ -122,7 +161,7 @@ function isValidDrag(s, cells) {
   if (new Set(cells).size !== cells.length) return false;
 
   for (const i of cells) {
-    if (!(i >= 0 && i < TILE_COUNT)) return false;
+    if (!(i >= 0 && i < s.height.length)) return false;
     if (!jugable(s, i)) return false;
   }
   if (nivelCadena(s, cells) === -1) return false;
@@ -133,7 +172,7 @@ function isValidDrag(s, cells) {
   const pila = [cells[0]];
   while (pila.length) {
     const u = pila.pop();
-    for (const v of ADJ[u]) if (dentro.has(v) && !visto.has(v)) { visto.add(v); pila.push(v); }
+    for (const v of vecinas(s, u)) if (dentro.has(v) && !visto.has(v)) { visto.add(v); pila.push(v); }
   }
   return visto.size === cells.length;
 }
@@ -175,14 +214,14 @@ function biggestCoherentArea(s) {
 function mesetaDeNivel(s, h) {
   const reina = (s.item && s.item.tipo === ITEMS.REINA && jugable(s, s.item.tile)) ? s.item.tile : -1;
   const de = i => jugable(s, i) && (s.height[i] === h || i === reina);
-  const seen = new Uint8Array(TILE_COUNT);
+  const seen = new Uint8Array(s.height.length);
   let best = 0;
-  for (let start = 0; start < TILE_COUNT; start++) {
+  for (let start = 0; start < s.height.length; start++) {
     if (seen[start] || !de(start)) continue;
     const stack = [start]; seen[start] = 1; let size = 0;
     while (stack.length) {
       const u = stack.pop(); size++;
-      for (const v of ADJ[u]) if (!seen[v] && de(v)) { seen[v] = 1; stack.push(v); }
+      for (const v of vecinas(s, u)) if (!seen[v] && de(v)) { seen[v] = 1; stack.push(v); }
     }
     if (size > best) best = size;
   }
@@ -211,6 +250,10 @@ function commitTurn(s, cells) {
     // AGUA, no a cera (COSECHA_DEVUELVE): la celda queda a cero, que es como se
     // lee jugando. Cuesta un turno más por ciclo y ese turno no puntúa.
     for (const i of cells) s.height[i] = COSECHA_DEVUELVE;
+    // Contagio (v10): cosechar limpia las huellas de las celdas cosechadas y el
+    // capullo que tenga al lado. Expansión: abre las cerradas que toca.
+    if (cfg.huellas) limpiarHuellas(s, cells);
+    if (cfg.abre) abrirCeldas(s, cells);
     if (cfg.puntua) s.score += Math.round(10 * L * L * bonusMultiplier(L) * (1 + s.streak));
     if (cfg.reloj) sumarTiempo(s, segundosCosecha(L) + s.streak);   // la racha: +1 s acumulativo
     s.streak++;
@@ -251,8 +294,21 @@ function commitTurn(s, cells) {
   caducarItem(s);
   spawnItemIfEarned(s);
 
+  // Contagio: después de pasar el turno y antes del fallo, crecen los grupos a
+  // los que les toca. El contagio sólo marca, no baja niveles, así que no cambia
+  // si cabe el paso.
+  if (cfg.huellas) contagiar(s);
+
   // ¿Cabe el siguiente paso en algún sitio? Con danza, cualquier longitud vale.
   if (!s.danza && biggestCoherentArea(s) < s.step) fallback(s);
+
+  // Los finales de la v10, al acabar el turno: Contagio por turnos, Expansión
+  // por panal completo o por tope.
+  if (!s.gameOver && cfg.turnosFijos && s.turn >= TURNOS_CONTAGIO) cerrarPorTurnos(s);
+  if (!s.gameOver && cfg.abre) {
+    if (!s.cerrada.some(Boolean)) terminarExpansion(s, true);
+    else if (s.turn >= TOPE_EXPANSION) terminarExpansion(s, false);
+  }
   return true;
 }
 
@@ -379,22 +435,22 @@ function decidirDesastre(s, n, turno) {
 // ejecución, por lo mismo.
 function candidatasVarroa(s) {
   let alto = CERA;
-  for (let i = 0; i < TILE_COUNT; i++) if (!s.roto[i] && s.height[i] > alto) alto = s.height[i];
+  for (let i = 0; i < s.height.length; i++) if (existe(s, i) && s.height[i] > alto) alto = s.height[i];
   const cand = [];
-  if (alto > CERA) for (let i = 0; i < TILE_COUNT; i++) if (!s.roto[i] && s.height[i] === alto) cand.push(i);
+  if (alto > CERA) for (let i = 0; i < s.height.length; i++) if (existe(s, i) && s.height[i] === alto) cand.push(i);
   return cand;
 }
 function candidatasPolilla(s) {
   const cand = [];
-  for (let i = 0; i < TILE_COUNT; i++)
-    if (!s.roto[i] && s.height[i] >= CERA && !s.desastres.some(d => d.tile === i)) cand.push(i);
+  for (let i = 0; i < s.height.length; i++)
+    if (existe(s, i) && s.height[i] >= CERA && !s.desastres.some(d => d.tile === i) && !marcada(s, i)) cand.push(i);
   return cand;
 }
 // Sin mirar s.roto la velutina podía elegir de centro una celda rota. Hoy da
 // igual (Contrarreloj no tiene helada), pero no el día que un modo tenga las dos.
 function candidatasVelutina(s) {
   const cand = [];
-  for (let i = 0; i < TILE_COUNT; i++) if (!s.roto[i] && s.height[i] > CERA) cand.push(i);
+  for (let i = 0; i < s.height.length; i++) if (existe(s, i) && s.height[i] > CERA) cand.push(i);
   return cand;
 }
 
@@ -406,6 +462,7 @@ function varroa(s) {
   if (tile === undefined) return null;
   const niveles = s.height[tile] - CERA;   // lo que se pierde: lo lee el bot (v7)
   s.height[tile] = CERA;
+  marcar(s, 'varroa', [tile]);
   return { tipo: 'varroa', tiles: [tile], niveles };
 }
 
@@ -420,7 +477,7 @@ function polilla(s) {
 // El capullo suelta seda sobre sus vecinas: bloqueadas SEDA_TURNOS turnos.
 function eclosionar(s, capullo) {
   s.desastres.splice(s.desastres.indexOf(capullo), 1);
-  const tiles = ADJ[capullo.tile].filter(v => !s.roto[v] && s.height[v] >= CERA);
+  const tiles = vecinas(s, capullo.tile).filter(v => existe(s, v) && s.height[v] >= CERA);
   const hasta = s.turn + SEDA_TURNOS;
   for (const v of tiles) s.sedaHasta[v] = hasta;
   s.desastres.push({ tipo: 'seda', tiles, hasta });
@@ -431,10 +488,11 @@ function eclosionar(s, capullo) {
 function velutina(s) {
   const centro = elegir(s, candidatasVelutina(s));
   if (centro === undefined) return null;
-  const zona = [centro, ...barajar(s, ADJ[centro].filter(v => !s.roto[v] && s.height[v] >= CERA))]
+  const zona = [centro, ...barajar(s, vecinas(s, centro).filter(v => existe(s, v) && s.height[v] >= CERA))]
     .slice(0, 3 + randInt(s, 2));
   let niveles = 0;
   for (const i of zona) { niveles += s.height[i] - CERA; s.height[i] = CERA; }
+  marcar(s, 'velutina', zona);
   s.calmaHasta = s.turn + CALMA_TRAS_VELUTINA;
   return { tipo: 'velutina', tiles: zona, niveles };
 }
@@ -449,6 +507,130 @@ function limpiarAmenaza(s) {
   if (k === -1) return;
   const [d] = s.desastres.splice(k, 1);
   s.eventos.push({ type: 'limpia', desastre: d.tipo });
+}
+
+// ---------------------------------------------------------------------------
+// Huellas (Contagio, v10, T-42). Es otra capa, aparte de la escalera: la
+// escalera es lo que viene; las huellas, lo que ya te han hecho. Las huellas no
+// bajan la escalera ni la escalera toca las huellas.
+// ---------------------------------------------------------------------------
+function marcada(s, i) { return s.huellas.some(g => g.tiles.includes(i)); }
+function capulloEn(s, i) { return s.desastres.some(d => d.tipo === 'capullo' && d.tile === i); }
+
+// Una plaga deja huella en `tiles`. Una celda ya marcada no se vuelve a marcar:
+// sigue en su grupo. Si no queda ninguna nueva, no hay grupo nuevo.
+function marcar(s, tipo, tiles) {
+  if (!CONFIG_MODO[s.modo].huellas) return;
+  const nuevas = tiles.filter(i => !marcada(s, i));
+  if (!nuevas.length) return;
+  s.huellas.push({ tipo, tiles: nuevas, proximo: s.turn + CONTAGIO_CADA[s.dificultad] });
+  s.eventos.push({ type: 'marca', tipo, tiles: nuevas.slice() });
+}
+
+// Sólo se contagia la cría (huevo, larva, operculada) que no esté ya marcada. La
+// seda no protege: una celda con seda también se contagia.
+function contagiable(s, i) {
+  return existe(s, i) && NIVELES_CONTAGIABLES.includes(s.height[i]) && !marcada(s, i) && !capulloEn(s, i);
+}
+
+// Crece el GRUPO, no cada celda (si cada celda creciera por su cuenta, una
+// velutina de 4 se desbocaría): una celda nueva al azar entre las vecinas
+// válidas de todo el grupo. Sin ninguna, no crece y el periodo vuelve a empezar
+// (no se queda «cargado» esperando cría: eso sería contagio por sorpresa). Así,
+// rodear una huella de celdas bajas hace de cortafuegos.
+function contagiar(s) {
+  s.huellas.forEach((g, k) => {
+    if (g.proximo > s.turn) return;
+    g.proximo = s.turn + CONTAGIO_CADA[s.dificultad];
+    const cand = [];
+    for (const u of g.tiles) for (const v of vecinas(s, u)) if (!cand.includes(v) && contagiable(s, v)) cand.push(v);
+    const tile = elegir(s, cand);
+    if (tile === undefined) return;
+    g.tiles.push(tile);
+    s.eventos.push({ type: 'contagia', tile, grupo: k, tipo: g.tipo });
+  });
+}
+
+// La cosecha limpia las huellas de sus celdas (subir de nivel no: sólo
+// cosechar) y quita el capullo si lo toca o toca a una vecina suya, sea del
+// tamaño que sea.
+function limpiarHuellas(s, cells) {
+  const tiles = [];
+  for (const g of s.huellas) {
+    const fuera = g.tiles.filter(i => cells.includes(i));
+    if (!fuera.length) continue;
+    tiles.push(...fuera);
+    g.tiles = g.tiles.filter(i => !cells.includes(i));
+  }
+  s.huellas = s.huellas.filter(g => g.tiles.length);
+  if (tiles.length) s.eventos.push({ type: 'limpiaHuella', tiles });
+  const k = s.desastres.findIndex(d => d.tipo === 'capullo' &&
+    (cells.includes(d.tile) || vecinas(s, d.tile).some(v => cells.includes(v))));
+  if (k !== -1) {
+    s.desastres.splice(k, 1);
+    s.eventos.push({ type: 'limpia', desastre: 'capullo' });
+  }
+}
+
+// Consultas para la interfaz y el bot (regla 8: la pantalla no calcula).
+// Celdas marcadas ahora mismo: las de los grupos y el capullo sin eclosionar.
+function celdasMarcadas(s) {
+  let n = 0;
+  for (const g of s.huellas) n += g.tiles.length;
+  return n + s.desastres.filter(d => d.tipo === 'capullo').length;
+}
+function penalizacionHuellas(s) { return celdasMarcadas(s) * HUELLA_RESTA; }
+// Los grupos que crecen al pasar el turno siguiente: parpadean para avisarlo,
+// tengan o no vecinas válidas ahora (tu jugada puede darles una).
+function contagioInminente(s) { return s.huellas.filter(g => g.proximo - s.turn === 1); }
+function turnosRestantes(s) { return Math.max(0, TURNOS_CONTAGIO - s.turn); }
+
+// Se acaban los turnos: cada celda marcada resta, y los puntos no bajan de 0.
+function cerrarPorTurnos(s) {
+  const marcadas = celdasMarcadas(s), resta = marcadas * HUELLA_RESTA, bruto = s.score;
+  s.score = Math.max(0, bruto - resta);
+  s.cierre = { bruto, marcadas, resta };
+  s.gameOver = true;
+  s.eventos.push({ type: 'fin', marcadas, resta });
+}
+
+// ---------------------------------------------------------------------------
+// Expansión (v10, T-44): la cosecha abre las cerradas que toca.
+// ---------------------------------------------------------------------------
+// Cuántas celdas gana una cosecha de L: la misma escala que baja la escalera
+// (5-6 → 1, 7 → 2, 8 → 3, 9 o más → 4), así la cosecha grande vale lo mismo en
+// los dos modos. Las pequeñas, ABRE_COSECHA_PEQUENA.
+function celdasQueGana(L) {
+  return L < COSECHA_GRANDE ? ABRE_COSECHA_PEQUENA : Math.min(peldanosQueBaja(L), ESCALERA_TOPE);
+}
+// Las cerradas que tocan alguna celda de la cosecha.
+function cerradasQueToca(s, cells) {
+  const out = [];
+  for (const u of cells) for (const v of vecinas(s, u)) if (s.cerrada[v] && !out.includes(v)) out.push(v);
+  return out.sort((a, b) => a - b);
+}
+// Pura: lo que abriría cosechar `cells` (la interfaz la usa mientras arrastras).
+// Se abren min(gana, tocadas); si toca más de las que gana, cuáles se decide al
+// azar al cosechar.
+function celdasQueAbriria(s, cells) {
+  const tocadas = cerradasQueToca(s, cells), gana = celdasQueGana(cells.length);
+  return { tocadas, gana, abre: Math.min(gana, tocadas.length) };
+}
+function abrirCeldas(s, cells) {
+  const { tocadas, gana } = celdasQueAbriria(s, cells);
+  if (!gana) return;
+  const tiles = tocadas.length > gana ? barajar(s, tocadas.slice()).slice(0, gana) : tocadas;
+  // Aparece como agua: recuperas suelo, no trabajo (como el humo).
+  for (const i of tiles) { s.cerrada[i] = 0; s.height[i] = AGUA; }
+  s.eventos.push({ type: 'abre', tiles, gana, tocadas: tocadas.length });
+}
+function abiertas(s) {
+  return CERRADAS_EXPANSION.filter(i => !s.cerrada[i]).length;
+}
+function terminarExpansion(s, completado) {
+  s.completado = completado;
+  s.gameOver = true;
+  s.eventos.push({ type: 'fin', completado, turnos: s.turn, abiertas: abiertas(s) });
 }
 
 // La gota se evapora si no se recoge a tiempo (v5). Sin esto el ítem espera
@@ -478,8 +660,8 @@ function caducarSeda(s) {
 // que hay, que es lo que el umbral quiere decir.
 function umbralItem(s, h) {
   let vivas = 0;
-  for (let i = 0; i < TILE_COUNT; i++) if (!s.roto[i]) vivas++;
-  return Math.max(ITEM_UMBRAL_MIN, Math.ceil(ITEM_THRESHOLDS[h - 1] * vivas / TILE_COUNT));
+  for (let i = 0; i < s.height.length; i++) if (existe(s, i)) vivas++;
+  return Math.max(ITEM_UMBRAL_MIN, Math.ceil(ITEM_THRESHOLDS[h - 1] * vivas / TABLEROS.panal24.n));
 }
 
 function spawnItemIfEarned(s) {
@@ -487,14 +669,14 @@ function spawnItemIfEarned(s) {
   if (s.turn < s.itemCalma) return null;
 
   const cuenta = new Array(MAX_LEVEL + 1).fill(0);
-  for (let i = 0; i < TILE_COUNT; i++) if (jugable(s, i)) cuenta[s.height[i]]++;
+  for (let i = 0; i < s.height.length; i++) if (jugable(s, i)) cuenta[s.height[i]]++;
   let ganado = false;
   for (let h = CERA; h <= MAX_LEVEL; h++) if (cuenta[h] >= umbralItem(s, h)) ganado = true;
   if (!ganado) return null;
 
   const tipo = elegir(s, itemsUtiles(s));
   const cand = [];
-  for (let i = 0; i < TILE_COUNT; i++) if (jugable(s, i)) cand.push(i);
+  for (let i = 0; i < s.height.length; i++) if (jugable(s, i)) cand.push(i);
   const tile = elegir(s, cand);
   if (tipo === undefined || tile === undefined) return null;
 
@@ -509,8 +691,8 @@ function itemsUtiles(s) {
   const cfg = CONFIG_MODO[s.modo];
   const out = [ITEMS.DANZA, ITEMS.REINA];
   let agua = 0, haySubible = false;
-  for (let i = 0; i < TILE_COUNT; i++) {
-    if (s.roto[i]) continue;
+  for (let i = 0; i < s.height.length; i++) {
+    if (!existe(s, i)) continue;
     if (s.height[i] === AGUA) agua++;
     else if (s.height[i] < MAX_LEVEL) haySubible = true;
   }
@@ -539,13 +721,13 @@ function itemsUtiles(s) {
 function usarItem(s, tipo) {
   switch (tipo) {
     case ITEMS.JALEA:
-      for (let i = 0; i < TILE_COUNT; i++)
+      for (let i = 0; i < s.height.length; i++)
         // Todo el panal sube un nivel, menos el agua (y la abeja, que ya está arriba).
-        if (!s.roto[i] && s.height[i] >= CERA && s.height[i] < MAX_LEVEL) s.height[i]++;
+        if (existe(s, i) && s.height[i] >= CERA && s.height[i] < MAX_LEVEL) s.height[i]++;
       break;
     case ITEMS.PROPOLEO:
       // El agua sube un nivel, a cera. Las rotas no vuelven.
-      for (let i = 0; i < TILE_COUNT; i++) if (!s.roto[i] && s.height[i] === AGUA) s.height[i] = CERA;
+      for (let i = 0; i < s.height.length; i++) if (existe(s, i) && s.height[i] === AGUA) s.height[i] = CERA;
       break;
     case ITEMS.DANZA:
       s.danza = true;

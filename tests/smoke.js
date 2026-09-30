@@ -801,6 +801,220 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
      'guardado.js no toca DOM, localStorage ni Math.random');
 }
 
+// --- tableros por partida (v10, T-43) -------------------------------------------------------
+{
+  const p24 = T.TABLEROS.panal24, h37 = T.TABLEROS.hex37;
+  eq(p24.n, 24, 'panal24 tiene 24 celdas');
+  ok(p24.adj === T.ADJ, 'panal24 usa la tabla ADJ de siempre');
+  eq(h37.n, 37, 'hex37 tiene 37 celdas');
+  let simetrica = true;
+  h37.adj.forEach((vs, i) => vs.forEach(v => { if (!h37.adj[v].includes(i)) simetrica = false; }));
+  ok(simetrica, 'la adyacencia de hex37 es simétrica');
+  // Las 19 de dentro tienen la adyacencia del hexágono de 19 (3-4-5-4-3).
+  const dentro = [...Array(37).keys()].filter(i => !T.CERRADAS_EXPANSION.includes(i));
+  eq(dentro.length, 19, 'quedan 19 celdas dentro del anillo');
+  const h19 = T.buildAdjacency([3, 4, 5, 4, 3]);
+  ok(dentro.every((i, k) => JSON.stringify(h37.adj[i].filter(v => dentro.includes(v)).map(v => dentro.indexOf(v))) === JSON.stringify(h19[k])),
+     'las 19 de dentro se tocan como el hexágono de 19');
+  const esquinas = [0, 3, 15, 21, 33, 36];
+  ok(esquinas.every(i => h37.adj[i].filter(v => dentro.includes(v)).length === 1),
+     'las 6 esquinas del anillo tocan una sola celda de dentro');
+  for (const m of ['contrarreloj', 'invierno', 'libre', 'contagio'])
+    eq(T.createState(m, 'normal', 3).height.length, 24, `${m} juega en el panal de 24`);
+  eq(T.createState('expansion', 'normal', 3).height.length, 37, 'expansion juega en el de 37');
+  eq(T.vecinas(T.createState('expansion', 'normal', 3), 18).length, 6, 'vecinas() pregunta al tablero de la partida');
+}
+
+// --- Contagio: las huellas (v10, T-42) -------------------------------------------------------
+{
+  const marcadas = s => s.huellas.reduce((n, g) => n + g.tiles.length, 0);
+  // La varroa deja huella en Contagio y en Contrarreloj no.
+  for (const [m, espera] of [['contagio', 1], ['contrarreloj', 0]]) {
+    const s = tablero(m, T.HUEVO, { 5: T.OPERCULADA });
+    s.turn = 10; s.failStreak = 0; s.eventos = [];
+    T.fallback(s);
+    eq(marcadas(s), espera, `${m}: la varroa ${espera ? 'deja' : 'no deja'} huella`);
+    if (espera) {
+      eq(s.huellas[0].tiles[0], 5, 'la huella es la celda que ha bajado a cera');
+      eq(s.huellas[0].proximo, 10 + T.CONTAGIO_CADA.normal, 'el grupo crece dentro de CONTAGIO_CADA turnos');
+      ok(s.eventos.some(e => e.type === 'marca'), 'con el evento marca');
+    }
+  }
+  // Varroa sin víctima: no hay huella.
+  {
+    const s = tablero('contagio', T.CERA);
+    s.eventos = []; T.fallback(s);
+    eq(s.huellas.length, 0, 'una varroa sin nada que bajar no deja huella');
+  }
+  // La velutina marca su zona; lo ya marcado no se vuelve a marcar.
+  {
+    const s = tablero('contagio', T.LARVA);
+    s.huellas = [{ tipo: 'varroa', tiles: [...Array(24).keys()].filter(i => i !== 11), proximo: 99 }];
+    s.failStreak = 3; s.eventos = []; T.fallback(s);
+    const vel = s.huellas.find(g => g.tipo === 'velutina');
+    ok(!vel || (vel.tiles.length === 1 && vel.tiles[0] === 11), 'la velutina sólo se queda las celdas que no estaban marcadas');
+  }
+  // El contagio: crece el grupo, sólo sobre cría, en su turno.
+  {
+    const s = tablero('contagio', T.CERA, { 11: T.CERA, 12: T.LARVA });
+    s.huellas = [{ tipo: 'varroa', tiles: [11], proximo: 5 }];
+    s.turn = 4; s.eventos = []; T.contagiar(s);
+    eq(marcadas(s), 1, 'antes de su turno no crece');
+    eq(T.contagioInminente(s).length, 1, '…pero avisa el turno antes');
+    s.turn = 5; T.contagiar(s);
+    ok(s.huellas[0].tiles.includes(12), 'en su turno crece hacia la única vecina con cría');
+    eq(s.huellas[0].proximo, 5 + T.CONTAGIO_CADA.normal, 'y el periodo vuelve a empezar');
+    ok(s.eventos.some(e => e.type === 'contagia' && e.tile === 12), 'con el evento contagia');
+    eq(s.height[12], T.LARVA, 'la celda contagiada no baja de nivel');
+  }
+  {
+    const s = tablero('contagio', T.CERA, { 12: T.MAX_LEVEL, 13: T.AGUA });
+    s.huellas = [{ tipo: 'varroa', tiles: [11], proximo: 5 }];
+    s.turn = 5; s.eventos = []; T.contagiar(s);
+    eq(marcadas(s), 1, 'no crece sobre cera, agua ni abeja (cortafuegos)');
+    eq(s.huellas[0].proximo, 5 + T.CONTAGIO_CADA.normal, 'sin vecina válida, el periodo vuelve a empezar (no se queda cargado)');
+  }
+  {
+    const s = tablero('contagio', T.HUEVO, {}, 'dificil');
+    s.turn = 0; s.failStreak = 0; s.height[3] = T.LARVA; s.eventos = []; T.fallback(s);
+    eq(s.huellas[0].proximo, T.CONTAGIO_CADA.dificil, 'en difícil crece antes');
+  }
+  // Limpiar: cosechar sí, subir no.
+  {
+    const s = tablero('contagio', T.HUEVO, { 0: T.MAX_LEVEL, 1: T.MAX_LEVEL });
+    s.huellas = [{ tipo: 'velutina', tiles: [0, 1, 5], proximo: 99 }];
+    s.step = 1; T.commitTurn(s, [5]);
+    eq(marcadas(s), 3, 'subir de nivel una celda marcada no la limpia');
+    s.step = 2; T.commitTurn(s, [0, 1]);
+    eq(marcadas(s), 1, 'cosecharla sí');
+    ok(s.eventos.some(e => e.type === 'limpiaHuella' && e.tiles.length === 2), 'con el evento limpiaHuella');
+  }
+  // El capullo: cualquier cosecha a su lado lo quita.
+  {
+    const s = tablero('contagio', T.HUEVO, { 0: T.MAX_LEVEL });
+    s.desastres = [{ tipo: 'capullo', tile: 5 }];
+    eq(T.celdasMarcadas(s), 1, 'el capullo cuenta como una celda marcada');
+    s.step = 1; T.commitTurn(s, [0]);
+    eq(s.desastres.length, 0, 'una cosecha de 1 junto al capullo lo quita');
+  }
+  // El final: por turnos, cada celda marcada resta, y no se baja de 0.
+  for (const [antes, despues] of [[10000, 6000], [2000, 0]]) {
+    const s = tablero('contagio', T.HUEVO, { 12: T.AGUA });   // subir agua no da puntos
+    s.huellas = [{ tipo: 'velutina', tiles: [20, 21, 22], proximo: 999 }];
+    s.desastres = [{ tipo: 'capullo', tile: 3 }];
+    s.turn = T.TURNOS_CONTAGIO - 1; s.step = 1; s.score = antes;
+    T.commitTurn(s, [12]);
+    ok(s.gameOver, `la partida acaba en el turno ${T.TURNOS_CONTAGIO}`);
+    eq(s.score, despues, `${antes} puntos con 4 celdas marcadas quedan en ${despues}`);
+    ok(s.cierre && s.cierre.marcadas === 4 && s.cierre.bruto === antes, 'el recuento del final lo guarda el motor');
+  }
+  eq(T.turnosRestantes(T.createState('contagio', 'normal', 1)), T.TURNOS_CONTAGIO, 'turnos que quedan al empezar');
+}
+
+// --- Expansión: el panal que crece (v10, T-44) -------------------------------------------------
+{
+  const s0 = T.createState('expansion', 'normal', 11);
+  eq([...s0.cerrada].filter(Boolean).length, 18, 'empieza con el anillo de 18 cerrado');
+  eq(T.tilesPlayable(s0), 19, 'el panal vivo son las 19 de dentro');
+  const dentro = [...Array(37).keys()].filter(i => !s0.cerrada[i]);
+  const cuenta = h => dentro.filter(i => s0.height[i] === h).length;
+  ok(cuenta(T.AGUA) === 10 && cuenta(T.CERA) === 6 && cuenta(T.HUEVO) === 3, 'cupos 10/6/3 en las de dentro');
+  ok(T.CERRADAS_EXPANSION.every(i => !T.jugable(s0, i)), 'una celda cerrada no se juega');
+  eq(T.celdasQueGana(4), T.ABRE_COSECHA_PEQUENA, 'una cosecha pequeña abre ABRE_COSECHA_PEQUENA');
+  ok(T.celdasQueGana(5) === 1 && T.celdasQueGana(7) === 2 && T.celdasQueGana(8) === 3 && T.celdasQueGana(9) === 4 && T.celdasQueGana(12) === 4,
+     'la escala: 5-6 → 1, 7 → 2, 8 → 3, 9 o más → 4');
+
+  const preparar = (celdas) => {
+    const s = T.createState('expansion', 'normal', 11);
+    for (const i of dentro) s.height[i] = T.HUEVO;
+    for (const i of celdas) s.height[i] = T.MAX_LEVEL;
+    s.step = celdas.length; s.item = null;
+    return s;
+  };
+  // 6 toca las cerradas 1 y 2; el resto son del centro.
+  const siete = [6, 11, 12, 17, 18, 19, 24];
+  {
+    const s = preparar(siete);
+    const q = T.celdasQueAbriria(s, siete);
+    ok(q.gana === 2 && q.tocadas.length === 2 && q.abre === 2, 'una cosecha de 7 que toca 2 cerradas abriría 2');
+    T.commitTurn(s, siete);
+    ok(!s.cerrada[1] && !s.cerrada[2], 'y las abre');
+    ok(s.height[1] === T.AGUA && s.height[2] === T.AGUA, 'como agua');
+    eq(T.abiertas(s), 2, 'abiertas() lo cuenta');
+  }
+  {
+    const ocho = [...siete, 25];
+    const s = preparar(ocho);
+    T.commitTurn(s, ocho);
+    const ev = s.eventos.find(e => e.type === 'abre');
+    ok(ev && ev.gana === 3 && ev.tocadas === 2 && ev.tiles.length === 2, 'una de 8 que sólo toca 2 abre 2: la tercera se pierde');
+  }
+  {
+    const cinco = [5, 6, 7, 11, 12];
+    const s = preparar(cinco);
+    T.commitTurn(s, cinco);
+    eq(T.abiertas(s), 1, 'una de 5 que toca 6 cerradas abre 1, elegida al azar');
+  }
+  {
+    const centro = [11, 12, 17, 18, 19];
+    const s = preparar(centro);
+    T.commitTurn(s, centro);
+    eq(T.abiertas(s), 0, 'una cosecha que no toca el borde no abre nada');
+  }
+  {
+    const s = preparar([]);
+    s.height[0] = T.AGUA;
+    for (let i = 0; i < 37; i++) if (s.cerrada[i]) { s.cerrada[i] = 0; s.height[i] = T.AGUA; }
+    s.cerrada[1] = 1;
+    s.height[6] = T.MAX_LEVEL; s.step = 1;
+    T.commitTurn(s, [6]);
+    ok(!s.gameOver && s.cerrada[1] === 1, 'con ABRE_COSECHA_PEQUENA a 0, cosechar 1 no abre la última');
+  }
+  {
+    const cinco = [5, 6, 7, 11, 12];
+    const s = preparar(cinco);
+    for (let i = 0; i < 37; i++) if (s.cerrada[i] && i !== 2) { s.cerrada[i] = 0; s.height[i] = T.AGUA; }
+    T.commitTurn(s, cinco);
+    ok(s.gameOver && s.completado, 'abrir la última completa el panal y acaba la partida');
+    ok(s.eventos.some(e => e.type === 'fin' && e.completado), 'con el evento fin');
+  }
+  {
+    const s = preparar([]);
+    s.turn = T.TOPE_EXPANSION - 1; s.step = 1;
+    T.commitTurn(s, [18]);
+    ok(s.gameOver && !s.completado, `en el turno ${T.TOPE_EXPANSION} acaba sin completar`);
+  }
+  {
+    const s = preparar([]);
+    for (const i of dentro) s.height[i] = T.AGUA;
+    T.usarItem(s, T.ITEMS.PROPOLEO);
+    ok(T.CERRADAS_EXPANSION.every(i => s.cerrada[i] && s.height[i] === T.AGUA), 'el propóleo no toca las cerradas');
+  }
+  ok(T.createState('expansion', 'normal', 11).modo === 'expansion' && !T.CONFIG_MODO.expansion.puntua, 'Expansión no puntúa');
+}
+
+// --- guardar Contagio y Expansión (v10) --------------------------------------------------------
+{
+  const ida = s => T.restaurarPartida(JSON.parse(JSON.stringify(T.serializarPartida(s))));
+  const c = T.createState('contagio', 'normal', 21);
+  c.huellas = [{ tipo: 'varroa', tiles: [3, 4], proximo: 7 }];
+  const rc = ida(c);
+  ok(rc && JSON.stringify(rc.huellas) === JSON.stringify(c.huellas), 'las huellas se guardan y vuelven');
+  const e = T.createState('expansion', 'normal', 21);
+  e.cerrada[0] = 0;
+  const re = ida(e);
+  ok(re && re.cerrada.length === 37 && re.cerrada[0] === 0 && re.cerrada[1] === 1, 'las celdas cerradas se guardan y vuelven');
+  const mal = g => T.restaurarPartida(g) === null;
+  const base = s => JSON.parse(JSON.stringify(T.serializarPartida(s)));
+  ok(mal((g => (g.estado.tablero = 'hex37', g))(base(c))), 'se descarta una partida con un tablero que no es el de su modo');
+  ok(mal((g => (g.estado.huellas = [{ tipo: 'varroa', tiles: [40], proximo: 3 }], g))(base(c))), 'se descarta una huella fuera del panal');
+  ok(mal((g => (g.estado.cerrada[3] = 2, g))(base(e))), 'se descarta una celda cerrada que no es 0 ni 1');
+  // Una partida de la v9.1, sin los campos nuevos, sigue valiendo.
+  const vieja = base(T.createState('invierno', 'normal', 4));
+  delete vieja.estado.tablero; delete vieja.estado.cerrada; delete vieja.estado.huellas; delete vieja.estado.cierre; delete vieja.estado.completado;
+  ok(T.restaurarPartida(vieja) !== null, 'una partida guardada en la v9.1 se puede continuar');
+}
+
 // --- el motor no toca el DOM ---------------------------------------------------------------
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'state.js'), 'utf8');

@@ -51,7 +51,7 @@ function buscarJugada(s, L, nivelPreferido, R, forzar) {
     if (!jugable(s, forzar)) return null;
     inicios = [forzar];
   } else {
-    for (let i = 0; i < TILE_COUNT; i++) if (jugable(s, i)) inicios.push(i);
+    for (let i = 0; i < s.height.length; i++) if (jugable(s, i)) inicios.push(i);
     inicios = shuffled(inicios, R);
   }
 
@@ -63,15 +63,15 @@ function buscarJugada(s, L, nivelPreferido, R, forzar) {
     // Sin esto el bot se colgaba en el 0,3 % de las partidas de Invierno difícil
     // (CR-09) por culpa suya, no del motor.
     const niveles = inicio === reina
-      ? [...new Set([s.height[inicio], ...ADJ[inicio].filter(v => jugable(s, v)).map(v => s.height[v])])]
+      ? [...new Set([s.height[inicio], ...vecinas(s, inicio).filter(v => jugable(s, v)).map(v => s.height[v])])]
       : [s.height[inicio]];
     for (const h of shuffled(niveles, R)) {
       if (nivelPreferido !== undefined && h !== nivelPreferido) continue;
-      const visto = new Uint8Array(TILE_COUNT); visto[inicio] = 1;
+      const visto = new Uint8Array(s.height.length); visto[inicio] = 1;
       const conjunto = [inicio], cola = [inicio];
       while (cola.length && conjunto.length < L) {
         const u = cola.shift();
-        for (const v of shuffled(ADJ[u], R)) {
+        for (const v of shuffled(vecinas(s, u), R)) {
           if (visto[v] || !de(v, h)) continue;
           visto[v] = 1; conjunto.push(v); cola.push(v);
           if (conjunto.length === L) break;

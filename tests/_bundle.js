@@ -29,9 +29,14 @@ const FOOTER = `
      RELOJ_INICIAL, RELOJ_TECHO, PUNTOS_POR_SEGUNDO, SEDA_TURNOS, CALMA_TRAS_VELUTINA,
      createState, isValidDrag, biggestCoherentArea, commitTurn, fallback, tilesPlayable,
      jugable, spawnItemIfEarned, usarItem, sumarTiempo, velocidadReloj, tick,
-     siguienteDesastre, mesetaDeNivel, peldanosQueBaja, ESCALERA_TOPE, COSECHA_LIMPIA, DESASTRES_MAX_ACTIVOS, ITEM_INFO, ITEMS_VISIBLES, pasoDeCadena,
+     siguienteDesastre, mesetaDeNivel, ESCALERA_TOPE, COSECHA_LIMPIA, DESASTRES_MAX_ACTIVOS, ITEM_INFO, ITEMS_VISIBLES, pasoDeCadena,
      rng, shuffled, buscarJugada, elegirJugada,
-     serializarPartida, restaurarPartida, GUARDADO_VERSION })
+     serializarPartida, restaurarPartida, GUARDADO_VERSION,
+     TABLEROS, vecinas, existe,
+     CONTAGIO_CADA, TURNOS_CONTAGIO, HUELLA_RESTA, NIVELES_CONTAGIABLES, celdasMarcadas,
+     penalizacionHuellas, contagioInminente, turnosRestantes, contagiar, marcada,
+     CERRADAS_EXPANSION, ARRANQUE_EXPANSION, TOPE_EXPANSION, ABRE_COSECHA_PEQUENA,
+     celdasQueGana, celdasQueAbriria, abiertas, peldanosQueBaja })
 `;
 
 module.exports = vm.runInNewContext(src + FOOTER, {});
