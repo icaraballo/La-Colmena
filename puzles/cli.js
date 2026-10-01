@@ -2,10 +2,13 @@
 //
 //   npm run puzles -- generar   [--tipo marcadas,rojas] [--forma "cuello 15"|huecos] [--turnos 6-9]
 //                               [--nota medio,difícil] [--cuantos 20] [--segundos 300] [--semilla 7]
-//                               [--uno] [--sin-nota] [--hilos N]
+//                               [--por-tipo 15] [--uno] [--sin-nota] [--hilos N]
 //   npm run puzles -- comprobar [lote]     rejuega todas las soluciones
 //   npm run puzles -- evaluar   [lote]     (re)calcula las notas
 //   npm run puzles -- resumen   [lote]     tabla por tipo, nota, mínimo y forma
+//
+// --por-tipo N genera tipo a tipo hasta tener N de cada uno (o de los de --tipo), en
+// un solo lote. Para reproducir un candidato con --uno, pásale también su --tipo.
 //
 // [lote] es la ruta de un .jsonl, su nombre dentro de puzles/salida/, o nada (el
 // último). `meter` y `verificar` llegan en la F3, con js/puzles.js.
@@ -134,58 +137,78 @@ async function generar(a) {
     return;
   }
 
-  const cuantos = Number(a.cuantos) || 20;
   const segundos = Number(a.segundos) || 300;
   const semillaLote = (a.semilla !== undefined ? Number(a.semilla) : Date.now() % 1e9) >>> 0;
   const hilos = hilosDe(a);
   const TROZO = 4;
+  const { mezclar } = require('./motor.js');
 
-  console.log(`Generando ${cuantos} puzles (semilla ${semillaLote}, ${hilos} núcleos, máximo ${segundos} s)…`);
-  const resultados = [];
-  // La cuenta mientras se genera: sin lo que ya existía ni lo repetido en esta tanda.
+  // Las tandas. Sin --por-tipo, una: los tipos al azar, como siempre. Con
+  // --por-tipo N, una por tipo hasta tener N de cada uno (LC-Instrucciones §9.8: los
+  // tipos caros, como rojas, salen igualmente). Cada tanda tiene su semilla, sacada
+  // de la del lote; todo va al mismo lote.
+  const porTipo = a['por-tipo'] !== undefined ? Number(a['por-tipo']) : null;
+  if (porTipo !== null && !(porTipo >= 1)) throw new Error('--por-tipo va con un número: --por-tipo 15');
+  const tipos = op.tipos || OPCIONES.tipos;
+  const tandas = porTipo
+    ? tipos.map((t, f) => ({ nombre: t, op: { ...op, tipos: [t] }, cuantos: porTipo, semilla: mezclar(semillaLote, f + 1) }))
+    : [{ nombre: null, op, cuantos: Number(a.cuantos) || 20, semilla: semillaLote }];
+  const pedidos = tandas.reduce((n, t) => n + t.cuantos, 0);
+
+  console.log(`Generando ${pedidos} puzles${porTipo ? ` (${porTipo} de cada tipo)` : ''} (semilla ${semillaLote}, ${hilos} núcleos, máximo ${segundos} s)…`);
+  // Lo que ya existía, y lo de esta tanda, para no contar repetidos.
   const registro = crearRegistro(), vistosAhora = new Set();
-  let siguienteK = 0, buenos = 0, ultimoAviso = Date.now();
   const t0 = Date.now();
   const tiempo = () => Math.round((Date.now() - t0) / 1000);
-  await repartir(hilos, () => {
-    if (buenos >= cuantos || Date.now() - t0 > segundos * 1000) return null;
-    const t = { que: 'intentos', desde: siguienteK, hasta: siguienteK + TROZO, semillaLote, op };
-    siguienteK += TROZO;
-    return t;
-  }, res => {
-    for (const r of res) {
-      resultados.push(r);
-      const c = r.candidato;
-      if (c && (!notas || notas.includes(c.eval.nota)) && !registro.tiene(c.huella) && !vistosAhora.has(c.huella)) {
-        vistosAhora.add(c.huella); buenos++;
-      }
-    }
-    if (Date.now() - ultimoAviso > 3000) {
-      ultimoAviso = Date.now();
-      console.log(`  ${Math.min(buenos, cuantos)}/${cuantos} puzles · ${resultados.length} intentos · ${tiempo()} s`);
-    }
-  });
-
-  // En orden de intento: así el lote no depende de qué núcleo acabó antes.
-  resultados.sort((x, y) => x.k - y.k);
-  const errores = resultados.filter(r => r.error);
-  const descartes = {}, elegidos = [];
+  const descartes = {}, elegidos = [], errores = [], faltan = [];
   const descarta = m => { descartes[m] = (descartes[m] || 0) + 1; };
-  for (const r of resultados) {
-    if (r.error) continue;
-    if (r.descarte) { descarta(r.descarte); continue; }
-    if (elegidos.length >= cuantos) { descarta('sobran (ya hay los pedidos)'); continue; }
-    if (notas && !notas.includes(r.candidato.eval.nota)) { descarta('nota fuera de lo pedido'); continue; }
-    if (!registro.apuntar(r.candidato.huella)) { descarta('repetido'); continue; }
-    elegidos.push(r.candidato);
+  let intentos = 0;
+
+  for (const tanda of tandas) {
+    const resultados = [];
+    let siguienteK = 0, buenos = 0, ultimoAviso = Date.now();
+    const quien = tanda.nombre ? `${tanda.nombre}: ` : '';
+    await repartir(hilos, () => {
+      if (buenos >= tanda.cuantos || Date.now() - t0 > segundos * 1000) return null;
+      const t = { que: 'intentos', desde: siguienteK, hasta: siguienteK + TROZO, semillaLote: tanda.semilla, op: tanda.op };
+      siguienteK += TROZO;
+      return t;
+    }, res => {
+      for (const r of res) {
+        resultados.push(r);
+        const c = r.candidato;
+        if (c && (!notas || notas.includes(c.eval.nota)) && !registro.tiene(c.huella) && !vistosAhora.has(c.huella)) {
+          vistosAhora.add(c.huella); buenos++;
+        }
+      }
+      if (Date.now() - ultimoAviso > 3000) {
+        ultimoAviso = Date.now();
+        console.log(`  ${quien}${Math.min(buenos, tanda.cuantos)}/${tanda.cuantos} puzles · ${resultados.length} intentos · ${tiempo()} s`);
+      }
+    });
+
+    // En orden de intento: así el lote no depende de qué núcleo acabó antes.
+    resultados.sort((x, y) => x.k - y.k);
+    intentos += resultados.length;
+    let deEsta = 0;
+    for (const r of resultados) {
+      if (r.error) { errores.push(r); continue; }
+      if (r.descarte) { descarta(r.descarte); continue; }
+      if (deEsta >= tanda.cuantos) { descarta('sobran (ya hay los pedidos)'); continue; }
+      if (notas && !notas.includes(r.candidato.eval.nota)) { descarta('nota fuera de lo pedido'); continue; }
+      if (!registro.apuntar(r.candidato.huella)) { descarta('repetido'); continue; }
+      elegidos.push(r.candidato); deEsta++;
+    }
+    if (tanda.nombre) console.log(`  ${quien}${deEsta}/${tanda.cuantos} · ${tiempo()} s`);
+    if (deEsta < tanda.cuantos) faltan.push(`${tanda.nombre || 'puzles'}: ${tanda.cuantos - deEsta}`);
   }
 
   if (elegidos.length) {
-    const fichero = escribirLote(elegidos, SALIDA, { semillaLote, op, notas });
+    const fichero = escribirLote(elegidos, SALIDA, { semillaLote, op, notas, porTipo });
     console.log(`\nLote: ${path.relative(process.cwd(), fichero)}`);
   }
-  console.log(`\n${elegidos.length} puzles de ${resultados.length} intentos en ${tiempo()} s.`);
-  if (elegidos.length < cuantos) console.log(`Faltan ${cuantos - elegidos.length}: se acabó el tiempo (--segundos ${segundos}).`);
+  console.log(`\n${elegidos.length} puzles de ${intentos} intentos en ${tiempo()} s.`);
+  if (faltan.length) console.log(`Faltan (se acabó el tiempo, --segundos ${segundos}): ${faltan.join(' · ')}.`);
   console.log('Descartes:');
   for (const [m, n] of Object.entries(descartes).sort((x, y) => y[1] - x[1])) console.log(`  ${String(n).padStart(5)}  ${m}`);
   if (elegidos.length) tablas(elegidos);
