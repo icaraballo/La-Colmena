@@ -36,6 +36,9 @@ function restaurarPartida(g) {
     if (!g || g.v !== GUARDADO_VERSION || !g.estado || typeof g.estado !== 'object') return null;
     const e = g.estado;
     if (!CONFIG_MODO[e.modo] || !NOMBRE_DIF[e.dificultad] || !esEntero(e.seed)) return null;
+    // Un nivel de Puzzle no se guarda (v11): se repite en un momento, y su estado
+    // lleva el nivel (s.puzle), que esto no sabe validar.
+    if (CONFIG_MODO[e.modo].puzle) return null;
     const s = createState(e.modo, e.dificultad, e.seed);
 
     for (const k of Object.keys(s)) {
@@ -82,3 +85,33 @@ function restaurarPartida(g) {
     return null;
   }
 }
+
+// ---------------------------------------------------------------------------
+// El progreso del modo Puzzle (v11): la mejor marca de cada nivel resuelto
+// ---------------------------------------------------------------------------
+// { v: 1, mejores: { id: { estrellas: 1-3, turnos } } }. Lo guarda app.js en
+// localStorage (colmena.puzzle.v1). Al leer no se fía: un nivel con una marca que
+// no tenga la forma esperada se olvida (sólo ése, no todo el progreso).
+const PROGRESO_PUZZLE_VERSION = 1;
+function progresoPuzzleVacio() { return { v: PROGRESO_PUZZLE_VERSION, mejores: {} }; }
+
+function leerProgresoPuzzle(g) {
+  const p = progresoPuzzleVacio();
+  if (!g || g.v !== PROGRESO_PUZZLE_VERSION || !g.mejores || typeof g.mejores !== 'object') return p;
+  for (const [id, m] of Object.entries(g.mejores))
+    if (typeof id === 'string' && m && [1, 2, 3].includes(m.estrellas) && esEntero(m.turnos) && m.turnos > 0)
+      p.mejores[id] = { estrellas: m.estrellas, turnos: m.turnos };
+  return p;
+}
+
+// Apunta un nivel ganado si mejora la marca: más estrellas o, con las mismas,
+// menos turnos. Devuelve si ha mejorado.
+function apuntarPuzzle(p, id, resultado) {
+  if (!resultado || !resultado.gana) return false;
+  const antes = p.mejores[id];
+  if (antes && (antes.estrellas > resultado.estrellas ||
+      (antes.estrellas === resultado.estrellas && antes.turnos <= resultado.turnos))) return false;
+  p.mejores[id] = { estrellas: resultado.estrellas, turnos: resultado.turnos };
+  return true;
+}
+

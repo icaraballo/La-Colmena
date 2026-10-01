@@ -215,14 +215,19 @@ seccion('El generador, el comprobador, la poda y una segunda opinión');
 }
 
 // ---------------------------------------------------------------------------
-seccion('objetivos.js como script clásico (para el editor)');
+seccion('objetivos.js como script clásico, con el motor alrededor');
 // ---------------------------------------------------------------------------
 {
+  // Como lo cargaría una página: el motor y objetivos.js en el mismo ámbito global.
+  const motor = ['constants.js', 'state.js'].map(f => fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8')).join('\n');
   const src = fs.readFileSync(path.join(__dirname, 'objetivos.js'), 'utf8');
-  const ctx = { MAX_LEVEL: M.MAX_LEVEL, NOMBRE_NIVEL: M.NOMBRE_NIVEL };
-  vm.runInNewContext(src + '\nthis.O = crearObjetivos({ MAX_LEVEL, NOMBRE_NIVEL });', ctx);
+  const ctx = {};
+  vm.runInNewContext(motor + '\n' + src + `
+    this.O = crearObjetivos({ MAX_LEVEL, OBJETIVO_INFO, seguimientoPuzle, avanzarPuzle, cumplidoPuzle, rompePuzle });`, ctx);
   eq(ctx.O && ctx.O.NOMBRES.length, 9, 'sin module, crearObjetivos queda declarada y da los nueve tipos');
+  eq(ctx.O.TIPOS.rojas.frase({ celdas: [3], rojas: [4] }), 'Cosecha la celda marcada sin cosechar ninguna roja', 'y las frases salen de OBJETIVO_INFO');
 }
 
+// ---------------------------------------------------------------------------
 console.log(`${total - fallos}/${total} comprobaciones correctas`);
 if (fallos) process.exit(1);

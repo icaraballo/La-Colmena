@@ -13,7 +13,8 @@ const fs = require('fs'), vm = require('vm'), path = require('path');
 // y desde la v7 también input.js: al cargarse sólo declara funciones
 // (el DOM lo toca initInput, que aquí nadie llama), y así pasoDeCadena, la
 // lógica del arrastre, se puede probar. render.js y app.js necesitan canvas y DOM.
-const FILES = ['constants.js', 'state.js', 'bot-tonto.js', 'guardado.js', 'input.js'];
+// Desde la v11 también puzles.js: los niveles del modo Puzzle (sólo datos).
+const FILES = ['constants.js', 'state.js', 'bot-tonto.js', 'guardado.js', 'input.js', 'puzles.js'];
 
 const src = FILES
   .map(f => fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8'))
@@ -37,7 +38,11 @@ const FOOTER = `
      penalizacionHuellas, contagioInminente, turnosRestantes, contagiar, marcada,
      CERRADAS_EXPANSION, ARRANQUE_EXPANSION, TOPE_EXPANSION, ABRE_COSECHA_PEQUENA,
      celdasQueGana, celdasQueAbriria, abiertas, peldanosQueBaja,
-     ABRE_EXPANSION, abreDesde, tieneDificultad })
+     ABRE_EXPANSION, abreDesde, tieneDificultad,
+     PUZZLE_MARGEN, PUZZLE_ABIERTOS, PUZZLE_ABRE_CAPITULO, OBJETIVO_INFO, NOMBRE_MODO, FRASE_MODO, COLOR_MODO,
+     crearPuzle, seguimientoPuzle, avanzarPuzle, cumplidoPuzle, rompePuzle, estrellasPuzle,
+     objetivoPuzle, progresoPuzle, abiertosPuzzle, PUZLES_VERSION, CAPITULOS, PUZLES,
+     PROGRESO_PUZZLE_VERSION, progresoPuzzleVacio, leerProgresoPuzzle, apuntarPuzzle })
 `;
 
 module.exports = vm.runInNewContext(src + FOOTER, {});

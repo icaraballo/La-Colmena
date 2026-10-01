@@ -6,12 +6,14 @@
 //   npm run puzles -- comprobar [lote]     rejuega todas las soluciones
 //   npm run puzles -- evaluar   [lote]     (re)calcula las notas
 //   npm run puzles -- resumen   [lote]     tabla por tipo, nota, mínimo y forma
+//   npm run puzles -- meter     <seleccion.json> [--capitulo N]   → js/puzles.js
+//   npm run puzles -- verificar                comprueba js/puzles.js con el motor actual
 //
 // --por-tipo N genera tipo a tipo hasta tener N de cada uno (o de los de --tipo), en
 // un solo lote. Para reproducir un candidato con --uno, pásale también su --tipo.
 //
 // [lote] es la ruta de un .jsonl, su nombre dentro de puzles/salida/, o nada (el
-// último). `meter` y `verificar` llegan en la F3, con js/puzles.js.
+// último). <seleccion.json> es lo que exporta el editor (puzles/editor.html).
 //
 // Los intentos se reparten entre los núcleos (worker_threads), como en tests/bot.js.
 // Cada intento depende sólo de su semilla (la del lote mezclada con su número), así
@@ -85,9 +87,9 @@ const hilosDe = a => Math.max(1, Number(a.hilos) || os.cpus().length);
 async function principal() {
   const [orden, ...resto] = process.argv.slice(2);
   const a = leerArgs(resto);
-  const ordenes = { generar, comprobar: comprobarLote, evaluar: evaluarLote, resumen };
+  const ordenes = { generar, comprobar: comprobarLote, evaluar: evaluarLote, resumen, meter, verificar };
   if (!ordenes[orden]) {
-    console.error('Uso: npm run puzles -- generar | comprobar | evaluar | resumen  (ver puzles/cli.js)');
+    console.error('Uso: npm run puzles -- generar | comprobar | evaluar | resumen | meter | verificar  (ver puzles/cli.js)');
     process.exit(1);
   }
   await ordenes[orden](a);
@@ -309,6 +311,114 @@ function resumen(a) {
   const cs = leerLote(f);
   console.log(`${path.basename(f)}: ${cs.length} puzles`);
   tablas(cs);
+}
+
+// ---------------------------------------------------------------------------
+// meter y verificar: js/puzles.js, lo único que lee el juego (§5.60)
+// ---------------------------------------------------------------------------
+const PUZLES_JS = path.join(__dirname, '..', 'js', 'puzles.js');
+// Los tipos que presenta cada capítulo (LC-DESIGN §23; provisional, se ajusta
+// jugando). La pantalla de capítulos los dice («+ celdas en total y cosecha grande»).
+const NUEVOS_CAPITULO = { 0: [], 1: ['marcadas', 'cosechas'], 2: ['total', 'grande'], 3: ['escalera', 'panal'],
+  4: ['combinado', 'rojas'], 5: ['orden'] };
+
+function leerPuzlesJs() {
+  if (!fs.existsSync(PUZLES_JS)) return { CAPITULOS: [], PUZLES: [] };
+  const vm = require('vm');
+  return vm.runInNewContext(fs.readFileSync(PUZLES_JS, 'utf8') + '\n({ PUZLES_VERSION, CAPITULOS, PUZLES })', {});
+}
+
+// Un nivel del juego, jugado con el MOTOR DEL JUEGO (crearPuzle, el modo Puzzle de
+// verdad) con su solución: tiene que ganar con ★★★ en su mínimo.
+function jugarConElJuego(p) {
+  const { M } = require('./motor.js');
+  const s = M.crearPuzle(p);
+  for (const c of p.solucion) if (!M.commitTurn(s, c)) return 'el juego rechaza una jugada de la solución';
+  const r = s.puzle.resultado;
+  if (!r) return 'el juego no da el nivel por acabado';
+  if (!r.gana) return `el juego lo da por perdido (${r.motivo})`;
+  if (r.turnos !== p.minimo || r.estrellas !== 3) return `el juego da ${r.estrellas} estrellas en ${r.turnos}`;
+  return 'ok';
+}
+// ¿Sigue siendo su mínimo? El resolutor no encuentra nada más corto.
+function minimoSigue(p) {
+  const { buscar } = require('./buscador.js');
+  const { juegoDeNivel } = require('./colmena.js');
+  const r = buscar(juegoDeNivel(p), { maxProf: p.minimo, maxEstados: 2e6, maxMs: 60000 });
+  if (r.agotado) return 'el resolutor no termina';
+  if (!r.resuelto) return 'el resolutor ya no lo resuelve';
+  return r.minimo === p.minimo ? 'ok' : `el mínimo ha bajado a ${r.minimo}`;
+}
+
+async function meter(a) {
+  const { comprobar } = require('./comprobador.js');
+  const f = a._[0];
+  if (!f || !fs.existsSync(f)) throw new Error('npm run puzles -- meter <seleccion.json> [--capitulo N]  (la exporta el editor)');
+  const sel = JSON.parse(fs.readFileSync(f, 'utf8'));
+  if (sel.version !== 1 || !Array.isArray(sel.capitulos)) throw new Error(`${f} no es una selección del editor`);
+  let caps = sel.capitulos;
+  if (a.capitulo !== undefined) caps = caps.filter(c => c.capitulo === Number(a.capitulo));
+  if (!caps.length) throw new Error('la selección no trae ese capítulo');
+
+  // No se fía del lote: cada puzle se vuelve a comprobar, a jugar con el juego y a resolver.
+  const nuevos = [];
+  let mal = 0;
+  for (const c of caps) for (const p of c.puzles) {
+    const nivel = { tablero: p.nivel.tablero, rotas: p.nivel.rotas, height: p.nivel.height, paso: p.nivel.paso, objetivo: p.nivel.objetivo };
+    const id = `C${c.capitulo}-${String(p.orden).padStart(2, '0')}`;
+    const juego = { id, ...nivel, minimo: p.minimo, solucion: p.solucion };
+    const pruebas = [comprobar({ nivel, solucion: p.solucion, minimo: p.minimo }), jugarConElJuego(juego), minimoSigue(juego)];
+    const fallo = pruebas.find(x => x !== 'ok');
+    if (fallo) { mal++; console.log(`  ${p.id} (capítulo ${c.capitulo}): ${fallo}`); continue; }
+    nuevos.push({ id, capitulo: c.capitulo, orden: p.orden, ...nivel, minimo: p.minimo, solucion: p.solucion,
+      origen: { lote: p.lote, id: p.id, semilla: p.semilla, forma: p.forma,
+                nota: p.eval ? p.eval.nota : null, notaInigo: p.valoracion ? p.valoracion.dificultad : null,
+                ...(sel.provisional ? { provisional: true } : {}) } });
+  }
+  if (mal) throw new Error(`${mal} puzles no pasan: no se toca js/puzles.js`);
+
+  // Los capítulos de la selección se sustituyen enteros; los demás se quedan.
+  const antes = leerPuzlesJs();
+  const tocados = new Set(caps.map(c => c.capitulo));
+  const PUZLES = [...antes.PUZLES.filter(p => !tocados.has(p.capitulo)), ...nuevos]
+    .sort((x, y) => x.capitulo - y.capitulo || x.orden - y.orden);
+  const ns = [...new Set(PUZLES.map(p => p.capitulo))].sort((x, y) => x - y);
+  const CAPITULOS = ns.map(n => ({ n, nuevos: NUEVOS_CAPITULO[n] || [] }));
+  // Provisional mientras quede algún nivel que no eligió Iñigo.
+  const provisionales = PUZLES.filter(p => p.origen && p.origen.provisional).length;
+  escribirPuzlesJs(CAPITULOS, PUZLES, provisionales > 0);
+  if (provisionales) console.log(`Aviso: ${provisionales} niveles son de la selección provisional (no los eligió Iñigo).`);
+  console.log(`js/puzles.js: ${PUZLES.length} niveles en ${ns.length} capítulos (${[...tocados].sort().map(n => `capítulo ${n}: ${nuevos.filter(p => p.capitulo === n).length}`).join(', ')}).`);
+  console.log('Siguiente: npm test, jugarlo, y el commit. El push publica el juego: lo decide Iñigo.');
+}
+
+// Siempre igual para el mismo contenido: un nivel por línea, para que el diff se lea.
+function escribirPuzlesJs(CAPITULOS, PUZLES, provisional) {
+  const linea = p => '  ' + JSON.stringify(p) + ',';
+  fs.writeFileSync(PUZLES_JS, `// Los niveles del modo Puzzle (v11). Los escribe \`npm run puzles -- meter\`, no a mano:
+// cada uno lo ha generado la máquina de puzles/, lo ha demostrado el resolutor, lo
+// ha rejugado el comprobador, lo ha ganado el juego con ★★★ y lo ha elegido Iñigo.
+// \`npm run puzles -- verificar\` (y npm test) comprueban que siguen valiendo.
+${provisional ? '// PROVISIONAL: la selección no es de Iñigo (la hizo Claude para poder probar el modo).\n// No se publica así: se sustituye por la que exporte Iñigo desde el editor.\n' : ''}const PUZLES_VERSION = 1;
+const CAPITULOS = [
+${CAPITULOS.map(c => '  ' + JSON.stringify(c) + ',').join('\n')}
+];
+const PUZLES = [
+${PUZLES.map(linea).join('\n')}
+];
+`);
+}
+
+function verificar() {
+  const { PUZLES } = leerPuzlesJs();
+  if (!PUZLES.length) { console.log('js/puzles.js no tiene niveles.'); return; }
+  let mal = 0;
+  for (const p of PUZLES) {
+    const r = [jugarConElJuego(p), minimoSigue(p)].find(x => x !== 'ok');
+    if (r) { mal++; console.log(`  ${p.id}: ${r}`); }
+  }
+  console.log(`js/puzles.js: ${PUZLES.length} niveles, ${PUZLES.length - mal} bien.`);
+  if (mal) process.exit(1);
 }
 
 // Las tablas del resumen: por tipo × nota, por mínimo y por forma.

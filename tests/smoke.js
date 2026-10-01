@@ -1054,6 +1054,149 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   ok(T.restaurarPartida(vieja) !== null, 'una partida guardada en la v9.1 se puede continuar');
 }
 
+// --- Puzzle (v11, T-45) ------------------------------------------------------------------------
+// Los niveles se crean del nivel (no del modo), no tienen azar ni ítems y acaban de
+// cuatro maneras: ganar, fallo, regla del objetivo rota y límite gastado.
+{
+  // Un trozo del panal de 24 con sólo las celdas dadas vivas.
+  const trozo = (vivas, niveles, paso, objetivo, minimo) => {
+    const height = Array(24).fill(0);
+    vivas.forEach((c, k) => { height[c] = niveles[k]; });
+    return { id: 'prueba', tablero: 'panal24', rotas: [...Array(24).keys()].filter(i => !vivas.includes(i)),
+             height, paso, objetivo, minimo };
+  };
+  const jugar = (nivel, jugadas) => { const s = T.crearPuzle(nivel); for (const c of jugadas) T.commitTurn(s, c); return s; };
+
+  const s0 = T.crearPuzle(trozo([5, 6], [0, 0], 2, { tipo: 'marcadas', celdas: [5] }, 3));
+  eq(s0.modo, T.MODOS.PUZZLE, 'crearPuzle: modo Puzzle');
+  eq(s0.step, 2, 'crearPuzle: el paso de arranque es el del nivel');
+  eq(s0.puzle.limite, 3 + T.PUZZLE_MARGEN, 'el límite es mínimo + PUZZLE_MARGEN');
+  ok(!T.tieneDificultad(T.MODOS.PUZZLE), 'Puzzle no tiene dificultad');
+  const h37 = T.crearPuzle({ id: 'x', tablero: 'hex37', rotas: [], height: Array(37).fill(1), paso: 1,
+                             objetivo: { tipo: 'escalera', n: 9 }, minimo: 9 });
+  ok(h37.tablero === 'hex37' && h37.height.length === 37 && h37.roto.length === 37 && h37.cerrada.length === 37,
+     'el tablero sale del nivel: un puzle de 37 celdas tiene arrays de 37');
+
+  // Fallo sin cumplir: pierde, y dice qué paso no cupo y qué meseta había.
+  let s = jugar(trozo([5, 6], [0, 0], 2, { tipo: 'marcadas', celdas: [5] }, 3), [[5, 6]]);
+  ok(s.gameOver && s.puzle.resultado && !s.puzle.resultado.gana, 'el fallo sin cumplir el objetivo pierde');
+  eq(s.puzle.resultado.motivo, 'fallo', '…por fallo');
+  eq(s.puzle.resultado.paso, 3, '…con el paso que no cupo');
+  eq(s.puzle.resultado.meseta, 2, '…y la meseta que había');
+  ok(s.eventos.some(e => e.type === 'puzlePerdido' && e.motivo === 'fallo'), 'evento puzlePerdido');
+  ok(!T.commitTurn(s, [5]), 'acabado el nivel no se juega más');
+
+  // Cumplir con la jugada que provoca el fallo GANA (§5.52).
+  s = jugar(trozo([5, 6], [5, 5], 2, { tipo: 'marcadas', celdas: [5] }, 1), [[5, 6]]);
+  ok(s.puzle.resultado && s.puzle.resultado.gana, 'cumplir aunque el paso siguiente no quepa gana');
+  eq(s.puzle.resultado.estrellas, 3, '…con ★★★ en el mínimo');
+  ok(s.eventos.some(e => e.type === 'puzleGanado' && e.estrellas === 3), 'evento puzleGanado');
+
+  // Romper una regla pierde aunque la jugada cumpla el objetivo.
+  s = jugar(trozo([5, 6], [5, 5], 2, { tipo: 'rojas', celdas: [5], rojas: [6] }, 1), [[5, 6]]);
+  eq(s.puzle.resultado && s.puzle.resultado.motivo, 'roja', 'cosechar una roja pierde (aunque cumpla)');
+  s = jugar(trozo([5, 6], [5, 5], 2, { tipo: 'orden', celdas: [5, 6] }, 1), [[5, 6]]);
+  eq(s.puzle.resultado && s.puzle.resultado.motivo, 'orden', 'cosechar la A y la B a la vez pierde');
+  s = jugar(trozo([0, 1, 4, 5, 6, 10, 11], [0, 0, 0, 4, 4, 0, 0], 2, { tipo: 'rojas', celdas: [5], rojas: [6] }, 3), [[5, 6]]);
+  ok(s.turn === 1 && !s.puzle.resultado, 'subir una roja no pierde: sólo cosecharla');
+
+  // Gastar el límite pierde.
+  s = jugar(trozo([0, 1, 4, 5, 6, 10, 11], [0, 0, 0, 0, 0, 0, 0], 1, { tipo: 'escalera', n: 9 }, 1),
+            [[5], [0, 1], [4, 10, 11]]);
+  eq(s.puzle.resultado && s.puzle.resultado.motivo, 'limite', 'gastar el límite (mínimo + 2) sin cumplir pierde');
+
+  eq(T.estrellasPuzle(4, 4), 3, '★★★ en el mínimo');
+  eq(T.estrellasPuzle(5, 4), 2, '★★ con uno de más');
+  eq(T.estrellasPuzle(6, 4), 1, '★ con dos de más');
+
+  // Sin ítems: un panal grande y llano, donde en los otros modos saldrían. Cada
+  // turno, un grupo conexo de `paso` celdas al mismo nivel (búsqueda en anchura).
+  const grupo = (st, k) => {
+    for (let a = 0; a < st.height.length; a++) {
+      if (!T.jugable(st, a)) continue;
+      const g = [a], visto = new Set([a]);
+      for (let q = 0; q < g.length && g.length < k; q++)
+        for (const v of T.vecinas(st, g[q])) if (!visto.has(v) && T.jugable(st, v) && st.height[v] === st.height[a] && g.length < k) { visto.add(v); g.push(v); }
+      if (g.length === k) return g;
+    }
+    return null;
+  };
+  s = T.crearPuzle({ id: 'x', tablero: 'hex37', rotas: [], height: Array(37).fill(1), paso: 1, objetivo: { tipo: 'escalera', n: 30 }, minimo: 30 });
+  let jugadas = 0;
+  for (let k = 1; k <= 6; k++) if (T.commitTurn(s, grupo(s, s.step))) jugadas++;
+  eq(jugadas, 6, 'el puzle llano se juega seis turnos');
+  ok(s.item === null && s.eventos.every(e => e.type !== 'item'), 'en Puzzle no sale ningún ítem');
+  ok(T.CONFIG_MODO.puzzle.items === false && Object.keys(T.CONFIG_MODO).filter(m => m !== 'puzzle').every(m => T.CONFIG_MODO[m].items),
+     'la bandera items: sólo Puzzle la apaga');
+
+  // Lo que pregunta la interfaz.
+  const o = T.objetivoPuzle(T.crearPuzle(trozo([5, 6], [5, 5], 2, { tipo: 'orden', celdas: [6, 5] }, 1)));
+  eq(o.letras[6] + o.letras[5], 'AB', 'objetivoPuzle: la A y la B');
+  eq(o.frase, T.OBJETIVO_INFO.orden.frase({}), 'objetivoPuzle: la frase de OBJETIVO_INFO');
+  const pr = T.progresoPuzle(jugar(trozo([5, 6, 0], [5, 0, 5], 1, { tipo: 'marcadas', celdas: [5, 0] }, 2), [[5]]));
+  eq(`${pr.valor}/${pr.de}`, '1/2', 'progresoPuzle: una de dos marcadas');
+  ok(Object.keys(T.OBJETIVO_INFO).length === 9, 'OBJETIVO_INFO tiene los nueve tipos');
+
+  // El desbloqueo (01-10, opción b).
+  const caps = [{ n: 1 }, { n: 2 }];
+  const pz = [];
+  for (const c of [1, 2]) for (let k = 1; k <= 10; k++) pz.push({ id: `C${c}-${k}`, capitulo: c, orden: k });
+  let ab = T.abiertosPuzzle(caps, pz, {});
+  eq(['C1-1', 'C1-2', 'C1-3'].map(id => ab.niveles[id]).join(','), 'abierto,abierto,cerrado', `al empezar, ${T.PUZZLE_ABIERTOS} abiertos`);
+  eq(ab.siguiente, 'C1-1', 'el siguiente es el primero sin resolver');
+  ok(!ab.capitulos[2].abierto && ab.niveles['C2-1'] === 'cerrado', 'el capítulo 2, cerrado');
+  const mejores = { 'C1-1': { estrellas: 3 }, 'C1-3': { estrellas: 1 } };
+  ab = T.abiertosPuzzle(caps, pz, mejores);
+  eq(['C1-2', 'C1-4', 'C1-5'].map(id => ab.niveles[id]).join(','), 'abierto,abierto,cerrado', 'saltarse uno deja dos abiertos sin resolver');
+  eq(ab.capitulos[1].estrellas, 4, 'las estrellas del capítulo');
+  for (let k = 1; k <= 8; k++) mejores[`C1-${k}`] = { estrellas: 2 };
+  ab = T.abiertosPuzzle(caps, pz, mejores);
+  ok(ab.capitulos[2].abierto && ab.niveles['C2-1'] === 'abierto', `resolver el ${T.PUZZLE_ABRE_CAPITULO * 100} % del capítulo abre el siguiente`);
+}
+
+// --- el progreso de Puzzle se guarda y se valida (v11) ----------------------------------------
+{
+  const p = T.progresoPuzzleVacio();
+  ok(T.apuntarPuzzle(p, 'C1-01', { gana: true, estrellas: 2, turnos: 6 }), 'se apunta la primera marca');
+  ok(!T.apuntarPuzzle(p, 'C1-01', { gana: true, estrellas: 1, turnos: 7 }), 'una peor no la sustituye');
+  ok(T.apuntarPuzzle(p, 'C1-01', { gana: true, estrellas: 3, turnos: 5 }), 'una mejor, sí');
+  ok(!T.apuntarPuzzle(p, 'C1-02', { gana: false, motivo: 'fallo' }), 'perder no apunta nada');
+  const vuelta = T.leerProgresoPuzzle(JSON.parse(JSON.stringify(p)));
+  eq(JSON.stringify(vuelta), JSON.stringify(p), 'el progreso vuelve igual de JSON');
+  const raro = T.leerProgresoPuzzle({ v: 1, mejores: { a: { estrellas: 3, turnos: 4 }, b: { estrellas: 7, turnos: 2 }, c: null } });
+  eq(Object.keys(raro.mejores).join(','), 'a', 'una marca rara se olvida, las demás se quedan');
+  eq(Object.keys(T.leerProgresoPuzzle({ v: 9 }).mejores).length, 0, 'otra versión: progreso vacío');
+  const sp = T.crearPuzle(T.PUZLES[0]);
+  T.commitTurn(sp, T.PUZLES[0].solucion[0]);
+  eq(T.restaurarPartida(T.serializarPartida(sp)), null, 'una partida de Puzzle no se restaura');
+}
+
+// --- los niveles de js/puzles.js siguen valiendo ------------------------------------------------
+// Si un día cambia una regla del motor, esto dice qué niveles se rompen: cada uno se
+// gana con su solución, con ★★★ en su mínimo, y el resolutor de la máquina no
+// encuentra nada más corto (LC-Puzles; es lo mismo que `npm run puzles -- verificar`).
+{
+  eq(T.PUZLES_VERSION, 1, 'js/puzles.js: versión 1');
+  const ids = new Set(T.PUZLES.map(p => p.id));
+  eq(ids.size, T.PUZLES.length, 'js/puzles.js: ids sin repetir');
+  ok(T.PUZLES.every(p => T.CAPITULOS.some(c => c.n === p.capitulo)), 'cada nivel es de un capítulo que existe');
+  const { buscar } = require('../puzles/buscador.js');
+  const { juegoDeNivel } = require('../puzles/colmena.js');
+  let ganan = 0, minimos = 0;
+  for (const p of T.PUZLES) {
+    const s = T.crearPuzle(p);
+    for (const c of p.solucion) T.commitTurn(s, c);
+    const r = s.puzle.resultado;
+    if (r && r.gana && r.turnos === p.minimo && r.estrellas === 3) ganan++;
+    else console.log(`  ${p.id}: su solución no lo gana con ★★★`);
+    const b = buscar(juegoDeNivel(p), { maxProf: p.minimo, maxEstados: 2e6, maxMs: 60000 });
+    if (b.resuelto && b.minimo === p.minimo) minimos++;
+    else console.log(`  ${p.id}: el mínimo ya no es ${p.minimo}`);
+  }
+  eq(ganan, T.PUZLES.length, 'cada nivel de js/puzles.js se gana con su solución, con ★★★');
+  eq(minimos, T.PUZLES.length, 'y su mínimo no ha bajado');
+}
+
 // --- el motor no toca el DOM ---------------------------------------------------------------
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'state.js'), 'utf8');

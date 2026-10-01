@@ -137,7 +137,7 @@ for (const t of Object.values(TABLEROS)) {
 // no código distinto: las reglas consultan estas banderas.
 // ---------------------------------------------------------------------------
 const MODOS = { CONTRARRELOJ: 'contrarreloj', INVIERNO: 'invierno', LIBRE: 'libre',
-                CONTAGIO: 'contagio', EXPANSION: 'expansion' };
+                CONTAGIO: 'contagio', EXPANSION: 'expansion', PUZZLE: 'puzzle' };
 
 // Las banderas de la v10 (LC-Modos-nuevos): cada sistema nuevo es una bandera y
 // no un `if (modo === …)` repartido por el código (Recetas §4).
@@ -145,12 +145,46 @@ const MODOS = { CONTRARRELOJ: 'contrarreloj', INVIERNO: 'invierno', LIBRE: 'libr
 //   turnosFijos  la partida dura TURNOS_CONTAGIO turnos (Contagio)
 //   abre         la cosecha abre las celdas cerradas del borde (Expansión, T-44)
 //   tablero      el de TABLEROS en que se juega (T-43)
+// Las de la v11 (modo Puzzle, T-45):
+//   items        salen ítems (todos menos Puzzle: un puzle no tiene azar, §5.56)
+//   puzle        la partida es un nivel con objetivo y límite de turnos (§17 de state.js)
 const CONFIG_MODO = {
-  contrarreloj: { reloj: true,  helada: false, desastres: true,  puntua: true,  huellas: false, turnosFijos: false, abre: false, tablero: 'panal24' },
-  invierno:     { reloj: false, helada: true,  desastres: false, puntua: true,  huellas: false, turnosFijos: false, abre: false, tablero: 'panal24' },
-  libre:        { reloj: false, helada: false, desastres: false, puntua: false, huellas: false, turnosFijos: false, abre: false, tablero: 'panal24' },
-  contagio:     { reloj: false, helada: false, desastres: true,  puntua: true,  huellas: true,  turnosFijos: true,  abre: false, tablero: 'panal24' },
-  expansion:    { reloj: false, helada: false, desastres: false, puntua: false, huellas: false, turnosFijos: false, abre: true,  tablero: 'hex37' },
+  contrarreloj: { reloj: true,  helada: false, desastres: true,  puntua: true,  huellas: false, turnosFijos: false, abre: false, tablero: 'panal24', items: true,  puzle: false },
+  invierno:     { reloj: false, helada: true,  desastres: false, puntua: true,  huellas: false, turnosFijos: false, abre: false, tablero: 'panal24', items: true,  puzle: false },
+  libre:        { reloj: false, helada: false, desastres: false, puntua: false, huellas: false, turnosFijos: false, abre: false, tablero: 'panal24', items: true,  puzle: false },
+  contagio:     { reloj: false, helada: false, desastres: true,  puntua: true,  huellas: true,  turnosFijos: true,  abre: false, tablero: 'panal24', items: true,  puzle: false },
+  expansion:    { reloj: false, helada: false, desastres: false, puntua: false, huellas: false, turnosFijos: false, abre: true,  tablero: 'hex37',   items: true,  puzle: false },
+  // El tablero de un puzle lo pone cada nivel (crearPuzle); éste es sólo el de partida.
+  puzzle:       { reloj: false, helada: false, desastres: false, puntua: false, huellas: false, turnosFijos: false, abre: false, tablero: 'panal24', items: false, puzle: true },
+};
+
+// ---------------------------------------------------------------------------
+// Puzzle (v11, T-45; LC-DESIGN §23). Cada partida es un NIVEL de js/puzles.js:
+// un panal con un objetivo y un límite de turnos, sin azar. Los niveles los
+// fabrica y los demuestra la máquina de puzles/ (T-46); el juego sólo los lee.
+// ---------------------------------------------------------------------------
+// Límite = mínimo + 2: ★★★ en el mínimo, ★★ con uno de más, ★ con dos (§5.48).
+const PUZZLE_MARGEN = 2;
+// Desbloqueo (01-10, opción b): siempre hay PUZZLE_ABIERTOS niveles sin resolver
+// abiertos en cada capítulo abierto (si te atascas, te saltas uno), y el
+// capítulo siguiente se abre al resolver esta parte del anterior.
+const PUZZLE_ABIERTOS = 2;
+const PUZZLE_ABRE_CAPITULO = 0.8;
+
+// Los nueve tipos de objetivo: el nombre, la frase que lee el jugador y lo que
+// enseña el dato de progreso. La interfaz y la máquina (puzles/objetivos.js) las
+// sacan de aquí: no se escriben a mano en ningún otro sitio.
+const marcadasTxt = cs => cs.length === 1 ? 'la celda marcada' : `las ${cs.length} celdas marcadas`;
+const OBJETIVO_INFO = {
+  marcadas:  { nombre: 'Celdas marcadas',       frase: o => `Cosecha ${marcadasTxt(o.celdas)}`, progreso: 'Marcadas' },
+  cosechas:  { nombre: 'Número de cosechas',    frase: o => `Cosecha ${o.n} veces`, progreso: 'Cosechas' },
+  total:     { nombre: 'Celdas en total',       frase: o => `Cosecha ${o.n} celdas, las que sean`, progreso: 'Cosechadas' },
+  combinado: { nombre: 'Combinado',             frase: o => `Cosecha ${o.n} celdas, incluida ${marcadasTxt(o.celdas)}`, progreso: 'Cosechadas' },
+  grande:    { nombre: 'Cosecha grande',        frase: o => `Cosecha ${o.n} celdas de una vez`, progreso: 'De golpe' },
+  escalera:  { nombre: 'Escalera',              frase: o => `Encadena hasta arrastrar ${o.n} celdas`, progreso: 'Arrastre' },
+  panal:     { nombre: 'Dejar el panal así',    frase: o => `Deja ${o.celdas.length === 1 ? 'la celda marcada' : `las ${o.celdas.length} marcadas`} en ${NOMBRE_NIVEL[o.nivel]} a la vez`, progreso: 'Marcadas' },
+  rojas:     { nombre: 'Sin cosechar las rojas', frase: o => `Cosecha ${marcadasTxt(o.celdas)} sin cosechar ninguna roja`, progreso: 'Marcadas' },
+  orden:     { nombre: 'En orden',              frase: () => 'Cosecha la A y después la B (no a la vez)', progreso: 'A y B' },
 };
 
 // ---------------------------------------------------------------------------
@@ -362,7 +396,7 @@ function tieneDificultad(modo) {
 // jugando en el móvil no hay forma de saber si lo que tienes delante es lo
 // último que se subió.
 // Se mantiene a mano y tiene que coincidir con package.json (ver Recetas).
-const VERSION = 'v10.2';
+const VERSION = 'v11';
 
 const NOMBRE_MODO = {
   contrarreloj: 'Contrarreloj',
@@ -370,6 +404,7 @@ const NOMBRE_MODO = {
   libre:        'Panal libre',
   contagio:     'Contagio',
   expansion:    'Expansión',
+  puzzle:       'Puzzle',
 };
 
 // La frase de cada modo: el subtítulo de su tarjeta y de su fila en el inicio (v9).
@@ -379,6 +414,7 @@ const FRASE_MODO = {
   libre:        'Para practicar.',
   contagio:     'Que no se te extienda.',
   expansion:    'Abre el panal, celda a celda.',
+  puzzle:       'Encuentra el camino.',
 };
 
 // El color de acento de cada pestaña de la hoja (v9, T-40): la raya de arriba,
@@ -389,6 +425,9 @@ const FRASE_MODO = {
 const COLOR_MODO = {
   basico: '#E3C87E', contrarreloj: '#F79A1F', plagas: '#F79A1F', invierno: '#9CC3D8', libre: '#9fd67a',
   contagio: '#C79BD9', expansion: '#E6B872',
+  // Puzzle en rosa (v11, 01-10): el único que no se parece a ningún otro color del
+  // juego (el verde agua se confundía con Invierno; el coral, con Contrarreloj).
+  puzzle: '#F28FB1',
 };
 
 // Segundos que da una cosecha de L celdas: L·(L+3)/2 (DESIGN §9).

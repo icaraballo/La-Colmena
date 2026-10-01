@@ -242,6 +242,10 @@ function commitTurn(s, cells) {
   const h = nivelCadena(s, cells);
   const harvest = (h === MAX_LEVEL);
   const libre = s.danza;
+  // Puzzle (v11): las reglas del objetivo (rojas, orden) se miran ANTES de jugar,
+  // con el seguimiento de antes; el turno se juega igual y el nivel se pierde al
+  // final (cerrarTurnoPuzle), así se ve la cosecha que lo rompió.
+  const rompe = cfg.puzle ? rompePuzle(s.puzle.seg, s.puzle.objetivo, cells, harvest) : null;
   const cogido = (s.item && cells.includes(s.item.tile)) ? s.item.tipo : null;
 
   if (harvest) {
@@ -309,6 +313,7 @@ function commitTurn(s, cells) {
     if (!s.cerrada.some(Boolean)) terminarExpansion(s, true);
     else if (s.turn >= TOPE_EXPANSION[s.dificultad]) terminarExpansion(s, false);
   }
+  if (cfg.puzle) cerrarTurnoPuzle(s, cells, harvest, rompe);
   return true;
 }
 
@@ -680,6 +685,7 @@ function umbralItem(s, h) {
 
 function spawnItemIfEarned(s) {
   if (s.item || s.gameOver) return null;
+  if (!CONFIG_MODO[s.modo].items) return null;   // Puzzle (v11): sin azar, sin ítems
   if (s.turn < s.itemCalma) return null;
 
   const cuenta = new Array(MAX_LEVEL + 1).fill(0);
@@ -782,3 +788,160 @@ function tick(s, dt) {
   s.reloj -= dt * velocidadReloj(s);
   if (s.reloj <= 0) { s.reloj = 0; s.gameOver = true; }
 }
+
+// ---------------------------------------------------------------------------
+// §17 · Puzzle (v11, T-45; LC-DESIGN §23)
+// ---------------------------------------------------------------------------
+// Un nivel de js/puzles.js: { id, tablero, rotas, height, paso, objetivo, minimo,
+// solucion }. Se juega con las reglas de siempre; lo distinto es el final:
+//   - cumplir el objetivo GANA, aunque esa jugada deje el paso siguiente sin
+//     sitio (§5.52), con ★★★ en el mínimo, ★★ con uno de más, ★ con dos;
+//   - romper una regla del objetivo (cosechar una roja; la B con la A
+//     pendiente) PIERDE, aunque esa jugada lo cumpliera;
+//   - el fallo (el paso no cabe) sin cumplirlo PIERDE;
+//   - gastar el límite (mínimo + PUZZLE_MARGEN) PIERDE.
+// La máquina de puzles (puzles/objetivos.js) usa estas mismas funciones para el
+// seguimiento, el «¿cumplido?» y las reglas: no hay otra copia. El comprobador
+// de la máquina, a propósito, sí lleva la suya (es la segunda llave).
+
+// El estado de un nivel. El tablero sale del nivel, no del modo: se crea la
+// partida de Puzzle y se rehacen los arrays con el tablero del nivel.
+function crearPuzle(nivel) {
+  const s = createState(MODOS.PUZZLE, 'normal', 1);
+  const n = TABLEROS[nivel.tablero].n;
+  if (nivel.height.length !== n) throw new Error(`el tablero ${nivel.tablero} tiene ${n} celdas`);
+  s.tablero = nivel.tablero;
+  s.height = Uint8Array.from(nivel.height);
+  s.roto = new Uint8Array(n);
+  for (const i of nivel.rotas) { s.roto[i] = 1; s.height[i] = AGUA; }
+  s.cerrada = new Uint8Array(n);
+  s.sedaHasta = new Int32Array(n);
+  s.step = nivel.paso;
+  s.puzle = {
+    id: nivel.id, objetivo: nivel.objetivo, minimo: nivel.minimo,
+    limite: nivel.minimo + PUZZLE_MARGEN,
+    seg: seguimientoPuzle(nivel.objetivo),
+    resultado: null,   // { gana: true, turnos, estrellas } | { gana: false, motivo }
+  };
+  return s;
+}
+
+// El seguimiento, igual para los nueve tipos:
+//   cos (cosechas), tot (celdas cosechadas), maxCos (la mayor cosecha),
+//   maxPaso (el arrastre más largo), pend (marcadas que faltan por cosechar).
+const PUZLE_CON_MARCADAS = ['marcadas', 'combinado', 'rojas', 'orden'];
+function seguimientoPuzle(o) {
+  return { cos: 0, tot: 0, maxCos: 0, maxPaso: 0, pend: PUZLE_CON_MARCADAS.includes(o.tipo) ? o.celdas.slice() : [] };
+}
+// Lo que cambia al jugar `cells` (cosecha = estaban en abeja). Devuelve uno nuevo.
+function avanzarPuzle(g, cells, cosecha) {
+  const L = cells.length;
+  const n = { cos: g.cos, tot: g.tot, maxCos: g.maxCos, maxPaso: Math.max(g.maxPaso, L), pend: g.pend };
+  if (cosecha) {
+    n.cos++; n.tot += L; n.maxCos = Math.max(n.maxCos, L);
+    if (n.pend.length) n.pend = n.pend.filter(i => !cells.includes(i));
+  }
+  return n;
+}
+// ¿Cumplido? `height` son los niveles actuales (los usa `panal`).
+function cumplidoPuzle(g, height, o) {
+  switch (o.tipo) {
+    case 'marcadas': case 'rojas': case 'orden': return g.pend.length === 0;
+    case 'cosechas':  return g.cos >= o.n;
+    case 'total':     return g.tot >= o.n;
+    case 'combinado': return g.tot >= o.n && g.pend.length === 0;
+    case 'grande':    return g.maxCos >= o.n;
+    case 'escalera':  return g.maxPaso >= o.n;
+    case 'panal':     return o.celdas.every(i => height[i] === o.nivel);
+  }
+  throw new Error(`objetivo desconocido: ${o.tipo}`);
+}
+// ¿Esta jugada rompe una regla del objetivo? Devuelve el motivo o null.
+function rompePuzle(g, o, cells, cosecha) {
+  if (!cosecha) return null;
+  if (o.tipo === 'rojas' && cells.some(i => o.rojas.includes(i))) return 'roja';
+  // La B con la A pendiente pierde, también en la misma cosecha.
+  if (o.tipo === 'orden' && cells.includes(o.celdas[1]) && g.pend.includes(o.celdas[0])) return 'orden';
+  return null;
+}
+const estrellasPuzle = (turnos, minimo) => Math.max(1, Math.min(3, 3 - (turnos - minimo)));
+
+function cerrarTurnoPuzle(s, cells, cosecha, rompe) {
+  const p = s.puzle;
+  p.seg = avanzarPuzle(p.seg, cells, cosecha);
+  let motivo = null;
+  if (rompe) motivo = rompe;
+  else if (cumplidoPuzle(p.seg, s.height, p.objetivo)) {
+    p.resultado = { gana: true, turnos: s.turn, estrellas: estrellasPuzle(s.turn, p.minimo) };
+    s.gameOver = true;
+    s.eventos.push({ type: 'puzleGanado', turnos: s.turn, estrellas: p.resultado.estrellas });
+    return;
+  }
+  else if (s.last.type === 'fallback') motivo = 'fallo';
+  else if (s.turn >= p.limite) motivo = 'limite';
+  if (!motivo) return;
+  p.resultado = { gana: false, motivo };
+  // El fallo dice qué paso no cupo y qué meseta había (lo trae el evento del fallo).
+  if (motivo === 'fallo') Object.assign(p.resultado, { paso: s.last.paso, meseta: s.last.meseta });
+  s.gameOver = true;
+  s.eventos.push({ type: 'puzlePerdido', ...p.resultado });
+}
+
+// Para la interfaz: qué marcar en el panal y la frase del objetivo.
+function objetivoPuzle(s) {
+  const o = s.puzle.objetivo;
+  return {
+    tipo: o.tipo, frase: OBJETIVO_INFO[o.tipo].frase(o),
+    marcadas: o.celdas ? o.celdas.slice() : [], rojas: o.rojas ? o.rojas.slice() : [],
+    letras: o.tipo === 'orden' ? { [o.celdas[0]]: 'A', [o.celdas[1]]: 'B' } : {},
+    nivel: o.tipo === 'panal' ? o.nivel : null,
+  };
+}
+// El dato de progreso: { etiqueta, valor, de } (y en combinado, si la marcada ya está).
+function progresoPuzle(s) {
+  const o = s.puzle.objetivo, g = s.puzle.seg, etiqueta = OBJETIVO_INFO[o.tipo].progreso;
+  switch (o.tipo) {
+    case 'marcadas': case 'rojas': case 'orden': return { etiqueta, valor: o.celdas.length - g.pend.length, de: o.celdas.length };
+    case 'cosechas':  return { etiqueta, valor: g.cos, de: o.n };
+    case 'total':     return { etiqueta, valor: g.tot, de: o.n };
+    case 'combinado': return { etiqueta, valor: g.tot, de: o.n, marcada: g.pend.length === 0 };
+    case 'grande':    return { etiqueta, valor: g.maxCos, de: o.n };
+    case 'escalera':  return { etiqueta, valor: g.maxPaso, de: o.n };
+    case 'panal':     return { etiqueta, valor: o.celdas.filter(i => s.height[i] === o.nivel).length, de: o.celdas.length };
+  }
+}
+
+// Qué está abierto (01-10, opción b). `capitulos` y `puzles` como en js/puzles.js;
+// `mejores` = { id: { estrellas, turnos } } de los niveles resueltos.
+//   - el primer capítulo está abierto; los demás, al resolver
+//     PUZZLE_ABRE_CAPITULO de los del anterior;
+//   - en un capítulo abierto, los resueltos y los PUZZLE_ABIERTOS primeros sin
+//     resolver.
+// Devuelve { capitulos: { n: { abierto, resueltos, total, estrellas, faltan } },
+//            niveles: { id: 'resuelto' | 'abierto' | 'cerrado' }, siguiente }.
+function abiertosPuzzle(capitulos, puzles, mejores) {
+  const out = { capitulos: {}, niveles: {}, siguiente: null };
+  let anteriorBien = true;
+  for (const c of capitulos.slice().sort((a, b) => a.n - b.n)) {
+    const suyos = puzles.filter(p => p.capitulo === c.n).sort((a, b) => a.orden - b.orden);
+    const resueltos = suyos.filter(p => mejores[p.id]).length;
+    const necesita = Math.ceil(PUZZLE_ABRE_CAPITULO * suyos.length);
+    const abierto = anteriorBien;
+    let sinResolver = 0;
+    for (const p of suyos) {
+      if (!abierto) out.niveles[p.id] = 'cerrado';
+      else if (mejores[p.id]) out.niveles[p.id] = 'resuelto';
+      else if (sinResolver++ < PUZZLE_ABIERTOS) {
+        out.niveles[p.id] = 'abierto';
+        if (!out.siguiente) out.siguiente = p.id;
+      } else out.niveles[p.id] = 'cerrado';
+    }
+    out.capitulos[c.n] = {
+      abierto, resueltos, total: suyos.length, necesita,
+      estrellas: suyos.reduce((n, p) => n + (mejores[p.id] ? mejores[p.id].estrellas : 0), 0),
+    };
+    anteriorBien = abierto && resueltos >= necesita;
+  }
+  return out;
+}
+

@@ -404,6 +404,12 @@ function principal() {
     console.error(`modo desconocido: ${MODO}. Usa: ${Object.keys(T.MODOS).join(', ').toLowerCase()}`);
     process.exit(1);
   }
+  // Puzzle (v11) se juega por niveles (crearPuzle), no con una semilla: que los bots
+  // jueguen los niveles de js/puzles.js está pendiente de proponer (F3, T-45).
+  if (modoId === T.MODOS.PUZZLE) {
+    console.error('El bot todavía no juega Puzzle: los niveles se comprueban con `npm run puzles -- verificar`.');
+    process.exit(1);
+  }
   const bots = nombreBot === 'todos' ? Object.keys(BOTS) : [nombreBot];
   if (!bots.every(b => BOTS[b])) {
     console.error(`bot desconocido: ${nombreBot}. Usa: ${Object.keys(BOTS).join(', ')} o todos`);

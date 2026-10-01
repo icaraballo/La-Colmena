@@ -7,8 +7,8 @@
 <!--
   El editor de puzles (T-46b, F2 de LC-Instrucciones-Puzle). Se abre como fichero,
   igual que index.html (regla 4: scripts clásicos, sin módulos ni fetch). Carga el
-  motor del juego (../js/), las reglas de los objetivos de la máquina (objetivos.js)
-  y los lotes que escribe `npm run puzles -- generar` en salida/.
+  motor del juego (../js/), que desde la v11 sabe jugar puzles (crearPuzle), y los
+  lotes que escribe `npm run puzles -- generar` en salida/.
 
   Sale de la galería «Puzles de La Colmena» de Claude.ai (01-10): la misma mesa,
   pero sin copias del motor, de los objetivos ni de los colores.
@@ -223,8 +223,6 @@ textarea { width: 100%; min-height: 64px; background: var(--fondo); color: var(-
 <script src="../js/constants.js"></script>
 <script src="../js/state.js"></script>
 <script src="../js/input.js"></script>
-<script src="nivel.js"></script>
-<script src="objetivos.js"></script>
 <!-- El índice de lotes lo escribe `npm run puzles -- generar`. Si no existe, no hay lotes. -->
 <script src="salida/lotes.js"></script>
 <script>
@@ -232,14 +230,14 @@ textarea { width: 100%; min-height: 64px; background: var(--fondo); color: var(-
 'use strict';
 // Todo dentro de una función: los nombres del motor (createState, drag, …) son
 // globales y los de esta página no pueden chocar con ellos.
-const MOTOR = { createState, commitTurn, isValidDrag, existe, jugable, pasoDeCadena, TABLEROS, MODOS, AGUA, MAX_LEVEL, NOMBRE_NIVEL };
-const OBJ = crearObjetivos({ MAX_LEVEL, NOMBRE_NIVEL });
+// Desde la v11 el motor juega los puzles: el editor no lleva reglas propias.
+const MOTOR = { commitTurn, isValidDrag, existe, jugable, pasoDeCadena, TABLEROS, MAX_LEVEL, NOMBRE_NIVEL,
+  crearPuzle, objetivoPuzle, progresoPuzle };
+const TIPOS = Object.keys(OBJETIVO_INFO);
 const COLORES = LEVEL_COLORS;
 const $ = id => document.getElementById(id);
 
-const TIPO_NOMBRE = { marcadas: 'Celdas marcadas', cosechas: 'Número de cosechas', total: 'Celdas en total',
-  combinado: 'Combinado', grande: 'Cosecha grande', escalera: 'Escalera', panal: 'Dejar el panal así',
-  rojas: 'Sin cosechar las rojas', orden: 'En orden' };
+const TIPO_NOMBRE = Object.fromEntries(TIPOS.map(t => [t, OBJETIVO_INFO[t].nombre]));
 const DIF_TXT = { facil: 'fácil', medio: 'medio', dificil: 'difícil' };
 const ENTRA_TXT = { si: 'sí', quizas: 'quizás', no: 'no' };
 const CAPITULOS = [0, 1, 2, 3, 4, 5];
@@ -303,22 +301,22 @@ function cargarLote(nombre) {
 }
 
 // ---------------------------------------------------------------------------
-// Jugar: el motor juega; el seguimiento y el objetivo, de objetivos.js.
+// Jugar: lo juega el motor (crearPuzle y commitTurn), con el final incluido.
 // ---------------------------------------------------------------------------
-let s, seg, hist, sel, fin, modoSol = -1, borrador = {};
+let s, hist, sel, fin, modoSol = -1, borrador = {};
 const mejores = {}, intentos = {};
 const P = () => PUZLES[actual];
 const limite = p => p.minimo + 2;
-const estrellasDe = (p, usados) => Math.max(0, 3 - (usados - p.minimo));
 const estrellasTxt = n => '★'.repeat(n) + '☆'.repeat(3 - n);
-const tipoDe = p => OBJ.TIPOS[p.nivel.objetivo.tipo];
+const nivelDe = p => ({ ...p.nivel, id: p.id, minimo: p.minimo });
+// Una copia del estado, para deshacer: los arrays que cambian y el puzle.
+const copia = st => ({ ...st, height: st.height.slice(), roto: st.roto.slice(), puzle: { ...st.puzle } });
 
 function abrir(k, desdeLista) {
   actual = k; modoSol = -1; borrador = {};
   if (k < 0) { pintarLista(); return; }
   const p = P();
-  s = crearEstadoPuzle(MOTOR, p.nivel);
-  seg = OBJ.seguimientoInicial(p.nivel.objetivo);
+  s = MOTOR.crearPuzle(nivelDe(p));
   hist = []; sel = []; fin = null;
   const v = guardado.valoraciones[p.id] || {};
   $('nota').value = v.nota || '';
@@ -349,30 +347,27 @@ function motivoSeleccion() {
 }
 
 function jugar() {
-  const p = P(), o = p.nivel.objetivo, tipo = tipoDe(p);
+  const p = P();
   if (fin || !MOTOR.isValidDrag(s, sel)) return;
-  const cells = sel.slice(), cosecha = s.height[cells[0]] === MOTOR.MAX_LEVEL;
-  hist.push({ h: s.height.slice(), step: s.step, turn: s.turn, seg });
+  hist.push(copia(s));
+  MOTOR.commitTurn(s, sel.slice());
   sel = [];
-  // Las reglas del puzle que no son del motor: rojas y orden pierden antes de jugar.
-  const e = { h: s.height, step: s.step, ...seg };
-  if (tipo.rompe && tipo.rompe(e, o, cells, cosecha)) {
-    MOTOR.commitTurn(s, cells);
-    return acabar(false, o.tipo === 'rojas' ? 'Has cosechado una celda roja.' : 'Has cosechado la B antes que la A.');
-  }
-  MOTOR.commitTurn(s, cells);
-  seg = OBJ.avanzar(seg, cells, cosecha);
-  if (tipo.cumplido({ h: s.height, step: s.step, ...seg }, o)) return acabar(true);
-  if (s.last && s.last.type === 'fallback') return acabar(false, `El paso ${s.last.paso} ya no cabe: la mayor meseta es de ${s.last.meseta}.`);
-  if (s.turn >= limite(p)) return acabar(false, `Se acabaron los ${limite(p)} turnos.`);
-  pintar();
+  const r = s.puzle.resultado;
+  if (!r) return pintar();
+  if (r.gana) return acabar(true);
+  acabar(false, {
+    roja: 'Has cosechado una celda roja.',
+    orden: 'Has cosechado la B antes que la A.',
+    fallo: `El paso ${r.paso} ya no cabe: la mayor meseta es de ${r.meseta}.`,
+    limite: `Se acabaron los ${limite(p)} turnos.`,
+  }[r.motivo]);
 }
 
 function acabar(gana, motivo) {
   const p = P();
   intentos[p.id] = (intentos[p.id] || 0) + 1;
   if (gana) {
-    const e = estrellasDe(p, s.turn);
+    const e = s.puzle.resultado.estrellas;
     mejores[p.id] = Math.max(mejores[p.id] || 0, e);
     fin = { gana, texto: `Resuelto en ${s.turn} ${s.turn === 1 ? 'turno' : 'turnos'}: ${estrellasTxt(e)}${e < 3 ? ` (se puede en ${p.minimo})` : ''}.` };
   } else fin = { gana, texto: `${motivo} Deshaz o reinicia para volver a intentarlo.` };
@@ -381,8 +376,7 @@ function acabar(gana, motivo) {
 
 function deshacer() {
   if (modoSol >= 0 || !hist.length) return;
-  const h = hist.pop();
-  s.height = h.h; s.step = h.step; s.turn = h.turn; s.last = null; seg = h.seg; sel = []; fin = null;
+  s = hist.pop(); sel = []; fin = null;
   pintar();
 }
 
@@ -390,26 +384,16 @@ function deshacer() {
 let solEstados = [];
 function verSolucion() {
   const p = P();
-  const st = crearEstadoPuzle(MOTOR, p.nivel);
+  const st = MOTOR.crearPuzle(nivelDe(p));
   solEstados = [{ h: st.height.slice(), step: st.step, j: [] }];
   for (const c of p.solucion) { MOTOR.commitTurn(st, c); solEstados.push({ h: st.height.slice(), step: st.step, j: c }); }
   modoSol = 0; pintar();
 }
 
-// Lo que se lleva del objetivo, para el dato «Objetivo».
-function progreso(p) {
-  const o = p.nivel.objetivo, pendientes = seg.pend.length;
-  const hechas = cs => cs.length - cs.filter(i => seg.pend.includes(i)).length;
-  switch (o.tipo) {
-    case 'marcadas': case 'rojas': case 'orden': return `${o.celdas.length - pendientes}<small> / ${o.celdas.length}</small>`;
-    case 'cosechas': return `${seg.cos}<small> / ${o.n} cosechas</small>`;
-    case 'total': return `${seg.tot}<small> / ${o.n} celdas</small>`;
-    case 'combinado': return `${seg.tot}<small> / ${o.n} · ${hechas(o.celdas) ? '✓' : '·'}</small>`;
-    case 'grande': return `${seg.maxCos}<small> / ${o.n} de golpe</small>`;
-    case 'escalera': return `${seg.maxPaso}<small> / ${o.n}</small>`;
-    case 'panal': return `${o.celdas.filter(i => s.height[i] === o.nivel).length}<small> / ${o.celdas.length}</small>`;
-  }
-  return '';
+// Lo que se lleva del objetivo, para el dato «Objetivo» (lo calcula el motor).
+function progreso() {
+  const g = MOTOR.progresoPuzle(s);
+  return `${g.valor}<small> / ${g.de}${'marcada' in g ? (g.marcada ? ' · ✓' : ' · ·') : ''}</small>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -431,7 +415,7 @@ function pintar() {
   const alturas = enSol ? vista.h : s.height, selec = enSol ? vista.j : sel;
   $('pid').textContent = `${p.id} · ${TIPO_NOMBRE[p.tipo]}`;
   $('pforma').textContent = `${p.forma} · paso inicial ${n.paso}`;
-  $('pobjetivo').textContent = tipoDe(p).frase(o) + '.';
+  $('pobjetivo').textContent = OBJETIVO_INFO[o.tipo].frase(o) + '.';
   const ley = [];
   if (o.celdas && o.tipo !== 'orden') ley.push(`<span><i class="muestra" style="border:2.5px dashed var(--marca)"></i>${o.tipo === 'panal' ? 'marcada (nivel objetivo: ' + MOTOR.NOMBRE_NIVEL[o.nivel] + ')' : 'marcada'}</span>`);
   if (o.tipo === 'orden') ley.push('<span><i class="muestra" style="border:2.5px dashed var(--marca)"></i>A y B</span>');
@@ -443,7 +427,7 @@ function pintar() {
   const turno = enSol ? modoSol : s.turn;
   $('vturno').innerHTML = `${turno}<small> / ${limite(p)}</small>`;
   $('vpaso').textContent = enSol ? vista.step : s.step;
-  $('vprog').innerHTML = enSol ? '—' : progreso(p);
+  $('vprog').innerHTML = enSol ? '—' : progreso();
   const mejor = Math.max(mejores[p.id] || 0, (guardado.valoraciones[p.id] || {}).mejorEstrellas || 0);
   $('vestrellas').innerHTML = `${estrellasTxt(mejor)}<small> en ${p.minimo}</small>`;
 
@@ -515,7 +499,7 @@ const opciones = (sel, todos, valores, txt = x => x) => {
 };
 function pintarFiltros() {
   const uni = f => [...new Set(PUZLES.map(f))];
-  opciones($('f-tipo'), 'Todos los tipos', OBJ.NOMBRES.filter(t => PUZLES.some(p => p.tipo === t)), t => TIPO_NOMBRE[t]);
+  opciones($('f-tipo'), 'Todos los tipos', TIPOS.filter(t => PUZLES.some(p => p.tipo === t)), t => TIPO_NOMBRE[t]);
   opciones($('f-minimo'), 'Turnos: todos', uni(p => p.minimo).sort((a, b) => a - b), m => `${m} turnos`);
   opciones($('f-forma'), 'Todas las formas', uni(p => p.forma).sort());
 }
@@ -532,7 +516,7 @@ function pintarLista() {
   const grupos = {};
   for (const k of ks) (grupos[PUZLES[k].tipo] ||= []).push(k);
   let html = '';
-  for (const t of OBJ.NOMBRES) {
+  for (const t of TIPOS) {
     if (!grupos[t]) continue;
     html += `<div class="grupo"><h3>${TIPO_NOMBRE[t]}</h3><div class="fichas">`;
     for (const k of grupos[t]) {

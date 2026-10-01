@@ -135,6 +135,9 @@ const PARTIDA_KEY = 'colmena.partida.v1';
 let guardadaMem = null;
 let ultimoGuardado = 0;
 function guardarPartida() {
+  // Un nivel de Puzzle no se guarda (v11): ni sustituye ni borra la partida
+  // guardada de otro modo, que sigue ahí para «Continuar».
+  if (CONFIG_MODO[S.modo].puzle) return;
   if (!partidaEmpezada()) { borrarPartida(); return; }
   guardadaMem = serializarPartida(S, { duracion, version: VERSION });
   ultimoGuardado = performance.now();
@@ -396,9 +399,14 @@ function pintarFin() {
   if (!S.gameOver) { el.hidden = true; finPintado = false; return; }
   if (finPintado) return;
   finPintado = true;
+  const cfg = CONFIG_MODO[S.modo];
+  document.getElementById('fin-volver').hidden = !cfg.puzle;
+  el.classList.toggle('puzle', !!cfg.puzle);
+  if (cfg.puzle) { pintarFinPuzle(); el.hidden = false; return; }
+  setText('fin-menu', '‹ Menú');
+  setText('fin-otra', 'Otra vez');
   borrarPartida();   // acabada no se continúa
 
-  const cfg = CONFIG_MODO[S.modo];
   document.getElementById('fin-titulo').textContent = tituloFin(cfg);
 
   const sc = document.getElementById('fin-score');
@@ -463,6 +471,7 @@ const ROJO_PISADA = ['#a0442f', '#ab4832', '#b74c36', '#c2503a'];
 
 function updateHud(now = performance.now()) {
   const cfg = CONFIG_MODO[S.modo];
+  if (cfg.puzle) { pintarHudPuzle(); return; }
   const biggest = biggestCoherentArea(S);
 
   // Paso y máx, grandes y juntos (v8): si el máx es menor que el paso, se falla.
@@ -723,7 +732,13 @@ function contar(eventos) {
 
 function onCommit(cells) {
   const antes = S.height.slice();
+  const copia = S.puzle ? copiaPuzle(S) : null;
   if (!commitTurn(S, cells)) return;
+  if (copia) {
+    historiaPuzle.push(copia);
+    puzleMejora = apuntarPuzzle(progresoPuzzle, S.puzle.id, S.puzle.resultado);
+    if (puzleMejora) guardarProgresoPuzzle();
+  }
   // Máximos de la partida, sólo para la pantalla de fin: se llevan aquí para no
   // meter datos de interfaz en el estado del motor.
   S.streakMax = Math.max(S.streakMax || 0, S.streak);
@@ -795,6 +810,10 @@ function prepararPartida(estado, dur) {
   logItems = ''; logItemsEn = -1; logFallo = ''; logFalloEn = -1;
   falloEn = -1; plagaNueva = null; cascada = null;
   setText('seed', `semilla ${S.seed}`);
+  const esPuzle = !!S.puzle;
+  document.getElementById('partida').classList.toggle('es-puzle', esPuzle);
+  document.getElementById('puzle-cab').hidden = !esPuzle;
+  document.getElementById('puzle-pie').hidden = !esPuzle;
   pintarBarra();
   pintarLeyenda();
   if (canvas) resize(); else redraw();   // cada modo coloca el panal a su altura
@@ -802,10 +821,201 @@ function prepararPartida(estado, dur) {
 
 // La barra de la partida (v9): el modo y, si la tiene, la dificultad.
 function pintarBarra() {
+  // «‹ Menú» vuelve al inicio; en un nivel de Puzzle, «‹ Puzzle» vuelve a los capítulos.
+  document.getElementById('partida-menu').lastChild.nodeValue = S.puzle ? NOMBRE_MODO.puzzle : 'Menú';
+  if (S.puzle) {
+    const p = PUZLES.find(x => x.id === S.puzle.id);
+    setHtml('barra-modo', `Capítulo ${p.capitulo} <span>· nivel ${p.orden}</span>`);
+    return;
+  }
   const dif = tieneDificultad(S.modo) ? ` <span>· ${NOMBRE_DIF[S.dificultad]}</span>` : '';
   setHtml('barra-modo', NOMBRE_MODO[S.modo] + dif);
 }
 
+
+// ===========================================================================
+// Puzzle (v11, T-45; LC-DESIGN §23)
+// ===========================================================================
+// Los niveles salen de js/puzles.js (CAPITULOS, PUZLES); qué está abierto, el
+// final y las estrellas los dice el motor (abiertosPuzzle, s.puzle.resultado).
+// Aquí, las pantallas, deshacer (copias del estado en memoria) y la mejor marca de
+// cada nivel, que se guarda aparte de la partida (guardado.js).
+const PUZZLE_KEY = 'colmena.puzzle.v1';
+let progresoPuzzle = progresoPuzzleVacio();
+function leerProgresoGuardado() {
+  try { progresoPuzzle = leerProgresoPuzzle(JSON.parse(localStorage.getItem(PUZZLE_KEY))); }
+  catch { progresoPuzzle = progresoPuzzleVacio(); }
+}
+function guardarProgresoPuzzle() {
+  try { localStorage.setItem(PUZZLE_KEY, JSON.stringify(progresoPuzzle)); } catch { /* queda en memoria */ }
+}
+
+const historiaPuzle = [];    // los estados de antes de cada turno, para deshacer
+let puzleMejora = false;     // el último nivel ganado mejoró la marca
+// Lo que cambia un turno, copiado: los arrays y el puzle (su seguimiento es nuevo cada turno).
+function copiaPuzle(s) {
+  return { ...s, height: s.height.slice(), roto: s.roto.slice(), cerrada: s.cerrada.slice(),
+           sedaHasta: s.sedaHasta.slice(), puzle: { ...s.puzle }, eventos: [] };
+}
+
+const nivelesEnOrden = () => PUZLES.slice().sort((a, b) => a.capitulo - b.capitulo || a.orden - b.orden);
+
+// Empezar (o repetir) un nivel. Desde los capítulos, con fundido; reiniciar, sin.
+function jugarNivel(id, fundido = true) {
+  const p = PUZLES.find(x => x.id === id);
+  if (!p) return;
+  partida.modo = MODOS.PUZZLE;
+  partida.dificultad = 'normal';
+  historiaPuzle.length = 0;
+  puzleMejora = false;
+  if (!fundido) { prepararPartida(crearPuzle(p), 0); return; }
+  mostrarPantalla('partida');
+  prepararPartida(crearPuzle(p), 0);
+  document.getElementById('partida').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 250, easing: 'ease-out' });
+}
+
+function deshacerPuzle() {
+  if (!S.puzle || !historiaPuzle.length) return;
+  S = historiaPuzle.pop();
+  finPintado = false;
+  document.getElementById('fin').hidden = true;
+  drag.cells = []; drag.desde = []; drag.trail = []; drag.deshaciendo = false; drag.fuera = false;
+  abejas.length = 0; destellos.length = 0;
+  redraw();
+}
+
+// El siguiente: el próximo abierto después de éste; si no hay, el primero abierto
+// sin resolver; si tampoco, ninguno (están todos).
+function siguienteNivel(id) {
+  const ab = abiertosPuzzle(CAPITULOS, PUZLES, progresoPuzzle.mejores);
+  const orden = nivelesEnOrden();
+  const k = orden.findIndex(p => p.id === id);
+  const despues = orden.slice(k + 1).find(p => ab.niveles[p.id] !== 'cerrado');
+  return despues ? despues.id : ab.siguiente;
+}
+
+function irACapitulos() {
+  cerrarHoja();
+  mostrarPantalla('puzles');
+  const el = document.getElementById('puzles');
+  if (el.animate) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
+  // Que se vea el siguiente sin tener que buscarlo.
+  const sig = el.querySelector('.pz-nivel.siguiente');
+  if (sig) sig.scrollIntoView({ block: 'center' });
+}
+
+// La pantalla de capítulos (opción A del 01-10): todos los capítulos en una pantalla
+// que se desliza; cada nivel, un hexágono con su número y sus estrellas.
+const ESTRELLAS = (n, total = 3) => '★'.repeat(n) + '☆'.repeat(total - n);
+function pintarCapitulos() {
+  const ab = abiertosPuzzle(CAPITULOS, PUZLES, progresoPuzzle.mejores);
+  const total = Object.values(ab.capitulos).reduce((n, c) => n + c.estrellas, 0);
+  setHtml('pz-total', `★ <b>${total}</b> / ${PUZLES.length * 3}`);
+  const caja = document.getElementById('pz-capitulos');
+  if (!PUZLES.length) { caja.innerHTML = '<div class="pz-cap"><p>Todavía no hay niveles.</p></div>'; return; }
+  const nombre = t => OBJETIVO_INFO[t].nombre.toLowerCase();
+  const lista = ts => ts.length < 2 ? ts.map(nombre).join('') : ts.slice(0, -1).map(nombre).join(', ') + ' y ' + nombre(ts[ts.length - 1]);
+  const primero = Math.min(...CAPITULOS.map(c => c.n));
+  let html = '', anterior = null;
+  for (const c of CAPITULOS.slice().sort((a, b) => a.n - b.n)) {
+    const info = ab.capitulos[c.n];
+    const que = c.n === 0 ? 'Tutorial' : c.nuevos.length ? (c.n === primero ? lista(c.nuevos) : '+ ' + lista(c.nuevos)) : '';
+    if (!info.abierto) {
+      const falta = anterior ? Math.max(1, anterior.info.necesita - anterior.info.resueltos) : 0;
+      html += `<div class="pz-cap cerrado"><h3>Capítulo ${c.n} <b>🔒</b></h3>` +
+        `<p>${que ? que.charAt(0).toUpperCase() + que.slice(1) + '. ' : ''}Se abre al resolver ${falta} más del capítulo ${anterior.n}.</p></div>`;
+    } else {
+      html += `<div class="pz-cap"><h3>Capítulo ${c.n} <b>★ ${info.estrellas} / ${info.total * 3}</b></h3>` +
+        (que ? `<p>${que.charAt(0).toUpperCase() + que.slice(1)}</p>` : '') + '<div class="pz-niveles">';
+      for (const p of PUZLES.filter(x => x.capitulo === c.n).sort((a, b) => a.orden - b.orden)) {
+        const est = ab.niveles[p.id], m = progresoPuzzle.mejores[p.id], sig = p.id === ab.siguiente;
+        const fill = est === 'resuelto' ? '#C8A14A' : est === 'abierto' ? '#1c1710' : '#171410';
+        const borde = sig ? 'stroke="#F28FB1" stroke-width="3"' : est === 'abierto' ? 'stroke="#43372a" stroke-width="2"' : '';
+        const txt = est === 'resuelto' ? 'rgba(30,20,5,.8)' : sig ? '#F28FB1' : est === 'abierto' ? '#9a8d77' : '#3d342a';
+        const debajo = est === 'resuelto' ? `<span class="e">${ESTRELLAS(m.estrellas)}</span>`
+          : sig ? '<span class="e sig">siguiente</span>' : est === 'abierto' ? '<span class="e vacia">☆☆☆</span>' : '<span class="e vacia">🔒</span>';
+        const etiqueta = `Nivel ${p.orden}, ${est === 'resuelto' ? `resuelto, ${m.estrellas} de 3 estrellas` : est === 'abierto' ? 'abierto' : 'cerrado'}`;
+        html += `<button class="pz-nivel${sig ? ' siguiente' : ''}" data-id="${p.id}" aria-label="${etiqueta}"${est === 'cerrado' ? ' disabled' : ''}>` +
+          `<svg width="54" height="50" viewBox="0 0 46 42" aria-hidden="true"><polygon points="23,2 44,12 44,30 23,40 2,30 2,12" fill="${fill}" ${borde}/>` +
+          `<text x="23" y="27" text-anchor="middle" font-size="15" font-weight="700" fill="${txt}">${p.orden}</text></svg>${debajo}</button>`;
+      }
+      html += '</div></div>';
+    }
+    anterior = { n: c.n, info };
+  }
+  caja.innerHTML = html;
+}
+
+// El marcador de un nivel: el objetivo, sus marcas, turno / límite, paso, el
+// progreso y «☆☆☆ en N». Todo lo dice el motor (objetivoPuzle, progresoPuzle).
+function pintarHudPuzle() {
+  const o = objetivoPuzle(S), g = progresoPuzle(S), p = S.puzle;
+  setText('pz-frase', o.frase + '.');
+  const ley = [];
+  if (o.marcadas.length && o.tipo !== 'orden') ley.push(`<span><i style="border:2.4px dashed #ffd23f"></i>${o.tipo === 'panal' ? `marcada · déjala en ${NOMBRE_NIVEL[o.nivel]}` : 'marcada'}</span>`);
+  if (o.tipo === 'orden') ley.push('<span><i style="border:2.4px dashed #ffd23f"></i>A y B</span>');
+  if (o.rojas.length) ley.push('<span><i style="border:2.4px solid #e5484d"></i>roja: no se cosecha</span>');
+  setHtml('pz-leyenda', ley.join(''));
+  setText('pz-turno', S.turn);
+  setText('pz-limite', `/ ${p.limite}`);
+  document.getElementById('pz-turno').className = 'big' + (!S.gameOver && p.limite - S.turn === 1 ? ' cuidado' : '');
+  setText('pz-paso', S.step);
+  setText('pz-prog-lbl', g.etiqueta);
+  setText('pz-prog', g.valor);
+  setText('pz-prog-de', `/ ${g.de}${'marcada' in g ? (g.marcada ? ' ✓' : '') : ''}`);
+  const m = progresoPuzzle.mejores[p.id];
+  setHtml('pz-min', `${ESTRELLAS(m ? m.estrellas : 0)} <small>en ${p.minimo}</small>`);
+  // Lo que pide la jugada, como en el editor; en el último turno, se avisa.
+  const aviso = document.getElementById('pz-aviso');
+  const c = drag.cells;
+  let txt = '';
+  if (!S.gameOver) {
+    if (!c.length) txt = S.step === 1 ? 'Arrastra 1 celda.' : `Arrastra ${S.step} celdas juntas al mismo nivel.`;
+    else if (c.length < S.step) txt = `Llevas ${c.length} de ${S.step}.`;
+    else if (dragReady(S)) { const h = nivelCadena(S, c); txt = h === MAX_LEVEL ? `Suelta: cosechas ${c.length}.` : `Suelta: suben a ${NOMBRE_NIVEL[h + 1]}.`; }
+    if (p.limite - S.turn === 1) txt = 'Último turno. ' + txt;
+  }
+  if (aviso.textContent !== txt) aviso.textContent = txt;
+  document.getElementById('pz-deshacer').disabled = !historiaPuzle.length;
+}
+
+// El final de un nivel: ganado, con estrellas y el mínimo; perdido, con el porqué.
+function pintarFinPuzle() {
+  const r = S.puzle.resultado, p = S.puzle;
+  const sc = document.getElementById('fin-score');
+  const rec = document.getElementById('fin-record');
+  const det = document.getElementById('fin-detalle');
+  det.innerHTML = '';
+  if (r.gana) {
+    setText('fin-titulo', '¡Resuelto!');
+    sc.innerHTML = `<span class="estrellas">${'★'.repeat(r.estrellas)}<span class="vacia">${'★'.repeat(3 - r.estrellas)}</span></span>`;
+    const m = progresoPuzzle.mejores[p.id];
+    rec.textContent = `En ${r.turnos} ${r.turnos === 1 ? 'turno' : 'turnos'}. ` +
+      (r.estrellas === 3 ? 'En el mínimo.' : `Se puede en ${p.minimo}: ¿lo intentas?`) +
+      (puzleMejora ? '' : ` · Tu mejor marca: ${ESTRELLAS(m.estrellas)}`);
+    rec.className = 'record' + (puzleMejora ? ' nuevo' : '');
+    setText('fin-menu', '↻ Repetir');
+    const sig = siguienteNivel(p.id);
+    setText('fin-otra', sig ? 'Siguiente ›' : 'Capítulos');
+  } else {
+    const titulo = {
+      fallo: `Sin sitio para el paso ${r.paso}`, roja: 'Has cosechado una roja',
+      orden: 'La B antes que la A', limite: `Se acabaron los ${p.limite} turnos`,
+    }[r.motivo];
+    const porque = {
+      fallo: `Tu meseta más grande es de ${r.meseta} y el paso pedía ${r.paso}.`,
+      roja: 'Las rojas se pueden subir, pero no cosechar.',
+      orden: 'Hay que cosechar la A primero, y no a la vez que la B.',
+      limite: `Se puede en ${p.minimo}: prueba otro camino.`,
+    }[r.motivo];
+    setText('fin-titulo', titulo);
+    sc.textContent = '';
+    rec.textContent = porque;
+    rec.className = 'record';
+    setText('fin-menu', '↻ Reintentar');
+    setText('fin-otra', '↶ Deshacer');
+  }
+}
 
 // ===========================================================================
 // Pantallas (v9, T-40)
@@ -813,7 +1023,7 @@ function pintarBarra() {
 // Al abrir se ve el inicio; de él cuelgan los modos. La ficha de cada modo no
 // es otra pantalla: es la hoja abierta sobre el inicio. Al recargar se vuelve
 // siempre al inicio; la partida a medias, con «Continuar» (v9.1).
-let pantalla = 'inicio';     // 'inicio' | 'partida'
+let pantalla = 'inicio';     // 'inicio' | 'partida' | 'puzles' (los capítulos de Puzzle, v11)
 let hojaAbierta = null;      // null | { desde: 'ficha' | 'partida', modo, pestana }
 
 // T-30 (compartir por enlace) entrará directo aquí con mostrarPantalla('partida').
@@ -821,10 +1031,12 @@ function mostrarPantalla(p) {
   pantalla = p;
   document.getElementById('inicio').hidden = p !== 'inicio';
   document.getElementById('partida').hidden = p !== 'partida';
+  document.getElementById('puzles').hidden = p !== 'puzles';
   cerrarPop();
   // Las dos pantallas dibujan con el mismo `layout` de render.js: al cambiar,
   // cada una se vuelve a medir. Como sólo se ve una, no chocan.
   if (p === 'partida') resize();
+  else if (p === 'puzles') pintarCapitulos();
   else {
     // Se entra siempre por la portada, con el panal a la vista (v10.2).
     document.getElementById('inicio').scrollTop = 0;
@@ -932,6 +1144,7 @@ const PESTANAS = {
   libre:        ['basico', 'libre'],
   contagio:     ['basico', 'contagio', 'plagas'],
   expansion:    ['basico', 'expansion'],
+  puzzle:       ['basico', 'puzzle'],
 };
 const NOMBRE_PESTANA = { basico: 'Básico', plagas: 'Plagas', ...NOMBRE_MODO };
 const ORDEN_MODOS = [MODOS.CONTRARRELOJ, MODOS.INVIERNO, MODOS.LIBRE, MODOS.CONTAGIO, MODOS.EXPANSION];
@@ -987,8 +1200,9 @@ function abrirHoja({ desde, modo, pestana }) {
   // Alto: la ficha deja ver arriba el panal vivo (más alta la primera vez, que
   // abre en Básico); la consulta tapa el panal entero, desde la barra.
   hoja.classList.toggle('primera', desde === 'ficha' && pestana === 'basico' && !basicoVisto());
-  hoja.style.top = desde === 'partida'
-    ? Math.round(document.getElementById('barra').getBoundingClientRect().bottom + 6) + 'px' : '';
+  // Desde los capítulos de Puzzle (v11) también es consulta, pegada a su barra.
+  const barra = desde === 'partida' ? 'barra' : desde === 'puzles' ? 'pz-barra' : null;
+  hoja.style.top = barra ? Math.round(document.getElementById(barra).getBoundingClientRect().bottom + 6) + 'px' : '';
   pintarHoja();
   hoja.hidden = false; velo.hidden = false;
   hoja.getBoundingClientRect();              // fuerza el estilo de partida para que haya transición
@@ -1059,6 +1273,8 @@ function pintarHoja() {
   document.getElementById('hoja-menu').hidden = !ficha;
   document.getElementById('hoja-empezar').hidden = !ficha;
   document.getElementById('hoja-volver').hidden = ficha;
+  // Desde los capítulos de Puzzle no hay partida a la que volver.
+  setText('hoja-volver', desde === 'puzles' ? 'Volver' : 'Volver a la partida');
   // En consulta de Contrarreloj, que se vea que el reloj no corre.
   document.getElementById('reloj-parado').hidden = ficha || !CONFIG_MODO[modo].reloj;
 }
@@ -1217,8 +1433,26 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('continuar').addEventListener('click', continuarPartida);
   document.querySelectorAll('.modo-fila').forEach(b => b.addEventListener('click', () => {
     const modo = b.dataset.modo;
+    // Puzzle (v11) no tiene ficha con «Empezar»: va a sus capítulos.
+    if (modo === MODOS.PUZZLE) { irACapitulos(); return; }
     abrirHoja({ desde: 'ficha', modo, pestana: basicoVisto() ? modo : 'basico' });
   }));
+
+  // Puzzle (v11): los capítulos, el nivel y su final.
+  leerProgresoGuardado();
+  document.getElementById('pz-menu').addEventListener('click', () => {
+    mostrarPantalla('inicio');
+    document.getElementById('inicio').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
+  });
+  document.getElementById('pz-info').addEventListener('click', () =>
+    abrirHoja({ desde: 'puzles', modo: MODOS.PUZZLE, pestana: basicoVisto() ? MODOS.PUZZLE : 'basico' }));
+  document.getElementById('pz-capitulos').addEventListener('click', e => {
+    const b = e.target.closest('.pz-nivel');
+    if (b && !b.disabled) jugarNivel(b.dataset.id);
+  });
+  document.getElementById('pz-deshacer').addEventListener('click', deshacerPuzle);
+  document.getElementById('pz-reiniciar').addEventListener('click', () => jugarNivel(S.puzle.id, false));
+  document.getElementById('fin-volver').addEventListener('click', irACapitulos);
 
   // La hoja.
   const hoja = document.getElementById('hoja');
@@ -1236,10 +1470,18 @@ window.addEventListener('DOMContentLoaded', () => {
   }));
 
   // La barra y la pantalla final.
-  document.getElementById('partida-menu').addEventListener('click', volverAlInicio);
-  // «Otra vez»: el mismo modo y la misma dificultad, sin pasar por la ficha.
-  document.getElementById('fin-otra').addEventListener('click', () => restart());
-  document.getElementById('fin-menu').addEventListener('click', volverAlInicio);
+  // En un nivel de Puzzle, «‹ Puzzle» vuelve a los capítulos.
+  document.getElementById('partida-menu').addEventListener('click', () => S.puzle ? irACapitulos() : volverAlInicio());
+  // «Otra vez»: el mismo modo y la misma dificultad, sin pasar por la ficha. En un
+  // nivel ganado es «Siguiente ›»; en uno perdido, «Deshacer la última».
+  document.getElementById('fin-otra').addEventListener('click', () => {
+    if (!S.puzle) { restart(); return; }
+    if (!S.puzle.resultado.gana) { deshacerPuzle(); return; }
+    const sig = siguienteNivel(S.puzle.id);
+    if (sig) jugarNivel(sig, false); else irACapitulos();
+  });
+  // «‹ Menú»; en un nivel, «Repetir» o «Reintentar»: el mismo nivel, desde el principio.
+  document.getElementById('fin-menu').addEventListener('click', () => S.puzle ? jugarNivel(S.puzle.id, false) : volverAlInicio());
 
   // El panel flotante se cierra al tocar fuera. El canvas se lleva sus propios
   // eventos, así que esto escucha en la fase de captura.

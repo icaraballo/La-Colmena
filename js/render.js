@@ -203,6 +203,40 @@ function draw(ctx, s, ui, now) {
     ctx.restore();
   }
 
+  // Puzzle (v11): las marcas del objetivo, leídas del motor (objetivoPuzle). La
+  // roja, un borde rojo pegado al canto; la marcada, un anillo amarillo
+  // discontinuo más adentro (así se ven las dos, y la cadena blanca, a la vez);
+  // la A y la B, una letra pequeña arriba a la derecha. Ninguna toca el relleno:
+  // el brillo es el nivel (Tema y estética §3). Con halo oscuro, como la cadena,
+  // para que se vean también sobre la abeja y la operculada.
+  if (s.puzle) {
+    const o = objetivoPuzle(s);
+    ctx.save();
+    ctx.lineJoin = 'round';
+    for (const i of o.rojas) {
+      if (!existe(s, i)) continue;
+      hexPath(ctx, layout.cx[i], topY(s, i), R * 0.86);
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = R * 0.18; ctx.stroke();
+      ctx.strokeStyle = '#e5484d'; ctx.lineWidth = R * 0.11; ctx.stroke();
+    }
+    for (const i of o.marcadas) {
+      if (!existe(s, i)) continue;
+      hexPath(ctx, layout.cx[i], topY(s, i), R * 0.62);
+      ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = R * 0.15; ctx.stroke();
+      ctx.setLineDash([R * 0.2, R * 0.13]);
+      ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = R * 0.09; ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.font = `800 ${Math.round(R * 0.5)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const [i, letra] of Object.entries(o.letras)) {
+      const x = layout.cx[i] + R * 0.5, y = topY(s, Number(i)) - R * 0.48;
+      ctx.lineWidth = R * 0.12; ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.strokeText(letra, x, y);
+      ctx.fillStyle = '#ffd23f'; ctx.fillText(letra, x, y);
+    }
+    ctx.restore();
+  }
+
   // La cadena: un contorno grueso, «la negrita del borde» (v7). No se oscurece
   // la celda porque en este juego el brillo ES el nivel: una larva oscurecida
   // se leería como un huevo justo cuando el jugador decide qué está a la misma

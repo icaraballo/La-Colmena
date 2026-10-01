@@ -370,6 +370,60 @@ footer{
   display:flex;gap:10px;align-items:center;flex-wrap:wrap;
 }
 footer .sem{font-variant-numeric:tabular-nums}
+
+/* ---------------------------------------------------------------------------
+   Puzzle (v11, T-45; LC-DESIGN §23). La pantalla de capítulos (opción A del
+   01-10: un solo mapa, cada nivel un hexágono con sus estrellas) y, en la
+   partida, el objetivo arriba y deshacer / reiniciar abajo en vez del marcador
+   de los otros modos. El rosa es el del modo (COLOR_MODO.puzzle).
+   --------------------------------------------------------------------------- */
+#puzles{height:100%;overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;
+  padding:env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + 18px)}
+.pz-barra{display:flex;align-items:center;gap:8px;padding:8px 14px 0;max-width:520px;margin:0 auto}
+.pz-barra .pz-titulo{flex:1;font-size:15px;font-weight:650;color:#ede4d3}
+.pz-barra .pz-total{font-size:13px;color:#9a8d77;font-variant-numeric:tabular-nums}
+.pz-barra .pz-total b{color:#F79A1F;font-weight:600}
+#pz-menu,#partida-menu{display:flex;align-items:center;gap:5px;min-height:34px;padding:4px 10px 4px 8px;font-size:13px}
+.pz-cap{padding:14px 14px 6px;max-width:520px;margin:0 auto;border-bottom:1px solid #2a2218}
+.pz-cap h3{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;color:#9a8d77}
+.pz-cap h3 b{font-size:13.5px;letter-spacing:0;text-transform:none;color:#ede4d3;font-variant-numeric:tabular-nums}
+.pz-cap p{font-size:12.5px;color:#9a8d77;margin-top:2px}
+.pz-cap.cerrado{opacity:.55}
+.pz-niveles{display:grid;grid-template-columns:repeat(5,1fr);gap:2px 2px;margin-top:8px}
+.pz-nivel{all:unset;display:flex;flex-direction:column;align-items:center;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.pz-nivel:focus-visible svg{outline:2px solid #F28FB1;outline-offset:2px;border-radius:8px}
+.pz-nivel svg{display:block}
+.pz-nivel .e{font-size:11px;letter-spacing:1px;color:#F79A1F;height:15px;line-height:15px}
+.pz-nivel .e.vacia{color:#4d4232}
+.pz-nivel .e.sig{color:#F28FB1;letter-spacing:0;font-size:10.5px}
+.pz-nivel[disabled]{cursor:default}
+
+#puzle-cab{padding:8px 2px 0}
+.pz-obj{display:flex;align-items:flex-start;gap:8px;background:#1c1710;border:1px solid #33291d;border-radius:12px;padding:8px 10px}
+.pz-obj > div{flex:1;min-width:0}
+.pz-frase{font-size:16px;font-weight:650;line-height:1.25;color:#ede4d3}
+.pz-leyenda{display:flex;flex-wrap:wrap;gap:2px 12px;font-size:12px;color:#9a8d77;margin-top:3px}
+.pz-leyenda span{display:inline-flex;align-items:center;gap:5px}
+.pz-leyenda i{width:11px;height:11px;border-radius:50%;display:inline-block}
+.pz-datos{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:8px 2px 2px}
+.pz-min{font-size:14px;color:#F79A1F;letter-spacing:0;white-space:nowrap;font-variant-numeric:tabular-nums;line-height:31px}
+.pz-min small{color:#8c7f6a;letter-spacing:0;font-size:12px}
+#puzle-pie{padding:4px 2px 12px}
+.pz-aviso{text-align:center;font-size:13px;color:#9a8d77;min-height:20px;margin-bottom:6px}
+.pz-aviso.mal{color:#f0a0a0}
+.pz-botones{display:flex;gap:8px}
+.pz-botones button{flex:1;min-height:44px;border-radius:12px;font-size:14.5px;font-weight:600}
+/* En un nivel, fuera lo de los otros modos. */
+#partida.es-puzle header,#partida.es-puzle .sub-con-info,#partida.es-puzle #leyenda,
+#partida.es-puzle #linea-items,#partida.es-puzle #riesgo,#partida.es-puzle footer,#partida.es-puzle #semilla-btn{display:none}
+/* En un nivel, los dos botones del final se reparten el ancho. */
+#fin.puzle .fin-botones > *{flex:1 1 0;white-space:nowrap}
+#fin .estrellas{font-size:40px;letter-spacing:6px;color:#F79A1F;line-height:1.1}
+#fin .estrellas .vacia{color:#4d4232}
+#fin-volver{all:unset;cursor:pointer;display:block;margin:12px auto 0;font-size:14px;color:#9a8d77;padding:6px 10px}
+#fin-volver:hover{color:#c9b99c}
+#fin-volver:focus-visible{outline:2px solid #F79A1F;border-radius:6px}
 </style>
 </head>
 <body>
@@ -430,6 +484,13 @@ footer .sem{font-variant-numeric:tabular-nums}
       <svg width="9" height="14" viewBox="0 0 10 16" aria-hidden="true"><path d="M2 2l6 6-6 6" stroke="#6d6150" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
 
+    <!-- Puzzle (v11): no abre la ficha, abre sus capítulos. Rosa (01-10). -->
+    <button class="modo-fila" data-modo="puzzle">
+      <svg width="34" height="30" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#F28FB1"/><g fill="#1c1710"><rect x="15" y="12" width="7" height="7" rx="1.5"/><rect x="24" y="12" width="7" height="7" rx="1.5"/><rect x="15" y="21" width="7" height="7" rx="1.5"/></g><rect x="24" y="21" width="7" height="7" rx="1.5" fill="none" stroke="#1c1710" stroke-width="1.8"/></svg>
+      <span class="txt"><span class="nom" data-nombre="puzzle"></span><span class="frase" data-frase="puzzle"></span></span>
+      <svg width="9" height="14" viewBox="0 0 10 16" aria-hidden="true"><path d="M2 2l6 6-6 6" stroke="#6d6150" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+
     <!-- El historial se hará más adelante (idea del §9); el botón ya existe. -->
     <button id="historial" disabled>
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><g stroke="#9a8d77" stroke-width="1.6" fill="none" stroke-linecap="round"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9"/><path d="M2 2.5v2.8h2.8"/><path d="M8 5v3l2 1.5"/></g></svg>
@@ -440,6 +501,19 @@ footer .sem{font-variant-numeric:tabular-nums}
   </div>
 </section>
 
+<!-- Los capítulos de Puzzle (v11): todos en una pantalla que se desliza. Los pinta
+     pintarCapitulos() desde CAPITULOS y PUZLES (js/puzles.js); qué está abierto lo
+     dice el motor (abiertosPuzzle). -->
+<section id="puzles" hidden>
+  <div class="pz-barra" id="pz-barra">
+    <button id="pz-menu"><svg width="7" height="11" viewBox="0 0 8 12" aria-hidden="true"><path d="M6 1L1 6l5 5" stroke="#ede4d3" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>Menú</button>
+    <span class="pz-titulo" data-nombre="puzzle"></span>
+    <span class="pz-total" id="pz-total"></span>
+    <button class="info-btn" id="pz-info" aria-label="Cómo se juega Puzzle"><span class="info">i</span></button>
+  </div>
+  <div id="pz-capitulos"></div>
+</section>
+
 <div id="partida" hidden>
 
 <!-- La barra (v9): sustituye a la fila de modos. El modo se elige en el inicio. -->
@@ -447,6 +521,20 @@ footer .sem{font-variant-numeric:tabular-nums}
   <button id="partida-menu"><svg width="7" height="11" viewBox="0 0 8 12" aria-hidden="true"><path d="M6 1L1 6l5 5" stroke="#ede4d3" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>Menú</button>
   <span id="barra-modo"></span>
   <button id="semilla-btn" aria-label="Semilla">#</button>
+</div>
+
+<!-- Puzzle (v11): el objetivo y cuatro datos, en vez del marcador de los otros modos. -->
+<div id="puzle-cab" hidden>
+  <div class="pz-obj">
+    <div><div class="pz-frase" id="pz-frase"></div><div class="pz-leyenda" id="pz-leyenda"></div></div>
+    <button class="info-btn" data-hoja="puzzle" aria-label="Cómo se juega Puzzle"><span class="info">i</span></button>
+  </div>
+  <div class="pz-datos">
+    <div class="stat"><span class="lbl">Turno</span><span><span class="big" id="pz-turno">0</span><span class="de" id="pz-limite"></span></span></div>
+    <div class="stat"><span class="lbl">Paso</span><span class="big" id="pz-paso">1</span></div>
+    <div class="stat"><span class="lbl" id="pz-prog-lbl"></span><span><span class="big" id="pz-prog">0</span><span class="de" id="pz-prog-de"></span></span></div>
+    <div class="stat"><span class="lbl">Mínimo</span><span class="pz-min" id="pz-min"></span></div>
+  </div>
 </div>
 
 <!-- v8: paso y máx, grandes y juntos: si el máx es menor que el paso, se falla.
@@ -503,8 +591,15 @@ footer .sem{font-variant-numeric:tabular-nums}
         <button id="fin-menu" class="secundario">‹ Menú</button>
         <button id="fin-otra" class="primario">Otra vez</button>
       </div>
+      <!-- Puzzle (v11): volver a los capítulos, además de los dos botones. -->
+      <button id="fin-volver" hidden>‹ Volver a los capítulos</button>
     </div>
   </div>
+</div>
+
+<div id="puzle-pie" hidden>
+  <p class="pz-aviso" id="pz-aviso"></p>
+  <div class="pz-botones"><button id="pz-deshacer">↶ Deshacer</button><button id="pz-reiniciar">↻ Reiniciar</button></div>
 </div>
 
 <footer>
@@ -678,6 +773,32 @@ footer .sem{font-variant-numeric:tabular-nums}
     </div>
   </div>
 
+  <!-- Puzzle (v11). Las marcas, como se dibujan en el panal (render.js). -->
+  <div class="hoja-panel" data-pestana="puzzle" role="tabpanel" hidden>
+    <div class="hoja-cab">
+      <svg width="30" height="26" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#F28FB1"/><g fill="#1c1710"><rect x="15" y="12" width="7" height="7" rx="1.5"/><rect x="24" y="12" width="7" height="7" rx="1.5"/><rect x="15" y="21" width="7" height="7" rx="1.5"/></g><rect x="24" y="21" width="7" height="7" rx="1.5" fill="none" stroke="#1c1710" stroke-width="1.8"/></svg>
+      <div><h2 id="hoja-titulo-puzzle" data-nombre="puzzle"></h2><span data-frase="puzzle"></span></div>
+    </div>
+    <div class="hoja-filas">
+      <div class="hoja-fila">
+        <span class="ico-seg" aria-hidden="true">★★★</span>
+        <p>Cada nivel es un panal con un <b>objetivo</b>. Sin azar: ni ítems ni plagas. Se juega con las reglas de siempre, y lo que aprieta son <b>los turnos</b>.</p>
+      </div>
+      <div class="hoja-fila">
+        <span class="ico-seg" aria-hidden="true">en 6</span>
+        <p>Se puede en el <b>mínimo</b> que te dice, y está comprobado. En el mínimo, <b>★★★</b>; con uno de más, ★★; con dos, ★. Con más, se acaba.</p>
+      </div>
+      <div class="hoja-fila">
+        <svg width="52" height="22" viewBox="0 0 92 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#C8A14A"/><polygon points="23,7 38,14 38,26 23,33 8,26 8,14" fill="none" stroke="#ffd23f" stroke-width="3" stroke-dasharray="5 4"/><polygon points="68,1 90,11 90,29 68,39 46,29 46,11" fill="#C8A14A"/><polygon points="68,4 86,13 86,27 68,36 50,27 50,13" fill="none" stroke="#e5484d" stroke-width="4"/></svg>
+        <p>Las <b>marcadas</b> (amarillo) son las del objetivo. Las <b>rojas</b> se pueden subir, pero <b>no cosechar</b>. Con <b>A</b> y <b>B</b>, la A primero.</p>
+      </div>
+      <div class="hoja-fila">
+        <span class="ico-seg" aria-hidden="true">↶</span>
+        <p>Si fallas (el paso no cabe) o rompes una regla, <b>pierdes el nivel</b>; pero cumplir el objetivo gana aunque el paso siguiente no quepa. Puedes <b>deshacer</b> y <b>reiniciar</b> siempre.</p>
+      </div>
+    </div>
+  </div>
+
   <div class="hoja-dif" id="hoja-dif"></div>
 
   <div class="hoja-modos" id="hoja-modos">
@@ -704,6 +825,8 @@ footer .sem{font-variant-numeric:tabular-nums}
 <script src="js/guardado.js"></script>
 <script src="js/render.js"></script>
 <script src="js/input.js"></script>
+<!-- Los niveles del modo Puzzle (v11): sólo datos, los escribe `npm run puzles -- meter`. -->
+<script src="js/puzles.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
