@@ -5,6 +5,8 @@
   "description": "La Colmena: puzzle de panal hexagonal por niveles. Vanilla JS, sin framework: el navegador carga js/*.js como scripts clásicos, no hay bundler ni módulos.",
   "scripts": {
     "test": "node tests/smoke.js",
-    "bot": "node tests/bot.js"
+    "bot": "node tests/bot.js",
+    "puzles": "node puzles/cli.js",
+    "test:puzles": "node puzles/pruebas.js"
   }
 }

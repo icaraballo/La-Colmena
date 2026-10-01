@@ -7,6 +7,9 @@
 .claude/settings.local.json
 .claude/worktrees/
 
+# Los lotes de la máquina de puzles (T-46): se generan, no se versionan
+puzles/salida/
+
 # Dependencias de desarrollo
 node_modules/
 

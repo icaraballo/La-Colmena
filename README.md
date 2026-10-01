@@ -59,7 +59,14 @@ js/input.js     el arrastre: tránsito, quitar volviendo atrás, cancelar fuera
 js/app.js       arranque, HUD, reloj y bucle de dibujo
 tests/smoke.js  pruebas de las reglas             · npm test
 tests/bot.js    simulador de partidas             · npm run bot [n] [semilla] [modo] [dificultad] [s/turno]
+puzles/         la máquina de puzles (fuera del juego) · npm run puzles -- generar · npm run test:puzles
 ```
+
+`puzles/` fabrica los niveles del futuro modo Puzzle con garantías: juega una partida guía
+con el motor y convierte lo jugado en el objetivo (así el puzle tiene solución por
+construcción), un buscador por capas **demuestra** el mínimo de turnos, un comprobador
+rejuega la solución con su propio código y un evaluador mide cómo de difícil es para
+alguien que no la conoce. El juego nunca genera puzles: sólo leerá los elegidos.
 
 El estado del juego es un objeto plano y serializable sin ninguna referencia a canvas o
 DOM, y tiene que seguir así: es lo que permite testear las reglas y simular miles de
