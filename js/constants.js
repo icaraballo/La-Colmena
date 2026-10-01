@@ -352,7 +352,7 @@ function tieneDificultad(modo) {
 // jugando en el móvil no hay forma de saber si lo que tienes delante es lo
 // último que se subió.
 // Se mantiene a mano y tiene que coincidir con package.json (ver Recetas).
-const VERSION = 'v10.1';
+const VERSION = 'v10.2';
 
 const NOMBRE_MODO = {
   contrarreloj: 'Contrarreloj',

@@ -36,26 +36,45 @@ button.on{background:#F79A1F;color:#231500;border-color:#F79A1F;font-weight:600}
   padding:env(safe-area-inset-top) 12px env(safe-area-inset-bottom);
 }
 
-/* La pantalla de inicio: título, el panal vivo y los modos apilados abajo.
-   Los botones no se encogen nunca: lo que cede es el panal. */
+/* La pantalla de inicio (v10.2): dos tramos que se recorren deslizando. La
+   portada llena la pantalla: el título, el panal vivo tan grande como quepa,
+   «Continuar partida» si hay una guardada y «Elegir modo ⌄». Debajo, los modos.
+   Deslizar hacia arriba (o tocar la flecha) sube los modos y el panal se va por
+   arriba. Hasta la v10.1 todo iba en una columna y el panal cedía: a 360x640
+   con cinco modos se quedaba en un tercio de la pantalla. */
 #inicio{
   height:100%;display:flex;flex-direction:column;
   padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;
+  scroll-snap-type:y proximity;
 }
+.inicio-portada{min-height:100%;flex:none;display:flex;flex-direction:column;scroll-snap-align:start}
 .inicio-cab{padding:46px 20px 0;display:flex;flex-direction:column;align-items:center;gap:2px;flex:none}
 .inicio-cab h1{font-size:34px;font-weight:800;letter-spacing:-.02em;color:#ede4d3;line-height:1.15}
 .inicio-cab span{font-size:13px;color:#9a8d77}
-#fondo-wrap{flex:1 0 auto;min-height:clamp(170px,26dvh,260px);position:relative}
+#fondo-wrap{flex:1 0 auto;min-height:clamp(110px,30dvh,200px);position:relative}
 #fondo{opacity:.9;pointer-events:none}
-.inicio-botones{padding:0 16px 18px;display:flex;flex-direction:column;gap:8px;flex:none;
+.inicio-pie,.inicio-botones{padding:0 16px;display:flex;flex-direction:column;gap:8px;flex:none;
   width:100%;max-width:480px;margin:0 auto}
-#continuar{display:flex;align-items:center;gap:12px;width:100%;min-height:62px;padding:10px 14px;margin-bottom:6px;
+.inicio-pie{padding-bottom:12px}
+.inicio-botones{padding:4px 16px 18px;scroll-snap-align:end}
+#continuar{display:flex;align-items:center;gap:12px;width:100%;min-height:62px;padding:10px 14px;
   background:#F79A1F;border:0;border-radius:14px;text-align:left}
 #continuar:hover{background:#ffa93a}
 #continuar .play{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:#231500;flex:none}
 #continuar .txt{display:flex;flex-direction:column;gap:1px;flex-grow:1}
 #continuar .txt b{font-size:17px;font-weight:700;color:#231500}
 #continuar .txt span{font-size:12.5px;color:#5a3600}
+/* «Elegir modo ⌄»: dice que hay más abajo y, al tocarlo, lo enseña. La flecha
+   se mece despacio; al empezar a bajar se apaga, porque ya no hace falta. */
+#elegir-modo{display:flex;flex-direction:column;align-items:center;gap:2px;align-self:center;
+  min-height:48px;padding:6px 22px;background:transparent;border:0;
+  font-size:14px;font-weight:700;color:#F79A1F;transition:opacity .25s}
+#elegir-modo:hover{background:transparent;color:#ffa93a}
+#elegir-modo svg{animation:mecer 1.8s ease-in-out infinite}
+@keyframes mecer{0%,100%{transform:translateY(0)}50%{transform:translateY(4px)}}
+@media (prefers-reduced-motion:reduce){#elegir-modo svg{animation:none}}
+#inicio.bajado #elegir-modo{opacity:0;pointer-events:none}
 .modo-fila{display:flex;align-items:center;gap:12px;width:100%;min-height:60px;padding:8px 14px;
   background:#1c1710;border:1px solid #33291d;border-radius:14px;text-align:left}
 .modo-fila:hover{background:#241d14}
@@ -69,16 +88,6 @@ button.on{background:#F79A1F;color:#231500;border-color:#F79A1F;font-weight:600}
 #historial .pronto{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#6d6150;
   border:1px solid #33291d;border-radius:999px;padding:1px 7px}
 #inicio-version{align-self:center;font-size:11px;color:#6d6150;font-variant-numeric:tabular-nums}
-/* v10: con cinco modos los botones ya no caben debajo del panal vivo en una
-   pantalla baja (a 360x640, con «Continuar», el panal se quedaba en 8 px). En vez
-   de encoger nada, el inicio se desplaza con el dedo: el panal vivo guarda un alto
-   mínimo y los modos que no caben se ven deslizando hacia arriba. La franja de
-   abajo avisa de que hay más. */
-#inicio{overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain}
-#inicio::after{content:"";position:sticky;bottom:0;flex:none;height:28px;margin-top:-28px;
-  pointer-events:none;background:linear-gradient(transparent,#12100C);
-  opacity:0;transition:opacity .2s}
-#inicio.hay-mas::after{opacity:1}
 
 /* La barra de la partida (v9): sustituye a la fila de modos. Menú, el modo y
    la dificultad, y la semilla. */
@@ -370,6 +379,8 @@ footer .sem{font-variant-numeric:tabular-nums}
      tonto. Los nombres y las frases de los modos se pintan desde NOMBRE_MODO y
      FRASE_MODO al arrancar, para que el inicio y la hoja no puedan discrepar. -->
 <section id="inicio">
+  <!-- La portada (v10.2): llena la pantalla; los modos van debajo. -->
+  <div class="inicio-portada">
   <div class="inicio-cab">
     <h1>La Colmena</h1>
     <span>Hexágonos que suben de nivel.</span>
@@ -377,7 +388,7 @@ footer .sem{font-variant-numeric:tabular-nums}
 
   <div id="fondo-wrap"><canvas id="fondo" aria-hidden="true"></canvas></div>
 
-  <div class="inicio-botones">
+  <div class="inicio-pie">
     <!-- La partida guardada (v9.1, T-41): sólo sale si hay una que valga. -->
     <button id="continuar" hidden>
       <span class="play"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M4 2l8 5-8 5z" fill="#F79A1F"/></svg></span>
@@ -385,6 +396,13 @@ footer .sem{font-variant-numeric:tabular-nums}
       <svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true"><path d="M2 2l6 6-6 6" stroke="#231500" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
 
+    <button id="elegir-modo" aria-controls="modos">Elegir modo
+      <svg width="22" height="14" viewBox="0 0 22 14" aria-hidden="true"><path d="M3 3l8 8 8-8" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+  </div>
+
+  <div class="inicio-botones" id="modos">
     <button class="modo-fila" data-modo="contrarreloj">
       <svg width="34" height="30" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#F79A1F"/><g stroke="#1c1710" stroke-width="3" fill="none" stroke-linecap="round"><circle cx="23" cy="21" r="9"/><path d="M23 15v6l4 3"/></g></svg>
       <span class="txt"><span class="nom" data-nombre="contrarreloj"></span><span class="frase" data-frase="contrarreloj"></span></span>

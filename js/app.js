@@ -824,7 +824,12 @@ function mostrarPantalla(p) {
   cerrarPop();
   // Las dos pantallas dibujan con el mismo `layout` de render.js: al cambiar,
   // cada una se vuelve a medir. Como sólo se ve una, no chocan.
-  if (p === 'partida') resize(); else { pintarContinuar(); medirFondo(); marcarHayMas(); }
+  if (p === 'partida') resize();
+  else {
+    // Se entra siempre por la portada, con el panal a la vista (v10.2).
+    document.getElementById('inicio').scrollTop = 0;
+    pintarContinuar(); medirFondo(); marcarBajado();
+  }
 }
 
 // El botón «Continuar partida», encima de los modos, con lo que se va a
@@ -835,11 +840,16 @@ function pintarContinuar() {
   if (g) setText('continuar-detalle', describirPartida(g.s));
 }
 
-// El inicio se desplaza con el dedo cuando los modos no caben (v10): la franja
-// de abajo sólo se ve si queda algo por debajo.
-function marcarHayMas() {
+// El inicio tiene dos tramos (v10.2): la portada, con el panal vivo en grande,
+// y los modos debajo. «Elegir modo ⌄» los enseña y se apaga en cuanto se baja.
+function marcarBajado() {
   const el = document.getElementById('inicio');
-  el.classList.toggle('hay-mas', el.scrollTop + el.clientHeight < el.scrollHeight - 4);
+  el.classList.toggle('bajado', el.scrollTop > 24);
+}
+function verModos() {
+  const el = document.getElementById('inicio');
+  const reducir = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  el.scrollTo({ top: el.scrollHeight, behavior: reducir ? 'auto' : 'smooth' });
 }
 
 // «‹ Menú» (de la barra o de la pantalla final): se guarda y se vuelve, sin
@@ -1200,7 +1210,8 @@ window.addEventListener('DOMContentLoaded', () => {
   pintarTarjeta();
   pintarEscalaExpansion('normal');
 
-  document.getElementById('inicio').addEventListener('scroll', marcarHayMas, { passive: true });
+  document.getElementById('inicio').addEventListener('scroll', marcarBajado, { passive: true });
+  document.getElementById('elegir-modo').addEventListener('click', verModos);
 
   // El inicio: cada modo abre su ficha.
   document.getElementById('continuar').addEventListener('click', continuarPartida);
@@ -1282,7 +1293,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   window.addEventListener('resize', () => {
     cerrarPop();
-    if (pantalla === 'partida') resize(); else { medirFondo(); marcarHayMas(); }
+    if (pantalla === 'partida') resize(); else { medirFondo(); marcarBajado(); }
     // La consulta va pegada a la barra: si cambia la ventana, se recoloca.
     if (hojaAbierta && hojaAbierta.desde === 'partida')
       hoja.style.top = Math.round(document.getElementById('barra').getBoundingClientRect().bottom + 6) + 'px';
