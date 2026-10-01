@@ -211,7 +211,19 @@ function escribirLote(candidatos, dir, info) {
   fs.writeFileSync(path.join(dir, base + '.js'),
     `// ${base}: generado por \`npm run puzles -- generar\` (${JSON.stringify(info)}).\n` +
     `// No se versiona. Lo carga puzles/editor.html.\nwindow.LOTE = [\n${filas.join(',\n')}\n];\n`);
+  escribirIndice(dir);
   return path.join(dir, base + '.jsonl');
+}
+
+// El índice de lotes para el editor: abierto como fichero, una página no puede
+// listar una carpeta, así que se lo da hecho salida/lotes.js (window.LOTES, del más
+// antiguo al más nuevo).
+function escribirIndice(dir) {
+  const { lotes, leerLote } = require('./registro.js');
+  const LOTES = lotes(dir).map(f => ({ nombre: path.basename(f, '.jsonl'), puzles: leerLote(f).length }));
+  fs.writeFileSync(path.join(dir, 'lotes.js'),
+    `// Índice de los lotes de puzles/salida/, para el editor. Lo reescribe \`npm run puzles -- generar\`.\n` +
+    `window.LOTES = ${JSON.stringify(LOTES, null, 1)};\n`);
 }
 
 // ---------------------------------------------------------------------------

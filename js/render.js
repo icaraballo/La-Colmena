@@ -6,13 +6,8 @@
 // lee de un vistazo.
 const LIFT = 9;
 
-// Rampa de luminosidad 1→4 y un ámbar saturado en el 5 (DESIGN §2). La
-// información va en el brillo, no en el tono: se juzga "¿están a la misma
-// altura?" a toda velocidad y aguanta el daltonismo. El 5 salta a la vista a
-// propósito: es la jugada que quieres ver.
-// El 0 (agua) sale de la rampa ámbar a propósito: no es "un nivel más oscuro",
-// es otra cosa, y tiene que leerse como jugable de un vistazo.
-const LEVEL_COLORS = ['#2E4756', '#6E5A32', '#9C7F3C', '#C8A14A', '#E3C87E', '#F79A1F'];
+// Los colores de cada nivel, LEVEL_COLORS, viven en constants.js desde la v10.2
+// (los usa también el editor de puzles, que no carga este fichero).
 
 // El símbolo de cada ítem vive en ITEM_INFO (constants.js), junto al nombre y
 // lo que hace, para que la gota y la leyenda del HUD no puedan discrepar.

@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Editor de puzles · La Colmena</title>
+<!--
+  El editor de puzles (T-46b, F2 de LC-Instrucciones-Puzle). Se abre como fichero,
+  igual que index.html (regla 4: scripts clásicos, sin módulos ni fetch). Carga el
+  motor del juego (../js/), las reglas de los objetivos de la máquina (objetivos.js)
+  y los lotes que escribe `npm run puzles -- generar` en salida/.
+
+  Sale de la galería «Puzles de La Colmena» de Claude.ai (01-10): la misma mesa,
+  pero sin copias del motor, de los objetivos ni de los colores.
+-->
+<style>
+:root {
+  --fondo: #12100C;
+  --panel: #1c1710;
+  --panel-2: #2a2218;
+  --borde: #43372a;
+  --borde-suave: #33291d;
+  --texto: #ede4d3;
+  --texto-2: #9a8d77;
+  --acento: #F79A1F;
+  --sobre-acento: #231500;
+  --marca: #ffd23f;
+  --roja: #e5484d;
+  --bien: #7fc97a;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--fondo); color: var(--texto); font: 15px/1.45 var(--font); margin: 0; }
+.envoltura { max-width: 1180px; margin: 0 auto; padding: 20px 16px 40px; }
+h1 { font-size: 22px; margin: 0; letter-spacing: 0.2px; }
+.sub { color: var(--texto-2); margin: 4px 0 0; font-size: 14px; }
+button, select { background: var(--panel-2); color: var(--texto); border: 1px solid var(--borde); border-radius: 9px;
+  padding: 8px 12px; font: inherit; font-size: 14px; cursor: pointer; min-height: 40px; }
+select { padding: 6px 8px; min-height: 36px; }
+button:hover:not(:disabled) { background: #352b1f; }
+button:disabled { opacity: 0.45; cursor: default; }
+button:focus-visible, select:focus-visible, summary:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+button.primario { background: var(--acento); color: var(--sobre-acento); border-color: var(--acento); font-weight: 650; }
+button.primario:hover:not(:disabled) { background: #ffa93a; }
+button.on { border-color: var(--acento); color: var(--acento); }
+button.mini { min-height: 28px; padding: 2px 8px; font-size: 13px; border-radius: 7px; }
+
+.barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 14px; }
+.barra label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--texto-2); }
+.barra .hueco { flex: 1; }
+#estado-guardado { font-size: 13px; color: var(--texto-2); }
+#estado-guardado.mal { color: #f0a0a0; }
+
+.disposicion { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 20px; margin-top: 16px; align-items: start; }
+@media (max-width: 860px) { .disposicion { grid-template-columns: minmax(0, 1fr); } }
+.columna { display: grid; gap: 14px; min-width: 0; }
+
+/* --- lista y selección --- */
+.caja { background: var(--panel); border: 1px solid var(--borde-suave); border-radius: 14px; padding: 6px 12px 12px; }
+.caja > summary { cursor: pointer; padding: 8px 0; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 8px; }
+.caja > summary::-webkit-details-marker { display: none; }
+.caja .cuenta { color: var(--texto-2); font-weight: 400; font-size: 13px; }
+.filtros { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 2px 0 8px; }
+.filtros select { width: 100%; }
+.filtros label { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--texto-2); }
+/* La lista se desplaza sola: así la selección queda a la vista debajo. */
+#grupos { max-height: min(520px, 55vh); overflow-y: auto; margin-right: -6px; padding-right: 6px; }
+.grupo { margin-top: 10px; }
+.grupo h3 { font-size: 12px; font-weight: 600; color: var(--texto-2); text-transform: uppercase; letter-spacing: 0.6px; margin: 0 0 6px; }
+.fichas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.ficha { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 7px 9px; min-height: 0; text-align: left; border-radius: 9px; }
+.ficha .num { font-family: var(--mono); font-size: 12.5px; font-weight: 600; }
+.ficha .est { font-size: 12px; color: var(--texto-2); font-variant-numeric: tabular-nums; }
+.ficha.activa { border-color: var(--acento); background: #352b1f; }
+.ficha.valorada .est { color: var(--bien); }
+.vacio { color: var(--texto-2); font-size: 14px; margin: 8px 0; }
+.capitulo { margin-top: 10px; }
+.capitulo h3 { font-size: 12px; font-weight: 600; color: var(--texto-2); text-transform: uppercase; letter-spacing: 0.6px; margin: 0 0 6px; }
+.capitulo ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.capitulo li { display: flex; align-items: center; gap: 6px; background: var(--panel-2); border-radius: 8px; padding: 4px 6px 4px 10px; }
+.capitulo li .que { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.capitulo li .que b { font-family: var(--mono); font-weight: 600; }
+.capitulo li .que span { color: var(--texto-2); }
+
+/* --- mesa --- */
+.mesa { background: var(--panel); border: 1px solid var(--borde-suave); border-radius: 14px; padding: 16px; min-width: 0; }
+.cab { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; }
+.cab .id { font-family: var(--mono); color: var(--texto-2); font-size: 13px; }
+.objetivo { font-size: 19px; font-weight: 650; margin: 6px 0 2px; }
+.leyenda { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--texto-2); margin-top: 4px; }
+.leyenda span { display: inline-flex; align-items: center; gap: 6px; }
+.muestra { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+.datos { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 14px 0 6px; }
+@media (max-width: 480px) { .datos { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.dato { background: var(--panel-2); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+.dato .et { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--texto-2); }
+.dato .val { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.dato .val small { font-size: 13px; color: var(--texto-2); font-weight: 400; }
+#tablero { width: 100%; max-width: 520px; display: block; margin: 8px auto 0; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+#tablero.arrastre { touch-action: none; }
+#tablero .celda { cursor: pointer; }
+#tablero .celda:focus-visible polygon.base { stroke: var(--acento); stroke-width: 3; }
+.entrada { display: flex; justify-content: center; gap: 6px; margin-top: 10px; font-size: 13px; color: var(--texto-2); align-items: center; }
+.entrada button { min-height: 32px; padding: 4px 10px; font-size: 13px; }
+#aviso { min-height: 44px; text-align: center; margin: 8px 0; font-size: 14px; color: var(--texto-2); }
+#aviso.mal { color: #f0a0a0; }
+#aviso.bien { color: var(--bien); font-weight: 600; }
+.botones { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.botones .primario { min-width: 120px; }
+.solucion-barra { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; }
+@media (prefers-reduced-motion: no-preference) { .celda polygon { transition: fill 0.18s ease; } }
+
+/* --- valoración --- */
+.valorar { margin-top: 18px; border-top: 1px solid var(--borde-suave); padding-top: 14px; display: grid; gap: 12px; }
+.valorar h2 { font-size: 15px; margin: 0; }
+.fila { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.fila .q { font-size: 14px; color: var(--texto-2); min-width: 150px; }
+textarea { width: 100%; min-height: 64px; background: var(--fondo); color: var(--texto); border: 1px solid var(--borde); border-radius: 9px; padding: 8px 10px; font: inherit; resize: vertical; }
+#guardado { font-size: 13px; color: var(--texto-2); }
+#evaluador { background: var(--panel-2); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+#evaluador b { color: var(--acento); }
+
+.sin-lotes { background: var(--panel); border: 1px solid var(--borde-suave); border-radius: 14px; padding: 18px; margin-top: 16px; }
+.sin-lotes code { font-family: var(--mono); background: var(--panel-2); padding: 1px 6px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<div class="envoltura">
+  <header>
+    <h1>Editor de puzles · La Colmena</h1>
+    <p class="sub">Juega los puzles de la máquina, di cómo te han parecido y elige cuáles entran en el juego y en qué capítulo.</p>
+  </header>
+
+  <div class="barra" id="barra">
+    <label>Lote <select id="sel-lote"></select></label>
+    <span class="cuenta" id="cuenta-lote"></span>
+    <span class="hueco"></span>
+    <span id="estado-guardado"></span>
+    <button id="bexportar">Exportar selección</button>
+  </div>
+
+  <div class="sin-lotes" id="sin-lotes" hidden>
+    <p><b>No hay lotes.</b> Genera uno desde la carpeta del juego:</p>
+    <p><code>npm run puzles -- generar</code></p>
+    <p class="sub">Los lotes se guardan en <code>puzles/salida/</code> y este editor los encuentra solo.</p>
+  </div>
+
+  <div class="disposicion" id="disposicion" hidden>
+    <div class="columna">
+      <details class="caja" id="lista" open>
+        <summary><span>Puzles</span><span class="cuenta" id="cuenta"></span></summary>
+        <div class="filtros">
+          <select id="f-tipo" aria-label="Filtrar por tipo"></select>
+          <select id="f-minimo" aria-label="Filtrar por mínimo de turnos"></select>
+          <select id="f-forma" aria-label="Filtrar por forma" style="grid-column: 1 / -1"></select>
+          <label><input type="checkbox" id="f-ocultar"> Ocultar los ya valorados</label>
+        </div>
+        <div id="grupos"></div>
+      </details>
+
+      <details class="caja" id="seleccion" open>
+        <summary><span>Selección</span><span class="cuenta" id="cuenta-sel"></span></summary>
+        <div id="capitulos"></div>
+      </details>
+    </div>
+
+    <main class="mesa" aria-live="polite">
+      <div class="cab">
+        <span class="id" id="pid"></span>
+        <span class="id" id="pforma"></span>
+      </div>
+      <p class="objetivo" id="pobjetivo"></p>
+      <div class="leyenda" id="pleyenda"></div>
+
+      <div class="datos">
+        <div class="dato"><div class="et">Turno</div><div class="val" id="vturno"></div></div>
+        <div class="dato"><div class="et">Paso</div><div class="val" id="vpaso"></div></div>
+        <div class="dato"><div class="et">Objetivo</div><div class="val" id="vprog"></div></div>
+        <div class="dato"><div class="et">Estrellas</div><div class="val" id="vestrellas"></div></div>
+      </div>
+
+      <svg id="tablero" role="group" aria-label="Panal del puzle"></svg>
+      <p id="aviso"></p>
+
+      <div class="botones" id="bjuego">
+        <button class="primario" id="bjugar" disabled hidden>Jugar</button>
+        <button id="blimpiar" hidden>Quitar selección</button>
+        <button id="bdeshacer">Deshacer</button>
+        <button id="breiniciar">Reiniciar</button>
+        <button id="bsolucion">Ver solución</button>
+      </div>
+      <div class="entrada" id="bentrada"><span>Jugar</span>
+        <button id="marrastrar" class="on">arrastrando</button><button id="mtocar">tocando</button></div>
+      <div class="solucion-barra" id="bsol" hidden>
+        <button id="bsant" aria-label="Jugada anterior">← Anterior</button>
+        <span id="solcont" class="id"></span>
+        <button id="bssig" aria-label="Jugada siguiente">Siguiente →</button>
+        <button id="bsvolver">Volver a jugar</button>
+      </div>
+
+      <section class="valorar" aria-labelledby="tvalorar">
+        <h2 id="tvalorar">Tu opinión sobre este puzle</h2>
+        <div class="fila"><span class="q">¿Cómo de difícil?</span>
+          <button data-dif="facil">Fácil</button><button data-dif="medio">Medio</button><button data-dif="dificil">Difícil</button></div>
+        <div class="fila"><span class="q">¿Entra en el juego?</span>
+          <button data-entra="si">Sí</button><button data-entra="quizas">Quizás</button><button data-entra="no">No</button></div>
+        <div class="fila" id="fila-capitulo" hidden><span class="q">¿En qué capítulo?</span>
+          <button data-cap="0">0 · Tutorial</button><button data-cap="1">1</button><button data-cap="2">2</button>
+          <button data-cap="3">3</button><button data-cap="4">4</button><button data-cap="5">5</button></div>
+        <textarea id="nota" placeholder="Opcional: qué te ha gustado, qué cambiarías, dónde te has atascado"></textarea>
+        <div class="fila"><button class="primario" id="bguardar">Guardar opinión</button><span id="guardado"></span></div>
+        <div id="evaluador" hidden></div>
+        <div class="fila" id="fila-evaluador" hidden><button id="bevaluador">Ver qué dice el evaluador</button></div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- El motor del juego, tal cual (no toca el DOM al cargarse), y lo de la máquina. -->
+<script src="../js/constants.js"></script>
+<script src="../js/state.js"></script>
+<script src="../js/input.js"></script>
+<script src="nivel.js"></script>
+<script src="objetivos.js"></script>
+<!-- El índice de lotes lo escribe `npm run puzles -- generar`. Si no existe, no hay lotes. -->
+<script src="salida/lotes.js"></script>
+<script>
+(function () {
+'use strict';
+// Todo dentro de una función: los nombres del motor (createState, drag, …) son
+// globales y los de esta página no pueden chocar con ellos.
+const MOTOR = { createState, commitTurn, isValidDrag, existe, jugable, pasoDeCadena, TABLEROS, MODOS, AGUA, MAX_LEVEL, NOMBRE_NIVEL };
+const OBJ = crearObjetivos({ MAX_LEVEL, NOMBRE_NIVEL });
+const COLORES = LEVEL_COLORS;
+const $ = id => document.getElementById(id);
+
+const TIPO_NOMBRE = { marcadas: 'Celdas marcadas', cosechas: 'Número de cosechas', total: 'Celdas en total',
+  combinado: 'Combinado', grande: 'Cosecha grande', escalera: 'Escalera', panal: 'Dejar el panal así',
+  rojas: 'Sin cosechar las rojas', orden: 'En orden' };
+const DIF_TXT = { facil: 'fácil', medio: 'medio', dificil: 'difícil' };
+const ENTRA_TXT = { si: 'sí', quizas: 'quizás', no: 'no' };
+const CAPITULOS = [0, 1, 2, 3, 4, 5];
+
+// ---------------------------------------------------------------------------
+// Lo guardado: las valoraciones y el orden de cada capítulo, en este navegador.
+// ---------------------------------------------------------------------------
+// No hay servidor: se guarda en localStorage. Lo que vale de verdad es el fichero
+// que sale de «Exportar selección», que lee `npm run puzles -- meter` (F3).
+// Cada valoración lleva una copia del puzle, así la selección no depende de que
+// el lote siga en salida/.
+const CLAVE = 'colmena.puzles.editor.v1';
+let guardado = { version: 1, valoraciones: {}, capitulos: {} };
+let sePuedeGuardar = true;
+function leerGuardado() {
+  try {
+    const g = JSON.parse(localStorage.getItem(CLAVE) || 'null');
+    if (g && g.version === 1 && g.valoraciones && g.capitulos) guardado = g;
+  } catch (e) { sePuedeGuardar = false; }
+}
+function escribirGuardado() {
+  try { localStorage.setItem(CLAVE, JSON.stringify(guardado)); sePuedeGuardar = true; }
+  catch (e) { sePuedeGuardar = false; }
+  pintarEstadoGuardado();
+}
+function pintarEstadoGuardado() {
+  const n = Object.keys(guardado.valoraciones).length;
+  const el = $('estado-guardado');
+  el.textContent = sePuedeGuardar ? `${n} valorados en este navegador` : 'Este navegador no deja guardar: exporta antes de cerrar.';
+  el.className = sePuedeGuardar ? '' : 'mal';
+}
+// Quita un puzle de todos los capítulos y, si hace falta, lo pone al final de uno.
+function colocar(id, cap) {
+  for (const c of Object.keys(guardado.capitulos)) guardado.capitulos[c] = guardado.capitulos[c].filter(x => x !== id);
+  if (cap !== null && cap !== undefined) (guardado.capitulos[cap] ||= []).push(id);
+}
+
+// ---------------------------------------------------------------------------
+// Los lotes
+// ---------------------------------------------------------------------------
+const LOTES = Array.isArray(window.LOTES) ? window.LOTES : [];
+let PUZLES = [];
+let actual = -1;            // índice en PUZLES del puzle abierto
+
+function cargarLote(nombre) {
+  // Abierto como fichero no hay fetch: el lote es un script que define window.LOTE.
+  window.LOTE = undefined;
+  const sc = document.createElement('script');
+  sc.src = `salida/${nombre}.js`;
+  sc.onload = () => {
+    PUZLES = Array.isArray(window.LOTE) ? window.LOTE : [];
+    sc.remove();
+    try { localStorage.setItem(CLAVE + '.lote', nombre); } catch (e) {}
+    $('cuenta-lote').textContent = `${PUZLES.length} puzles`;
+    pintarFiltros();
+    const primero = visibles()[0];
+    abrir(primero === undefined ? (PUZLES.length ? 0 : -1) : primero);
+  };
+  sc.onerror = () => { $('cuenta-lote').textContent = `No encuentro salida/${nombre}.js`; sc.remove(); };
+  document.body.appendChild(sc);
+}
+
+// ---------------------------------------------------------------------------
+// Jugar: el motor juega; el seguimiento y el objetivo, de objetivos.js.
+// ---------------------------------------------------------------------------
+let s, seg, hist, sel, fin, modoSol = -1, borrador = {};
+const mejores = {}, intentos = {};
+const P = () => PUZLES[actual];
+const limite = p => p.minimo + 2;
+const estrellasDe = (p, usados) => Math.max(0, 3 - (usados - p.minimo));
+const estrellasTxt = n => '★'.repeat(n) + '☆'.repeat(3 - n);
+const tipoDe = p => OBJ.TIPOS[p.nivel.objetivo.tipo];
+
+function abrir(k, desdeLista) {
+  actual = k; modoSol = -1; borrador = {};
+  if (k < 0) { pintarLista(); return; }
+  const p = P();
+  s = crearEstadoPuzle(MOTOR, p.nivel);
+  seg = OBJ.seguimientoInicial(p.nivel.objetivo);
+  hist = []; sel = []; fin = null;
+  const v = guardado.valoraciones[p.id] || {};
+  $('nota').value = v.nota || '';
+  $('guardado').textContent = v.dificultad ? 'Ya lo habías valorado: puedes cambiarlo.' : '';
+  $('evaluador').hidden = true;
+  pintarLista(); pintar();
+  if (desdeLista && window.matchMedia('(max-width: 860px)').matches) { $('lista').open = false; $('pid').scrollIntoView({ block: 'start' }); }
+}
+
+function tocar(i) {
+  if (fin || modoSol >= 0 || !MOTOR.existe(s, i)) return;
+  const k = sel.indexOf(i);
+  if (k >= 0) sel.splice(k, 1); else sel.push(i);
+  pintar();
+}
+
+// Por qué la selección todavía no es una jugada (el motor sólo dice sí o no).
+function motivoSeleccion() {
+  const verbo = modoEntrada === 'arrastrar' ? 'Arrastra' : 'Toca';
+  if (!sel.length) return s.step === 1 ? `${modoEntrada === 'arrastrar' ? 'Pulsa' : 'Toca'} 1 celda.` : `${verbo} ${s.step} celdas juntas al mismo nivel.`;
+  const niveles = new Set(sel.map(i => s.height[i]));
+  if (niveles.size > 1) return 'Las celdas tienen que estar todas al mismo nivel.';
+  if (sel.length < s.step) return `Llevas ${sel.length} de ${s.step}.`;
+  if (sel.length > s.step) return `Sobran ${sel.length - s.step}: el paso es ${s.step}.`;
+  if (!MOTOR.isValidDrag(s, sel)) return 'Tienen que formar un grupo unido.';
+  const h = s.height[sel[0]];
+  return h === MOTOR.MAX_LEVEL ? `Listo: cosechas ${sel.length} ${sel.length > 1 ? 'abejas' : 'abeja'}.` : `Listo: suben a ${MOTOR.NOMBRE_NIVEL[h + 1]}.`;
+}
+
+function jugar() {
+  const p = P(), o = p.nivel.objetivo, tipo = tipoDe(p);
+  if (fin || !MOTOR.isValidDrag(s, sel)) return;
+  const cells = sel.slice(), cosecha = s.height[cells[0]] === MOTOR.MAX_LEVEL;
+  hist.push({ h: s.height.slice(), step: s.step, turn: s.turn, seg });
+  sel = [];
+  // Las reglas del puzle que no son del motor: rojas y orden pierden antes de jugar.
+  const e = { h: s.height, step: s.step, ...seg };
+  if (tipo.rompe && tipo.rompe(e, o, cells, cosecha)) {
+    MOTOR.commitTurn(s, cells);
+    return acabar(false, o.tipo === 'rojas' ? 'Has cosechado una celda roja.' : 'Has cosechado la B antes que la A.');
+  }
+  MOTOR.commitTurn(s, cells);
+  seg = OBJ.avanzar(seg, cells, cosecha);
+  if (tipo.cumplido({ h: s.height, step: s.step, ...seg }, o)) return acabar(true);
+  if (s.last && s.last.type === 'fallback') return acabar(false, `El paso ${s.last.paso} ya no cabe: la mayor meseta es de ${s.last.meseta}.`);
+  if (s.turn >= limite(p)) return acabar(false, `Se acabaron los ${limite(p)} turnos.`);
+  pintar();
+}
+
+function acabar(gana, motivo) {
+  const p = P();
+  intentos[p.id] = (intentos[p.id] || 0) + 1;
+  if (gana) {
+    const e = estrellasDe(p, s.turn);
+    mejores[p.id] = Math.max(mejores[p.id] || 0, e);
+    fin = { gana, texto: `Resuelto en ${s.turn} ${s.turn === 1 ? 'turno' : 'turnos'}: ${estrellasTxt(e)}${e < 3 ? ` (se puede en ${p.minimo})` : ''}.` };
+  } else fin = { gana, texto: `${motivo} Deshaz o reinicia para volver a intentarlo.` };
+  pintar(); pintarLista();
+}
+
+function deshacer() {
+  if (modoSol >= 0 || !hist.length) return;
+  const h = hist.pop();
+  s.height = h.h; s.step = h.step; s.turn = h.turn; s.last = null; seg = h.seg; sel = []; fin = null;
+  pintar();
+}
+
+// Ver la solución del resolutor, jugada a jugada sobre una copia.
+let solEstados = [];
+function verSolucion() {
+  const p = P();
+  const st = crearEstadoPuzle(MOTOR, p.nivel);
+  solEstados = [{ h: st.height.slice(), step: st.step, j: [] }];
+  for (const c of p.solucion) { MOTOR.commitTurn(st, c); solEstados.push({ h: st.height.slice(), step: st.step, j: c }); }
+  modoSol = 0; pintar();
+}
+
+// Lo que se lleva del objetivo, para el dato «Objetivo».
+function progreso(p) {
+  const o = p.nivel.objetivo, pendientes = seg.pend.length;
+  const hechas = cs => cs.length - cs.filter(i => seg.pend.includes(i)).length;
+  switch (o.tipo) {
+    case 'marcadas': case 'rojas': case 'orden': return `${o.celdas.length - pendientes}<small> / ${o.celdas.length}</small>`;
+    case 'cosechas': return `${seg.cos}<small> / ${o.n} cosechas</small>`;
+    case 'total': return `${seg.tot}<small> / ${o.n} celdas</small>`;
+    case 'combinado': return `${seg.tot}<small> / ${o.n} · ${hechas(o.celdas) ? '✓' : '·'}</small>`;
+    case 'grande': return `${seg.maxCos}<small> / ${o.n} de golpe</small>`;
+    case 'escalera': return `${seg.maxPaso}<small> / ${o.n}</small>`;
+    case 'panal': return `${o.celdas.filter(i => s.height[i] === o.nivel).length}<small> / ${o.celdas.length}</small>`;
+  }
+  return '';
+}
+
+// ---------------------------------------------------------------------------
+// Pintar
+// ---------------------------------------------------------------------------
+const R = 26, DX = Math.sqrt(3) * R, DY = 1.5 * R;
+function posiciones(t) {
+  const f = MOTOR.TABLEROS[t].filas, out = [];
+  f.forEach((w, r) => { for (let c = 0; c < w; c++) out.push([(c - (w - 1) / 2) * DX, r * DY]); });
+  return out;
+}
+const hexPts = (x, y, r) => Array.from({ length: 6 }, (_, k) => { const a = Math.PI / 180 * (60 * k - 30); return (x + r * Math.cos(a)).toFixed(1) + ',' + (y + r * Math.sin(a)).toFixed(1); }).join(' ');
+
+function pintar() {
+  const p = P();
+  if (!p) return;
+  const n = p.nivel, o = n.objetivo;
+  const enSol = modoSol >= 0, vista = enSol ? solEstados[modoSol] : null;
+  const alturas = enSol ? vista.h : s.height, selec = enSol ? vista.j : sel;
+  $('pid').textContent = `${p.id} · ${TIPO_NOMBRE[p.tipo]}`;
+  $('pforma').textContent = `${p.forma} · paso inicial ${n.paso}`;
+  $('pobjetivo').textContent = tipoDe(p).frase(o) + '.';
+  const ley = [];
+  if (o.celdas && o.tipo !== 'orden') ley.push(`<span><i class="muestra" style="border:2.5px dashed var(--marca)"></i>${o.tipo === 'panal' ? 'marcada (nivel objetivo: ' + MOTOR.NOMBRE_NIVEL[o.nivel] + ')' : 'marcada'}</span>`);
+  if (o.tipo === 'orden') ley.push('<span><i class="muestra" style="border:2.5px dashed var(--marca)"></i>A y B</span>');
+  if (o.rojas) ley.push('<span><i class="muestra" style="border:2.5px solid var(--roja)"></i>roja: no se puede cosechar</span>');
+  ley.push('<span><i class="muestra" style="border:2.5px solid #fff"></i>seleccionada</span>');
+  ley.push(`<span>${MOTOR.NOMBRE_NIVEL.map((nm, k) => k + ' ' + nm).join(' · ')}</span>`);
+  $('pleyenda').innerHTML = ley.join('');
+
+  const turno = enSol ? modoSol : s.turn;
+  $('vturno').innerHTML = `${turno}<small> / ${limite(p)}</small>`;
+  $('vpaso').textContent = enSol ? vista.step : s.step;
+  $('vprog').innerHTML = enSol ? '—' : progreso(p);
+  const mejor = Math.max(mejores[p.id] || 0, (guardado.valoraciones[p.id] || {}).mejorEstrellas || 0);
+  $('vestrellas').innerHTML = `${estrellasTxt(mejor)}<small> en ${p.minimo}</small>`;
+
+  // El panal.
+  const pos = posiciones(n.tablero), vivas = pos.map((_, i) => i).filter(i => !n.rotas.includes(i));
+  const xs = vivas.map(i => pos[i][0]), ys = vivas.map(i => pos[i][1]);
+  const x0 = Math.min(...xs) - R - 6, y0 = Math.min(...ys) - R - 6;
+  const w = Math.max(...xs) - Math.min(...xs) + 2 * R + 12, h = Math.max(...ys) - Math.min(...ys) + 2 * R + 12;
+  const svg = $('tablero'); svg.setAttribute('viewBox', `${x0} ${y0} ${w} ${h}`);
+  let out = '';
+  for (const i of vivas) {
+    const [x, y] = pos[i], nv = alturas[i], esSel = selec.includes(i);
+    const marcada = o.celdas && o.celdas.includes(i), roja = o.rojas && o.rojas.includes(i);
+    out += `<g class="celda" data-i="${i}" tabindex="${enSol ? -1 : 0}" role="button" aria-label="Celda ${i}, ${MOTOR.NOMBRE_NIVEL[nv]}${marcada ? ', marcada' : ''}${roja ? ', roja' : ''}${esSel ? ', seleccionada' : ''}">`;
+    out += `<polygon class="base" points="${hexPts(x, y, R - 1)}" fill="${COLORES[nv]}" stroke="rgba(0,0,0,0.35)" stroke-width="1"/>`;
+    if (roja) out += `<polygon points="${hexPts(x, y, R - 3.5)}" fill="none" stroke="#e5484d" stroke-width="3.5"/>`;
+    if (marcada) out += `<polygon points="${hexPts(x, y, R - (roja ? 8 : 5))}" fill="none" stroke="#ffd23f" stroke-width="2.5" stroke-dasharray="5 3.5"/>`;
+    if (esSel) out += `<polygon points="${hexPts(x, y, R - 1.5)}" fill="rgba(255,255,255,0.14)" stroke="#ffffff" stroke-width="3.5"/>`;
+    out += `<text x="${x}" y="${y + 6}" text-anchor="middle" font-size="17" font-weight="650" fill="${nv >= 3 ? 'rgba(30,20,5,0.78)' : 'rgba(255,245,225,0.85)'}" pointer-events="none">${nv}</text>`;
+    if (o.tipo === 'orden' && marcada) out += `<text x="${x}" y="${y - 10}" text-anchor="middle" font-size="11" font-weight="700" fill="#ffd23f" pointer-events="none">${o.celdas[0] === i ? 'A' : 'B'}</text>`;
+    out += '</g>';
+  }
+  // El recorrido del dedo, como en el juego: se ve por dónde ha pasado (también el tránsito).
+  if (!enSol && arr.activo && arr.trail.length > 1)
+    out += `<polyline points="${arr.trail.map(i => pos[i].join(',')).join(' ')}" fill="none" stroke="rgba(255,255,255,0.55)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>`;
+  svg.innerHTML = out;
+
+  // Avisos y botones.
+  const aviso = $('aviso');
+  aviso.className = '';
+  if (enSol) {
+    const L = vista.j.length, n0 = modoSol ? solEstados[modoSol - 1].h[vista.j[0]] : null;
+    aviso.textContent = modoSol === 0 ? `Solución del resolutor: ${p.minimo} turnos. Pasa jugada a jugada.` :
+      (n0 === MOTOR.MAX_LEVEL ? `Turno ${modoSol}: se cosechan ${L} ${L > 1 ? 'abejas' : 'abeja'}.` : `Turno ${modoSol}: ${L} ${L > 1 ? 'celdas' : 'celda'} de ${MOTOR.NOMBRE_NIVEL[n0]} suben a ${MOTOR.NOMBRE_NIVEL[n0 + 1]}.`);
+    $('solcont').textContent = `${modoSol} / ${p.minimo}`;
+  } else if (fin) { aviso.textContent = fin.texto; aviso.className = fin.gana ? 'bien' : 'mal'; }
+  else {
+    aviso.textContent = motivoSeleccion();
+    if (sel.length && !MOTOR.isValidDrag(s, sel) && (new Set(sel.map(i => s.height[i])).size > 1 || sel.length > s.step)) aviso.className = 'mal';
+  }
+  $('bjuego').hidden = enSol; $('bsol').hidden = !enSol; $('bentrada').hidden = enSol;
+  $('bjugar').hidden = modoEntrada !== 'tocar'; $('blimpiar').hidden = modoEntrada !== 'tocar';
+  $('marrastrar').classList.toggle('on', modoEntrada === 'arrastrar'); $('mtocar').classList.toggle('on', modoEntrada === 'tocar');
+  $('tablero').classList.toggle('arrastre', modoEntrada === 'arrastrar' && !enSol);
+  $('bjugar').disabled = !!fin || !MOTOR.isValidDrag(s, sel);
+  $('blimpiar').disabled = !sel.length || !!fin;
+  $('bdeshacer').disabled = !hist.length;
+  $('bsant').disabled = modoSol <= 0; $('bssig').disabled = modoSol >= p.minimo;
+
+  // Valoración.
+  const v = guardado.valoraciones[p.id] || {};
+  const dif = borrador.dificultad || v.dificultad, entra = borrador.entra || v.entra;
+  const cap = 'capitulo' in borrador ? borrador.capitulo : v.capitulo;
+  document.querySelectorAll('[data-dif]').forEach(b => b.classList.toggle('on', dif === b.dataset.dif));
+  document.querySelectorAll('[data-entra]').forEach(b => b.classList.toggle('on', entra === b.dataset.entra));
+  document.querySelectorAll('[data-cap]').forEach(b => b.classList.toggle('on', String(cap) === b.dataset.cap));
+  $('fila-capitulo').hidden = entra !== 'si';
+  // La nota, oculta hasta valorar (§5.62); el botón sobra si ya está a la vista.
+  $('fila-evaluador').hidden = !v.dificultad || !$('evaluador').hidden;
+}
+
+// ---------------------------------------------------------------------------
+// La lista, los filtros y la selección
+// ---------------------------------------------------------------------------
+const opciones = (sel, todos, valores, txt = x => x) => {
+  const antes = sel.value;
+  sel.innerHTML = `<option value="">${todos}</option>` + valores.map(v => `<option value="${v}">${txt(v)}</option>`).join('');
+  if (valores.map(String).includes(antes)) sel.value = antes;
+};
+function pintarFiltros() {
+  const uni = f => [...new Set(PUZLES.map(f))];
+  opciones($('f-tipo'), 'Todos los tipos', OBJ.NOMBRES.filter(t => PUZLES.some(p => p.tipo === t)), t => TIPO_NOMBRE[t]);
+  opciones($('f-minimo'), 'Turnos: todos', uni(p => p.minimo).sort((a, b) => a - b), m => `${m} turnos`);
+  opciones($('f-forma'), 'Todas las formas', uni(p => p.forma).sort());
+}
+function visibles() {
+  const t = $('f-tipo').value, m = $('f-minimo').value, f = $('f-forma').value, ocultar = $('f-ocultar').checked;
+  return PUZLES.map((p, k) => k).filter(k => {
+    const p = PUZLES[k];
+    return (!t || p.tipo === t) && (!m || String(p.minimo) === m) && (!f || p.forma === f)
+      && (!ocultar || !(guardado.valoraciones[p.id] || {}).dificultad || k === actual);
+  });
+}
+function pintarLista() {
+  const ks = visibles();
+  const grupos = {};
+  for (const k of ks) (grupos[PUZLES[k].tipo] ||= []).push(k);
+  let html = '';
+  for (const t of OBJ.NOMBRES) {
+    if (!grupos[t]) continue;
+    html += `<div class="grupo"><h3>${TIPO_NOMBRE[t]}</h3><div class="fichas">`;
+    for (const k of grupos[t]) {
+      const p = PUZLES[k], v = guardado.valoraciones[p.id], m = mejores[p.id];
+      const est = v && v.dificultad ? `${DIF_TXT[v.dificultad]} · ${ENTRA_TXT[v.entra] || '—'}` : (m ? estrellasTxt(m) : `${p.minimo} turnos`);
+      html += `<button class="ficha${k === actual ? ' activa' : ''}${v && v.dificultad ? ' valorada' : ''}" data-k="${k}"><span class="num">${p.id.slice(-2)}</span><span class="est">${est}</span></button>`;
+    }
+    html += '</div></div>';
+  }
+  $('grupos').innerHTML = html || '<p class="vacio">Ningún puzle con estos filtros.</p>';
+  const n = PUZLES.filter(p => (guardado.valoraciones[p.id] || {}).dificultad).length;
+  $('cuenta').textContent = `${n} de ${PUZLES.length} valorados · ${ks.length} a la vista`;
+  pintarSeleccion();
+}
+function pintarSeleccion() {
+  let html = '', total = 0;
+  for (const c of CAPITULOS) {
+    const ids = (guardado.capitulos[c] || []).filter(id => guardado.valoraciones[id]);
+    if (!ids.length) continue;
+    total += ids.length;
+    html += `<div class="capitulo"><h3>${c === 0 ? 'Capítulo 0 · Tutorial' : 'Capítulo ' + c} · ${ids.length}</h3><ol>`;
+    ids.forEach((id, k) => {
+      const v = guardado.valoraciones[id], p = v.puzle;
+      html += `<li><span class="que" data-abrir="${id}" title="${p.frase}"><b>${id.slice(-2)}</b> <span>${TIPO_NOMBRE[p.tipo]} · ${p.minimo} t · ${DIF_TXT[v.dificultad]}</span></span>` +
+        `<button class="mini" data-subir="${c}:${k}" aria-label="Subir" ${k === 0 ? 'disabled' : ''}>↑</button>` +
+        `<button class="mini" data-bajar="${c}:${k}" aria-label="Bajar" ${k === ids.length - 1 ? 'disabled' : ''}>↓</button></li>`;
+    });
+    html += '</ol></div>';
+  }
+  $('capitulos').innerHTML = html || '<p class="vacio">Todavía nada. Los puzles con «Sí entra» van aquí, a su capítulo, y aquí se ordenan.</p>';
+  $('cuenta-sel').textContent = `${total} ${total === 1 ? 'puzle' : 'puzles'}`;
+}
+function mover(c, k, d) {
+  const ids = guardado.capitulos[c];
+  if (!ids || k + d < 0 || k + d >= ids.length) return;
+  [ids[k], ids[k + d]] = [ids[k + d], ids[k]];
+  escribirGuardado(); pintarSeleccion();
+}
+
+// ---------------------------------------------------------------------------
+// Valorar y exportar
+// ---------------------------------------------------------------------------
+function guardar() {
+  const p = P(), previa = guardado.valoraciones[p.id] || {};
+  const dificultad = borrador.dificultad || previa.dificultad;
+  const entra = borrador.entra || previa.entra || null;
+  let capitulo = 'capitulo' in borrador ? borrador.capitulo : previa.capitulo;
+  if (!dificultad) { $('guardado').textContent = 'Elige primero cómo de difícil te ha parecido.'; return; }
+  if (entra === 'si' && (capitulo === undefined || capitulo === null)) { $('guardado').textContent = 'Elige en qué capítulo entra.'; return; }
+  if (entra !== 'si') capitulo = null;
+  const { id, ...puzle } = p;
+  guardado.valoraciones[p.id] = {
+    id: p.id, dificultad, entra, capitulo, nota: $('nota').value.trim(),
+    mejorEstrellas: Math.max(mejores[p.id] || 0, previa.mejorEstrellas || 0),
+    intentos: (previa.intentos || 0) + (intentos[p.id] || 0),
+    actualizado: new Date().toISOString(), puzle,
+  };
+  intentos[p.id] = 0;
+  // Al capítulo, al final; si ya estaba en ese capítulo, se queda en su sitio.
+  if (!(capitulo !== null && (guardado.capitulos[capitulo] || []).includes(p.id))) colocar(p.id, capitulo);
+  borrador = {};
+  escribirGuardado();
+  $('guardado').textContent = sePuedeGuardar ? 'Guardada.' : 'Guardada sólo en esta pestaña: exporta antes de cerrar.';
+  mostrarEvaluador();
+  pintarLista(); pintar();
+}
+
+const pct = x => (Math.round(x * 1000) / 10).toLocaleString('es-ES') + ' %';
+function mostrarEvaluador() {
+  const p = P(), e = p.eval;
+  if (!e) { $('evaluador').innerHTML = 'Este lote se generó sin nota (<code>--sin-nota</code>).'; $('evaluador').hidden = false; return; }
+  $('evaluador').innerHTML = `El evaluador lo puso como <b>${e.nota}</b>. Un jugador que elige al azar sin perder en el mismo turno lo resuelve en el mínimo el ${pct(e.prudente.dificil)} de las veces, y con dos turnos de margen el ${pct(e.prudente.facil)}. Primeras jugadas que todavía llevan a la solución: ${e.primeras.buenas} de ${e.primeras.total}. Soluciones distintas en ${p.minimo} turnos: ${p.caminos.toLocaleString('es-ES')}.`;
+  $('evaluador').hidden = false;
+  $('fila-evaluador').hidden = true;
+}
+
+// El fichero que lee `npm run puzles -- meter` (F3): los capítulos con sus puzles
+// en orden, y todas las valoraciones (también las del no y el quizás: sirven para
+// calibrar el evaluador, LC-Instrucciones §9.8).
+function exportar() {
+  const vs = Object.values(guardado.valoraciones);
+  const capitulos = CAPITULOS.map(c => ({
+    capitulo: c,
+    puzles: (guardado.capitulos[c] || []).filter(id => guardado.valoraciones[id]).map((id, k) => {
+      const v = guardado.valoraciones[id];
+      return { id, orden: k + 1, ...v.puzle, valoracion: { dificultad: v.dificultad, nota: v.nota } };
+    }),
+  })).filter(c => c.puzles.length);
+  const valoraciones = vs.map(v => ({
+    id: v.id, lote: v.puzle.lote, tipo: v.puzle.tipo, forma: v.puzle.forma, minimo: v.puzle.minimo, caminos: v.puzle.caminos,
+    evaluador: v.puzle.eval ? { nota: v.puzle.eval.nota, prudente: v.puzle.eval.prudente.dificil, primeras: v.puzle.eval.primeras } : null,
+    dificultad: v.dificultad, entra: v.entra, capitulo: v.capitulo, nota: v.nota,
+    mejorEstrellas: v.mejorEstrellas, intentos: v.intentos, actualizado: v.actualizado,
+  }));
+  const datos = { version: 1, exportado: new Date().toISOString(), capitulos, valoraciones };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(datos, null, 1)], { type: 'application/json' }));
+  a.download = 'seleccion.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ---------------------------------------------------------------------------
+// Arrastrar, como en el juego: la cadena la construye pasoDeCadena de input.js
+// (tránsito, quitar volviendo atrás, ni una de más). Soltar con la cadena válida
+// juega; soltar fuera del panal cancela.
+// ---------------------------------------------------------------------------
+let modoEntrada = 'arrastrar';
+const arr = { activo: false, cells: [], desde: [], trail: [], deshaciendo: false, fuera: false };
+function puntoSVG(e) {
+  const svg = $('tablero'), m = svg.getScreenCTM();
+  if (!m) return null;
+  const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+  return pt.matrixTransform(m.inverse());
+}
+// La celda bajo el dedo: la viva cuyo centro está a menos de 0,9·R.
+function celdaEn(e) {
+  const p = puntoSVG(e); if (!p) return { i: -1, lejos: true };
+  const pos = posiciones(P().nivel.tablero); let mejor = -1, d0 = Infinity;
+  for (let i = 0; i < pos.length; i++) {
+    if (!MOTOR.existe(s, i)) continue;
+    const d = Math.hypot(p.x - pos[i][0], p.y - pos[i][1]);
+    if (d < d0) { d0 = d; mejor = i; }
+  }
+  return { i: d0 <= 0.9 * R ? mejor : -1, lejos: d0 > 1.5 * R };
+}
+const tab = $('tablero');
+tab.addEventListener('pointerdown', e => {
+  if (modoEntrada !== 'arrastrar' || fin || modoSol >= 0 || !P()) return;
+  const { i } = celdaEn(e);
+  if (i < 0 || !MOTOR.jugable(s, i)) return;
+  e.preventDefault();
+  try { tab.setPointerCapture(e.pointerId); } catch (_) {}
+  Object.assign(arr, { activo: true, cells: [i], desde: [-1], trail: [i], deshaciendo: false, fuera: false });
+  sel = arr.cells; pintar();
+});
+tab.addEventListener('pointermove', e => {
+  if (!arr.activo) return;
+  e.preventDefault();
+  const { i, lejos } = celdaEn(e);
+  arr.fuera = lejos;
+  if (lejos || i < 0) return;
+  const nueva = MOTOR.pasoDeCadena(s, arr, i);
+  if (nueva === arr) return;
+  arr.cells = nueva.cells; arr.desde = nueva.desde; arr.trail = nueva.trail; arr.deshaciendo = nueva.deshaciendo;
+  sel = arr.cells; pintar();
+});
+function soltar(e) {
+  if (!arr.activo) return;
+  const cells = arr.cells.slice(), cancelada = arr.fuera || e.type === 'pointercancel';
+  Object.assign(arr, { activo: false, cells: [], desde: [], trail: [] });
+  sel = cells;
+  if (!cancelada && MOTOR.isValidDrag(s, cells)) return jugar();
+  sel = []; pintar();
+  if (cells.length > 0 && !cancelada) {
+    const a = $('aviso');
+    a.textContent = cells.length < s.step ? `Has soltado con ${cells.length} de ${s.step}: no se juega. El paso es ${s.step}.` : 'Esa cadena no vale: no se juega.';
+    a.className = 'mal';
+  }
+}
+tab.addEventListener('pointerup', soltar);
+tab.addEventListener('pointercancel', soltar);
+
+// ---------------------------------------------------------------------------
+// Arranque
+// ---------------------------------------------------------------------------
+$('tablero').addEventListener('click', e => { if (modoEntrada !== 'tocar') return; const g = e.target.closest('.celda'); if (g) tocar(Number(g.dataset.i)); });
+$('tablero').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { const g = e.target.closest('.celda'); if (g) { e.preventDefault(); tocar(Number(g.dataset.i)); } } });
+$('marrastrar').onclick = () => { modoEntrada = 'arrastrar'; sel = []; pintar(); };
+$('mtocar').onclick = () => { modoEntrada = 'tocar'; sel = []; pintar(); };
+$('grupos').addEventListener('click', e => { const b = e.target.closest('.ficha'); if (b) abrir(Number(b.dataset.k), true); });
+$('capitulos').addEventListener('click', e => {
+  const t = e.target.closest('[data-abrir],[data-subir],[data-bajar]');
+  if (!t) return;
+  if (t.dataset.abrir) {
+    const k = PUZLES.findIndex(p => p.id === t.dataset.abrir);
+    if (k >= 0) abrir(k, true);
+    else $('guardado').textContent = `${t.dataset.abrir} es de otro lote (${guardado.valoraciones[t.dataset.abrir].puzle.lote}): cámbialo arriba para jugarlo.`;
+    return;
+  }
+  const [c, k] = (t.dataset.subir || t.dataset.bajar).split(':').map(Number);
+  mover(c, k, t.dataset.subir ? -1 : 1);
+});
+for (const f of ['f-tipo', 'f-minimo', 'f-forma', 'f-ocultar']) $(f).addEventListener('change', pintarLista);
+$('bjugar').onclick = jugar;
+$('blimpiar').onclick = () => { sel = []; pintar(); };
+$('bdeshacer').onclick = deshacer;
+$('breiniciar').onclick = () => abrir(actual);
+$('bsolucion').onclick = verSolucion;
+$('bsant').onclick = () => { if (modoSol > 0) { modoSol--; pintar(); } };
+$('bssig').onclick = () => { if (modoSol < P().minimo) { modoSol++; pintar(); } };
+$('bsvolver').onclick = () => { modoSol = -1; pintar(); };
+document.querySelectorAll('[data-dif]').forEach(b => b.onclick = () => { borrador.dificultad = b.dataset.dif; pintar(); });
+document.querySelectorAll('[data-entra]').forEach(b => b.onclick = () => { borrador.entra = b.dataset.entra; pintar(); });
+document.querySelectorAll('[data-cap]').forEach(b => b.onclick = () => { borrador.capitulo = Number(b.dataset.cap); pintar(); });
+$('bguardar').onclick = guardar;
+$('bevaluador').onclick = mostrarEvaluador;
+$('bexportar').onclick = exportar;
+$('sel-lote').addEventListener('change', e => cargarLote(e.target.value));
+
+leerGuardado();
+pintarEstadoGuardado();
+if (!LOTES.length) { $('sin-lotes').hidden = false; $('barra').hidden = true; return; }
+$('disposicion').hidden = false;
+// Del más nuevo al más antiguo.
+$('sel-lote').innerHTML = LOTES.slice().reverse().map(l => `<option value="${l.nombre}">${l.nombre.replace('lote-', '')} · ${l.puzles}</option>`).join('');
+let ultimo = null;
+try { ultimo = localStorage.getItem(CLAVE + '.lote'); } catch (e) {}
+const inicial = LOTES.some(l => l.nombre === ultimo) ? ultimo : LOTES[LOTES.length - 1].nombre;
+$('sel-lote').value = inicial;
+cargarLote(inicial);
+})();
+</script>
+</body>
+</html>

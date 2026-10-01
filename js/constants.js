@@ -26,6 +26,16 @@ const MAX_LEVEL  = 5;   // abeja lista: se cosecha
 
 const NOMBRE_NIVEL = ['agua', 'cera', 'huevo', 'larva', 'operculada', 'abeja'];
 
+// Rampa de luminosidad 1→4 y un ámbar saturado en el 5 (DESIGN §2). La
+// información va en el brillo, no en el tono: se juzga "¿están a la misma
+// altura?" a toda velocidad y aguanta el daltonismo. El 5 salta a la vista a
+// propósito: es la jugada que quieres ver.
+// El 0 (agua) sale de la rampa ámbar a propósito: no es "un nivel más oscuro",
+// es otra cosa, y tiene que leerse como jugable de un vistazo.
+// Vivía en render.js; desde la v10.2 está aquí porque también la usa el editor de
+// puzles (puzles/editor.html), que no carga render.js.
+const LEVEL_COLORS = ['#2E4756', '#6E5A32', '#9C7F3C', '#C8A14A', '#E3C87E', '#F79A1F'];
+
 // Desde la v4, cosechar devuelve la celda a AGUA, no a cera: la celda queda
 // vacía y limpia, como la deja la obrera antes de que la reina vuelva a poner.
 // Se leía como incoherente que una celda recién cosechada no volviera "a cero"
