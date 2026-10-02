@@ -733,6 +733,22 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
      'bot-tonto.js no usa DOM ni Math.random');
 }
 
+// --- los bots juegan Puzzle (02-10) -------------------------------------------------------
+// `npm run bot … puzzle` juega los niveles de js/puzles.js. Lo que no puede pasar:
+// que el bot no encuentre jugada habiéndola (cuelgue fantasma), que se cuelgue, o
+// que el que mira el objetivo no gane un nivel que se gana a la primera. C1-03 lo
+// gana siempre el prudente (100 % el 02-10, 200 partidas).
+{
+  const { execFileSync } = require('child_process');
+  const sale = execFileSync(process.execPath, [require('path').join(__dirname, 'bot.js'), '20', '1', 'puzzle', 'C1', 'todos'],
+                            { encoding: 'utf8', timeout: 120000 });
+  ok(/cuelgues fantasma: ninguno/.test(sale), 'el bot juega Puzzle sin cuelgues fantasma');
+  // Columnas: nivel, tipo, mín, nota y una por bot (tonto, prudente, …).
+  const fila = (sale.split('\n').find(l => l.startsWith('C1-03')) || '').trim().split(/\s{2,}/);
+  eq(fila[5], '100 %', 'el prudente gana siempre C1-03');
+  eq((sale.match(/^C1-\d\d /gm) || []).length, T.PUZLES.filter(p => p.capitulo === 1).length, 'una fila por nivel del capítulo 1');
+}
+
 // --- guardar y continuar una partida (v9.1, T-41) -----------------------------------------
 // Lo que se guarda pasa por JSON (localStorage sólo guarda texto) y al volver
 // tiene que ser LA MISMA partida: mismo tablero y mismo azar, así que jugando

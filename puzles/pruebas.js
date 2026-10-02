@@ -215,6 +215,22 @@ seccion('El generador, el comprobador, la poda y una segunda opinión');
 }
 
 // ---------------------------------------------------------------------------
+seccion('La segunda pasada (repescar)');
+// ---------------------------------------------------------------------------
+// La semilla 146 es de las que el resolutor no termina en los 4 s de `generar`
+// (02-10, en una tanda de 3000): con poco tiempo, se descarta por agotado; con
+// más, sale el puzle (mínimo 7). Es lo que hace `repescar`: el mismo intento con
+// otro presupuesto, que como el intento es puro, da el mismo tablero.
+{
+  const prisa = intento(146, { evaluar: false, resolutor: { maxEstados: 3e5, maxMs: 300 } });
+  ok(prisa.descarte && prisa.descarte.startsWith('el resolutor no termina'), 'con 0,3 s, la 146 se descarta por agotada');
+  const calma = intento(146, { evaluar: false, resolutor: { maxEstados: 2e6, maxMs: 60000 } });
+  ok(calma.candidato, 'con 60 s, sale');
+  eq(calma.candidato && calma.candidato.minimo, 7, 'y su mínimo es 7');
+  eq(calma.candidato && comprobar(calma.candidato), 'ok', 'y pasa el comprobador');
+}
+
+// ---------------------------------------------------------------------------
 seccion('objetivos.js como script clásico, con el motor alrededor');
 // ---------------------------------------------------------------------------
 {

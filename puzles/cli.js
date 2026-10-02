@@ -8,12 +8,21 @@
 //   npm run puzles -- resumen   [lote]     tabla por tipo, nota, mínimo y forma
 //   npm run puzles -- meter     <seleccion.json> [--capitulo N]   → js/puzles.js
 //   npm run puzles -- verificar                comprueba js/puzles.js con el motor actual
+//   npm run puzles -- repescar  [agotadas] [--segundos 60] [--hilos N]
+//                               repite con más paciencia lo que el resolutor no terminó
 //
 // --por-tipo N genera tipo a tipo hasta tener N de cada uno (o de los de --tipo), en
 // un solo lote. Para reproducir un candidato con --uno, pásale también su --tipo.
 //
 // [lote] es la ruta de un .jsonl, su nombre dentro de puzles/salida/, o nada (el
-// último). <seleccion.json> es lo que exporta el editor (puzles/editor.html).
+// último). [agotadas] igual, con los agotadas-*.json que deja `generar`.
+//
+// La segunda pasada (repescar, 02-10): `generar` da al resolutor 4 s por puzle y
+// descarta lo que no termina, que suelen ser puzles largos (mínimo 6-10). Las
+// semillas de esos intentos quedan en salida/agotadas-<fecha>.json; `repescar` las
+// repite con el presupuesto de --segundos (60 por defecto) y escribe lo que sale en
+// un lote nuevo. Lo que sigue sin terminar se queda en el fichero, para otra pasada
+// con más tiempo. Es trabajo de fondo: para dejarlo de noche. <seleccion.json> es lo que exporta el editor (puzles/editor.html).
 //
 // Los intentos se reparten entre los núcleos (worker_threads), como en tests/bot.js.
 // Cada intento depende sólo de su semilla (la del lote mezclada con su número), así
@@ -36,9 +45,13 @@ function hilo() {
     if (t.que === 'intentos') {
       for (let k = t.desde; k < t.hasta; k++) {
         const semilla = mezclar(t.semillaLote, k);
-        try { res.push({ k, ...intento(semilla, t.op) }); }
+        try { res.push({ k, semilla, ...intento(semilla, t.op) }); }
         catch (e) { res.push({ k, error: `${e.message} (semilla ${semilla})` }); }
       }
+    } else if (t.que === 'repesca') {
+      const { semilla, op } = t;
+      try { res.push({ semilla, ...intento(semilla, op) }); }
+      catch (e) { res.push({ semilla, error: `${e.message} (semilla ${semilla})` }); }
     } else if (t.que === 'evaluar') {
       for (const c of t.candidatos) res.push({ ...c, eval: evaluar(c, { n: t.partidas, semilla: c.semilla }) });
     }
@@ -87,9 +100,9 @@ const hilosDe = a => Math.max(1, Number(a.hilos) || os.cpus().length);
 async function principal() {
   const [orden, ...resto] = process.argv.slice(2);
   const a = leerArgs(resto);
-  const ordenes = { generar, comprobar: comprobarLote, evaluar: evaluarLote, resumen, meter, verificar };
+  const ordenes = { generar, comprobar: comprobarLote, evaluar: evaluarLote, resumen, meter, verificar, repescar };
   if (!ordenes[orden]) {
-    console.error('Uso: npm run puzles -- generar | comprobar | evaluar | resumen | meter | verificar  (ver puzles/cli.js)');
+    console.error('Uso: npm run puzles -- generar | comprobar | evaluar | resumen | meter | verificar | repescar  (ver puzles/cli.js)');
     process.exit(1);
   }
   await ordenes[orden](a);
@@ -162,7 +175,7 @@ async function generar(a) {
   const registro = crearRegistro(), vistosAhora = new Set();
   const t0 = Date.now();
   const tiempo = () => Math.round((Date.now() - t0) / 1000);
-  const descartes = {}, elegidos = [], errores = [], faltan = [];
+  const descartes = {}, elegidos = [], errores = [], faltan = [], agotadas = [];
   const descarta = m => { descartes[m] = (descartes[m] || 0) + 1; };
   let intentos = 0;
 
@@ -195,7 +208,11 @@ async function generar(a) {
     let deEsta = 0;
     for (const r of resultados) {
       if (r.error) { errores.push(r); continue; }
-      if (r.descarte) { descarta(r.descarte); continue; }
+      if (r.descarte) {
+        descarta(r.descarte);
+        if (esAgotado(r.descarte)) agotadas.push({ semilla: r.semilla, op: tanda.op });
+        continue;
+      }
       if (deEsta >= tanda.cuantos) { descarta('sobran (ya hay los pedidos)'); continue; }
       if (notas && !notas.includes(r.candidato.eval.nota)) { descarta('nota fuera de lo pedido'); continue; }
       if (!registro.apuntar(r.candidato.huella)) { descarta('repetido'); continue; }
@@ -213,6 +230,10 @@ async function generar(a) {
   if (faltan.length) console.log(`Faltan (se acabó el tiempo, --segundos ${segundos}): ${faltan.join(' · ')}.`);
   console.log('Descartes:');
   for (const [m, n] of Object.entries(descartes).sort((x, y) => y[1] - x[1])) console.log(`  ${String(n).padStart(5)}  ${m}`);
+  if (agotadas.length) {
+    const f = escribirAgotadas(agotadas, SALIDA, { semillaLote });
+    console.log(`Las ${agotadas.length} que el resolutor no terminó quedan en ${path.relative(process.cwd(), f)}: \`npm run puzles -- repescar\`.`);
+  }
   if (elegidos.length) tablas(elegidos);
   if (errores.length) {
     console.error(`\n${errores.length} ERRORES de la máquina (no son descartes):`);
@@ -221,12 +242,31 @@ async function generar(a) {
   }
 }
 
+const esAgotado = d => d.startsWith('el resolutor no termina');
+
+// Fecha y hora para los nombres de fichero: 20261002 y 1730.
+function sello() {
+  const d = new Date(), dos = n => String(n).padStart(2, '0');
+  return { fecha: `${d.getFullYear()}${dos(d.getMonth() + 1)}${dos(d.getDate())}`, hora: `${dos(d.getHours())}${dos(d.getMinutes())}` };
+}
+
+// Las semillas que el resolutor no terminó, con las opciones de su tanda (el tipo
+// entra en ellas: con --por-tipo, cada tanda tiene el suyo).
+function escribirAgotadas(agotadas, dir, info) {
+  fs.mkdirSync(dir, { recursive: true });
+  const { fecha, hora } = sello();
+  let base = `agotadas-${fecha}-${hora}`, n = 2;
+  while (fs.existsSync(path.join(dir, base + '.json'))) base = `agotadas-${fecha}-${hora}-${n++}`;
+  const f = path.join(dir, base + '.json');
+  fs.writeFileSync(f, JSON.stringify({ ...info, agotadas }, null, 1) + '\n');
+  return f;
+}
+
 // Escribe el lote dos veces: .jsonl para los scripts y .js (window.LOTE) para que el
 // editor lo cargue con <script src> abriéndolo como fichero (regla 4).
 function escribirLote(candidatos, dir, info) {
   fs.mkdirSync(dir, { recursive: true });
-  const d = new Date(), dos = n => String(n).padStart(2, '0');
-  const fecha = `${d.getFullYear()}${dos(d.getMonth() + 1)}${dos(d.getDate())}`, hora = `${dos(d.getHours())}${dos(d.getMinutes())}`;
+  const { fecha, hora } = sello();
   let base = `lote-${fecha}-${hora}`, n = 2;
   while (fs.existsSync(path.join(dir, base + '.jsonl'))) base = `lote-${fecha}-${hora}-${n++}`;
   candidatos.forEach((c, i) => { c.id = `L${fecha}-${hora}-${String(i + 1).padStart(2, '0')}`; c.lote = base; });
@@ -407,6 +447,89 @@ const PUZLES = [
 ${PUZLES.map(linea).join('\n')}
 ];
 `);
+}
+
+// ---------------------------------------------------------------------------
+// repescar: la segunda pasada
+// ---------------------------------------------------------------------------
+// Estados: el mismo tope que el buscador por defecto. Con 10 núcleos a la vez, más
+// sería demasiada memoria; de los 16 medidos el 02-10, sin tope, ninguno pasó de 720.000.
+const REPESCA_ESTADOS = 2e6;
+
+function rutaAgotadas(nombre) {
+  const { SALIDA } = require('./registro.js');
+  if (!nombre) {
+    const todos = fs.existsSync(SALIDA) ? fs.readdirSync(SALIDA).filter(f => /^agotadas-.*\.json$/.test(f)).sort() : [];
+    if (!todos.length) throw new Error('no hay agotadas-*.json en puzles/salida/: las deja `generar` cuando el resolutor no termina alguno');
+    return path.join(SALIDA, todos[todos.length - 1]);
+  }
+  for (const r of [nombre, path.join(SALIDA, nombre), path.join(SALIDA, nombre + '.json')])
+    if (fs.existsSync(r) && r.endsWith('.json')) return r;
+  throw new Error(`no encuentro ${nombre}`);
+}
+
+async function repescar(a) {
+  const { crearRegistro, SALIDA } = require('./registro.js');
+  const f = rutaAgotadas(a._[0]);
+  const datos = JSON.parse(fs.readFileSync(f, 'utf8'));
+  const segundos = Number(a.segundos) || 60;
+  const resolutor = { maxEstados: REPESCA_ESTADOS, maxMs: segundos * 1000 };
+  const cola = datos.agotadas.map(x => ({ que: 'repesca', semilla: x.semilla, op: { ...x.op, resolutor } }));
+  const hilos = Math.min(hilosDe(a), cola.length);
+  console.log(`Repescando ${cola.length} intentos de ${path.basename(f)} con ${segundos} s cada uno (${hilos} núcleos; como mucho unos ${Math.ceil(cola.length / hilos * segundos * 1.5 / 60)} min)…`);
+
+  const t0 = Date.now();
+  const tiempo = () => Math.round((Date.now() - t0) / 1000);
+  const resultados = [];
+  let ultimoAviso = Date.now();
+  await repartir(hilos, () => cola.shift() || null, res => {
+    resultados.push(...res);
+    if (Date.now() - ultimoAviso > 3000) {
+      ultimoAviso = Date.now();
+      console.log(`  ${resultados.length}/${datos.agotadas.length} · ${resultados.filter(r => r.candidato).length} puzles · ${tiempo()} s`);
+    }
+  });
+
+  // En el orden del fichero: así el lote no depende de qué núcleo acabó antes.
+  const orden = new Map(datos.agotadas.map((x, i) => [x.semilla, i]));
+  resultados.sort((x, y) => orden.get(x.semilla) - orden.get(y.semilla));
+  const registro = crearRegistro();
+  const elegidos = [], siguen = [], errores = [], descartes = {};
+  let porEstados = 0;
+  for (const r of resultados) {
+    if (r.error) { errores.push(r); continue; }
+    if (r.descarte) {
+      descartes[r.descarte] = (descartes[r.descarte] || 0) + 1;
+      if (esAgotado(r.descarte)) {
+        siguen.push(datos.agotadas[orden.get(r.semilla)]);
+        if (r.descarte.includes('estados')) porEstados++;
+      }
+      continue;
+    }
+    if (!registro.apuntar(r.candidato.huella)) { descartes.repetido = (descartes.repetido || 0) + 1; continue; }
+    elegidos.push(r.candidato);
+  }
+
+  if (elegidos.length) {
+    const lote = escribirLote(elegidos, SALIDA, { repesca: path.basename(f), segundos });
+    console.log(`\nLote: ${path.relative(process.cwd(), lote)}`);
+  }
+  console.log(`\n${elegidos.length} puzles de ${resultados.length} intentos en ${tiempo()} s.`);
+  for (const [m, n] of Object.entries(descartes).sort((x, y) => y[1] - x[1])) console.log(`  ${String(n).padStart(5)}  ${m}`);
+  // Lo que sigue sin terminar se queda para otra pasada; si no queda nada, el fichero sobra.
+  if (siguen.length) {
+    fs.writeFileSync(f, JSON.stringify({ ...datos, agotadas: siguen }, null, 1) + '\n');
+    const porTiempo = siguen.length - porEstados;
+    console.log(`Siguen sin terminar ${siguen.length}: quedan en ${path.basename(f)}.` +
+      (porTiempo ? ` ${porTiempo} por tiempo: prueba con más --segundos.` : '') +
+      (porEstados ? ` ${porEstados} por estados (el tope de ${REPESCA_ESTADOS.toLocaleString('es-ES')}, por la memoria): más tiempo no los arregla.` : ''));
+  } else fs.unlinkSync(f);
+  if (elegidos.length) tablas(elegidos);
+  if (errores.length) {
+    console.error(`\n${errores.length} ERRORES de la máquina (no son descartes):`);
+    for (const e of errores.slice(0, 5)) console.error('  ' + e.error);
+    process.exit(1);
+  }
 }
 
 function verificar() {

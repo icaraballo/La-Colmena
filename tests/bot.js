@@ -9,6 +9,8 @@
 //   npm run bot 2000 1 contrarreloj normal prudente     otro jugador (por defecto, el tonto)
 //   npm run bot 2000 1 contrarreloj normal todos        los cinco, con las MISMAS partidas,
 //                                                       y una tabla que los compara
+//   npm run bot 200 1 puzzle                  cada nivel de js/puzles.js, 200 veces
+//   npm run bot 200 1 puzzle C4 todos         los del capítulo 4 (o C4-03: uno), los cinco
 //
 // Sirve para una sola cosa, que es la importante: convertir "me parece que esto es
 // muy difícil" en un número. Si el 80 % se muere antes del turno 15, el paso crece
@@ -79,16 +81,18 @@ function jugable(s, i) { return T.jugable(s, i); }
 //   huella           (Contagio, v10) por cada celda marcada que la jugada quita
 //                    (negativo si las deja crecer)
 //   abre             (Expansión, v10) por cada celda cerrada que la jugada abre
+//   objetivo         (Puzzle, 02-10) lo que la jugada acerca al objetivo del nivel,
+//                    de 0 a 1 (ver `falta`): el objetivo entero vale esto
 //
 // Los números se acordaron el 24-09-2026 y están en el vault, en LC-Tests-y-Bot.
 // Cambiar uno es cambiar de jugador: las cifras de antes y de después no se mezclan.
 const PESOS = {
   prudente:  { fallo: -100, cosechaPequeña: 10, cosechaGrande: 10, margen: 1, margenTope: 5, item: 3, abeja: 0,
-               huella: 4, abre: 12 },
+               huella: 4, abre: 12, objetivo: 50 },
   humano:    { fallo: -100, cosechaPequeña: 10, cosechaGrande: 10, margen: 1, margenTope: 5, item: 3, abeja: 0,
-               huella: 4, abre: 12, despiste: 0.20 },
+               huella: 4, abre: 12, objetivo: 50, despiste: 0.20 },
   codicioso: { fallo: -30, falloGratis: 0, cosechaPequeña: -5, cosechaGrande: 25, margen: 1, margenTope: 5,
-               item: 15, abeja: 3, huella: 3, abre: 15 },
+               item: 15, abeja: 3, huella: 3, abre: 15, objetivo: 50 },
   // Opción B (T-34, 24-09): al final de lo que mira, pone nota al tablero que deja.
   // Medido con 2000 partidas: gana al codicioso en Contrarreloj (371.000 contra
   // 296.000 puntos) y no empeora en Invierno (172.000 contra 169.000 sin B).
@@ -105,7 +109,9 @@ const PESOS = {
                   escalera: 1, nivelesPorDesastre: 3, turnosReloj: 3, relojRiesgo: 2000,
                   // v10: una celda marcada vale lo que resta al final (HUELLA_RESTA),
                   // y una celda abierta en Expansión, que no puntúa, esto.
-                  puntosPorAbierta: 3000 },
+                  puntosPorAbierta: 3000,
+                  // Puzzle (02-10): el objetivo entero, en puntos (un nivel no puntúa).
+                  puntosPorObjetivo: 10000 },
 };
 
 // Una copia del estado que se puede jugar sin tocar el de verdad.
@@ -117,6 +123,10 @@ function copia(s, R) {
     huellas: s.huellas.map(g => ({ ...g, tiles: g.tiles.slice() })),
     eventos: [], last: null,
     rng: (R() * 4294967296) >>> 0 || 1,   // azar nuevo: el bot no ve el futuro
+    // Puzzle: el seguimiento del objetivo también. Sin copiarlo, cada jugada que el
+    // bot se imagina avanzaba el objetivo de la partida de verdad (pasó en el
+    // prototipo del 02-10).
+    puzle: s.puzle && { ...s.puzle, seg: { ...s.puzle.seg } },
   };
 }
 
@@ -170,13 +180,33 @@ function efecto(s, c, k) {
 }
 
 // Acabar la partida es malo salvo que sea ganarla: completar el panal de
-// Expansión, o el final por turnos de Contagio, que no se puede evitar.
-const finMalo = k => k.gameOver && !k.completado && !k.cierre;
+// Expansión, resolver el nivel de Puzzle, o el final por turnos de Contagio, que
+// no se puede evitar.
+const ganaPuzle = k => !!(k.puzle && k.puzle.resultado && k.puzle.resultado.gana);
+const finMalo = k => k.gameOver && !k.completado && !k.cierre && !ganaPuzle(k);
+
+// Puzzle: lo que FALTA para cumplir el objetivo, de 0 (cumplido) a 1,5 más o menos.
+// Es una idea del bot, no una regla: el progreso que enseña el juego (progresoPuzle)
+// y, como ese sólo se mueve al cosechar, medio punto más por lo lejos que están las
+// celdas: las marcadas de ser abeja, las del panal de su nivel, el paso del tamaño
+// pedido. Así una jugada que sube una marcada ya se nota.
+function falta(k) {
+  const o = k.puzle.objetivo, p = T.progresoPuzle(k);
+  let d = 1 - Math.min(1, p.valor / p.de);
+  const pend = k.puzle.seg.pend;
+  if (pend.length) d += 0.5 * pend.reduce((a, i) => a + T.MAX_LEVEL - k.height[i], 0) / (o.celdas.length * (T.MAX_LEVEL + 1));
+  if (o.tipo === 'panal') d += 0.5 * o.celdas.reduce((a, i) => a + Math.abs(o.nivel - k.height[i]), 0) / (o.celdas.length * T.MAX_LEVEL);
+  if (o.tipo === 'grande' || o.tipo === 'escalera') d += 0.5 * Math.max(0, o.n - k.step) / o.n;
+  return d;
+}
+
+const cfgPuzle = k => T.CONFIG_MODO[k.modo].puzle;
 
 function nota1(s, c, k, P) {
   const e = efecto(s, c, k);
   let v = 0;
   if (finMalo(k)) v -= 1e6;
+  if (cfgPuzle(k)) v += (ganaPuzle(k) ? 1e6 : 0) + P.objetivo * (falta(s) - falta(k));
   // Sólo en su modo: celdasMarcadas cuenta también el capullo, que en
   // Contrarreloj existe y no es huella. Sin la bandera, el codicioso cambiaba.
   const cfg = T.CONFIG_MODO[k.modo];
@@ -209,6 +239,7 @@ function valorPlan(s, c, k, P) {
   const e = efecto(s, c, k);
   let v = k.score - s.score;
   if (finMalo(k)) v -= 1e9;
+  if (cfgPuzle(k)) v += (ganaPuzle(k) ? 1e9 : 0) + P.puntosPorObjetivo * (falta(s) - falta(k));
   const cfg = T.CONFIG_MODO[k.modo];
   // El recuento final de Contagio ya está en k.score cuando acaba; antes, cada
   // celda marcada que se gana o se quita cuenta lo que restaría.
@@ -366,6 +397,26 @@ function jugarUna(seed, modo, dificultad, bot, segPorTurno) {
 }
 
 // ---------------------------------------------------------------------------
+// Un nivel de Puzzle (02-10)
+// ---------------------------------------------------------------------------
+// El nivel es siempre el mismo y en Puzzle no salen ítems, así que lo único que
+// cambia entre semillas es el jugador: el orden en que mira las jugadas (y los
+// despistes del humano). Cada nivel se juega N veces con las semillas 1..N.
+// Devuelve el resultado del motor: { gana, turnos, estrellas } o { gana: false,
+// motivo } (fallo, limite, roja, orden).
+function jugarPuzle(nivel, seed, bot) {
+  const R = rng(seed);
+  const s = T.crearPuzle(nivel);
+  while (!s.gameOver) {
+    const cells = BOTS[bot](s, R);
+    // Como el cuelgue fantasma de los otros modos: DEBE SER SIEMPRE 0.
+    if (!cells) return { gana: false, motivo: 'sinJugada', fantasma: T.biggestCoherentArea(s) >= s.step };
+    T.commitTurn(s, cells);
+  }
+  return s.puzle.resultado;
+}
+
+// ---------------------------------------------------------------------------
 // Tirada y estadísticas
 // ---------------------------------------------------------------------------
 // Las partidas se reparten entre los núcleos (worker_threads): cada partida sólo
@@ -377,11 +428,14 @@ const { Worker, isMainThread, parentPort, workerData } = require('worker_threads
 if (!isMainThread) {
   // Un hilo fijo que va pidiendo trozos hasta que no quedan: así el motor se carga
   // una vez por hilo y no una por trozo.
-  parentPort.on('message', ({ bot, desde, hasta, modo, dif, seg }) => {
+  parentPort.on('message', ({ bot, desde, hasta, modo, dif, seg, puzle }) => {
     const t0 = performance.now();
     const res = [];
-    for (let seed = desde; seed < hasta; seed++) res.push(jugarUna(seed, modo, dif, bot, seg));
-    parentPort.postMessage({ bot, res, seg: (performance.now() - t0) / 1000 });
+    if (puzle) {
+      const nivel = T.PUZLES.find(p => p.id === puzle);
+      for (let seed = desde; seed < hasta; seed++) res.push(jugarPuzle(nivel, seed, bot));
+    } else for (let seed = desde; seed < hasta; seed++) res.push(jugarUna(seed, modo, dif, bot, seg));
+    parentPort.postMessage({ bot, puzle, res, seg: (performance.now() - t0) / 1000 });
   });
 } else {
   principal();
@@ -404,17 +458,14 @@ function principal() {
     console.error(`modo desconocido: ${MODO}. Usa: ${Object.keys(T.MODOS).join(', ').toLowerCase()}`);
     process.exit(1);
   }
-  // Puzzle (v11) se juega por niveles (crearPuzle), no con una semilla: que los bots
-  // jueguen los niveles de js/puzles.js está pendiente de proponer (F3, T-45).
-  if (modoId === T.MODOS.PUZZLE) {
-    console.error('El bot todavía no juega Puzzle: los niveles se comprueban con `npm run puzles -- verificar`.');
-    process.exit(1);
-  }
   const bots = nombreBot === 'todos' ? Object.keys(BOTS) : [nombreBot];
   if (!bots.every(b => BOTS[b])) {
     console.error(`bot desconocido: ${nombreBot}. Usa: ${Object.keys(BOTS).join(', ')} o todos`);
     process.exit(1);
   }
+  // Puzzle (02-10) se juega por niveles: en el sitio de la dificultad van los
+  // niveles (C4, C4-03; nada o «todos», todos).
+  if (modoId === T.MODOS.PUZZLE) return principalPuzzle(bots, args[3]);
 
   // Trozos pequeños para que los núcleos no se queden esperando al último.
   const TROZO = 25;
@@ -449,6 +500,107 @@ function principal() {
     else comparar(porBot);
     console.log(`\n${reloj.toFixed(1)} s en ${hilos} hilos`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Puzzle: cada nivel, N veces, con cada bot
+// ---------------------------------------------------------------------------
+function principalPuzzle(bots, filtro) {
+  const quien = (filtro || 'todos').toUpperCase();
+  const niveles = quien === 'TODOS' || quien === 'NORMAL' ? T.PUZLES
+    : T.PUZLES.filter(p => p.id === quien || p.id.startsWith(quien + '-'));
+  if (!niveles.length) {
+    console.error(`no hay niveles «${filtro}». Usa todos, un capítulo (C4) o un nivel (C4-03).`);
+    process.exit(1);
+  }
+  // Un trozo por bot y nivel: los niveles son cortos (4-10 turnos).
+  const cola = [];
+  for (const bot of bots) for (const p of niveles) cola.push({ bot, puzle: p.id, desde: SEED0, hasta: SEED0 + N });
+  const peso = { planificador: 3, codicioso: 2, prudente: 2, humano: 2, tonto: 1 };
+  cola.sort((a, b) => peso[b.bot] - peso[a.bot]);
+  const total = cola.length;
+  const res = {};   // res[bot][id] = [resultados]
+  for (const b of bots) res[b] = {};
+  const hilos = Math.min(require('os').cpus().length, cola.length);
+  const t0 = Date.now();
+  let vivos = hilos, hechos = 0, aviso = Date.now();
+  console.log(`Jugando ${niveles.length} niveles × ${bots.length} bot${bots.length > 1 ? 's' : ''} × ${N} partidas en ${hilos} hilos…`);
+  for (let k = 0; k < hilos; k++) {
+    const w = new Worker(__filename);
+    const siguiente = () => {
+      const tarea = cola.shift();
+      if (tarea) return w.postMessage(tarea);
+      w.terminate();
+      if (--vivos === 0) {
+        informePuzzle(niveles, bots, res);
+        console.log(`\n${((Date.now() - t0) / 1000).toFixed(1)} s en ${hilos} hilos`);
+      }
+    };
+    w.on('message', m => {
+      res[m.bot][m.puzle] = m.res;
+      if (++hechos < total && Date.now() - aviso > 5000) { aviso = Date.now(); console.log(`  ${hechos}/${total} · ${Math.round((Date.now() - t0) / 1000)} s`); }
+      siguiente();
+    });
+    w.on('error', e => { console.error(e); process.exit(1); });
+    siguiente();
+  }
+}
+
+// Una línea por nivel (el % que lo gana cada bot) y luego por capítulo, por tipo y
+// por la nota del evaluador. Un solo bot: además ★★★ y por qué pierde.
+function informePuzzle(niveles, bots, res) {
+  const pc = (n, de) => de ? Math.round(n / de * 100) + ' %' : '—';
+  const gana = rs => rs.filter(r => r.gana).length;
+  const tres = rs => rs.filter(r => r.gana && r.estrellas === 3).length;
+  const de = (b, ps) => ps.flatMap(p => res[b][p.id]);
+  console.log(`\n${N} partidas por nivel y bot · modo puzzle · semillas ${SEED0}..${SEED0 + N - 1}\n`);
+
+  const solo = bots.length === 1;
+  const motivos = ['fallo', 'limite', 'roja', 'orden', 'sinJugada'];
+  const cab = ['nivel', 'tipo', 'mín', 'nota', ...(solo ? ['gana', '★★★', ...motivos.map(m => m === 'limite' ? 'límite' : m)] : bots)];
+  const filas = niveles.map(p => {
+    const base = [p.id, p.objetivo.tipo, String(p.minimo), (p.origen && p.origen.nota) || '—'];
+    if (!solo) return [...base, ...bots.map(b => pc(gana(res[b][p.id]), N))];
+    const rs = res[bots[0]][p.id];
+    return [...base, pc(gana(rs), N), pc(tres(rs), N), ...motivos.map(m => pc(rs.filter(r => r.motivo === m).length, N))];
+  });
+  const tabla = (cab, filas) => {
+    const ancho = cab.map((c, k) => Math.max(c.length, ...filas.map(f => f[k].length)));
+    const linea = f => f.map((x, k) => k < 2 ? x.padEnd(ancho[k]) : x.padStart(ancho[k])).join('  ');
+    console.log(linea(cab));
+    for (const f of filas) console.log(linea(f));
+  };
+  tabla(cab, filas);
+
+  // Los resúmenes: gana (y ★★★) por grupo, una columna por bot.
+  const grupo = (titulo, clave, orden) => {
+    const claves = orden.filter(c => niveles.some(p => clave(p) === c));
+    if (claves.length < 2) return;
+    console.log(`\nPor ${titulo} (gana · ★★★):`);
+    tabla([titulo, 'niveles', ...bots], claves.map(c => {
+      const ps = niveles.filter(p => clave(p) === c);
+      return [String(c), '', String(ps.length), ...bots.map(b => { const rs = de(b, ps); return `${pc(gana(rs), rs.length)} · ${pc(tres(rs), rs.length)}`; })].filter((x, k) => k !== 1);
+    }));
+  };
+  grupo('capítulo', p => p.capitulo, [...new Set(T.PUZLES.map(p => p.capitulo))]);
+  grupo('tipo', p => p.objetivo.tipo, [...new Set(T.PUZLES.map(p => p.objetivo.tipo))]);
+  grupo('nota', p => p.origen && p.origen.nota, ['paseo', 'fácil', 'medio', 'difícil', 'muy difícil']);
+
+  console.log('\nEn total (gana · ★★★):');
+  for (const b of bots) { const rs = de(b, niveles); console.log(`  ${b.padEnd(13)} ${pc(gana(rs), rs.length)} · ${pc(tres(rs), rs.length)}`); }
+
+  // Lo que hay que mirar: los que no gana ninguno y los que gana hasta el tonto.
+  const nadie = niveles.filter(p => bots.every(b => !gana(res[b][p.id])));
+  if (nadie.length) console.log(`\nNo lo gana ningún bot: ${nadie.map(p => p.id).join(' ')}`);
+  if (res.tonto) {
+    const facil = niveles.filter(p => gana(res.tonto[p.id]) >= 0.9 * N);
+    if (facil.length) console.log(`Lo gana hasta el tonto (≥ 90 %): ${facil.map(p => p.id).join(' ')}`);
+  }
+  const fantasmas = bots.reduce((n, b) => n + de(b, niveles).filter(r => r.fantasma).length, 0);
+  console.log(fantasmas ? `\n✗ ${fantasmas} cuelgues fantasma: el motor dice que hay jugada y el bot no la encuentra.`
+                        : '\ncuelgues fantasma: ninguno ✓');
+  console.log('\n' + bots.map(b => `${b}: ${DESCRIPCION[b]}`).join('\n') +
+    '\n(los que piensan saben el objetivo: ver `falta`; el tonto, no)');
 }
 
 // ---------------------------------------------------------------------------
