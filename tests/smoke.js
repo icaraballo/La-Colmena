@@ -747,6 +747,18 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   const fila = (sale.split('\n').find(l => l.startsWith('C1-03')) || '').trim().split(/\s{2,}/);
   eq(fila[5], '100 %', 'el prudente gana siempre C1-03');
   eq((sale.match(/^C1-\d\d /gm) || []).length, T.PUZLES.filter(p => p.capitulo === 1).length, 'una fila por nivel del capítulo 1');
+
+  // Y los candidatos de un lote de la máquina (02-10, para el agente de puzles): un
+  // lote de un solo candidato, que es C1-03 con la forma de los lotes.
+  const os = require('os'), path = require('path'), fs = require('fs');
+  const { id, capitulo, orden, minimo, solucion, origen, ...nivel } = T.PUZLES.find(p => p.id === 'C1-03');
+  const lote = path.join(os.tmpdir(), `lote-prueba-${process.pid}.jsonl`);
+  fs.writeFileSync(lote, JSON.stringify({ id: 'L-PRUEBA-01', nivel, minimo, solucion, eval: { nota: 'fácil' } }) + '\n');
+  const deLote = execFileSync(process.execPath, [require('path').join(__dirname, 'bot.js'), '20', '1', 'puzzle', lote, 'prudente'],
+                              { encoding: 'utf8', timeout: 120000 });
+  fs.unlinkSync(lote);
+  const filaLote = (deLote.split('\n').find(l => l.startsWith('L-PRUEBA-01')) || '').trim().split(/\s{2,}/);
+  eq(filaLote[4], '100 %', 'el bot juega un lote: el prudente gana el candidato (C1-03) siempre');
 }
 
 // --- guardar y continuar una partida (v9.1, T-41) -----------------------------------------

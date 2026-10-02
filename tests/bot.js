@@ -11,6 +11,7 @@
 //                                                       y una tabla que los compara
 //   npm run bot 200 1 puzzle                  cada nivel de js/puzles.js, 200 veces
 //   npm run bot 200 1 puzzle C4 todos         los del capítulo 4 (o C4-03: uno), los cinco
+//   npm run bot 200 1 puzzle lote-20261002-0618 todos   los candidatos de un lote de puzles/salida/
 //
 // Sirve para una sola cosa, que es la importante: convertir "me parece que esto es
 // muy difícil" en un número. Si el 80 % se muere antes del turno 15, el paso crece
@@ -428,11 +429,11 @@ const { Worker, isMainThread, parentPort, workerData } = require('worker_threads
 if (!isMainThread) {
   // Un hilo fijo que va pidiendo trozos hasta que no quedan: así el motor se carga
   // una vez por hilo y no una por trozo.
-  parentPort.on('message', ({ bot, desde, hasta, modo, dif, seg, puzle }) => {
+  // Puzzle: el nivel llega con la tarea (puede ser de un lote, no de js/puzles.js).
+  parentPort.on('message', ({ bot, desde, hasta, modo, dif, seg, puzle, nivel }) => {
     const t0 = performance.now();
     const res = [];
     if (puzle) {
-      const nivel = T.PUZLES.find(p => p.id === puzle);
       for (let seed = desde; seed < hasta; seed++) res.push(jugarPuzle(nivel, seed, bot));
     } else for (let seed = desde; seed < hasta; seed++) res.push(jugarUna(seed, modo, dif, bot, seg));
     parentPort.postMessage({ bot, puzle, res, seg: (performance.now() - t0) / 1000 });
@@ -505,17 +506,29 @@ function principal() {
 // ---------------------------------------------------------------------------
 // Puzzle: cada nivel, N veces, con cada bot
 // ---------------------------------------------------------------------------
+// Un lote de la máquina (puzles/salida/*.jsonl) como niveles: sus candidatos tienen
+// el nivel dentro (`nivel`) y la nota del evaluador en `eval`.
+function nivelesDeLote(filtro) {
+  const fs = require('fs'), path = require('path');
+  const salida = path.join(__dirname, '..', 'puzles', 'salida');
+  const f = [filtro, path.join(salida, filtro), path.join(salida, filtro + '.jsonl')]
+    .find(r => r.endsWith('.jsonl') && fs.existsSync(r));
+  if (!f) return null;
+  return fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)).map(c => ({
+    id: c.id, ...c.nivel, minimo: c.minimo, origen: { nota: c.eval ? c.eval.nota : null } }));
+}
+
 function principalPuzzle(bots, filtro) {
   const quien = (filtro || 'todos').toUpperCase();
   const niveles = quien === 'TODOS' || quien === 'NORMAL' ? T.PUZLES
-    : T.PUZLES.filter(p => p.id === quien || p.id.startsWith(quien + '-'));
+    : nivelesDeLote(filtro) || T.PUZLES.filter(p => p.id === quien || p.id.startsWith(quien + '-'));
   if (!niveles.length) {
-    console.error(`no hay niveles «${filtro}». Usa todos, un capítulo (C4) o un nivel (C4-03).`);
+    console.error(`no hay niveles «${filtro}». Usa todos, un capítulo (C4), un nivel (C4-03) o un lote de puzles/salida/.`);
     process.exit(1);
   }
   // Un trozo por bot y nivel: los niveles son cortos (4-10 turnos).
   const cola = [];
-  for (const bot of bots) for (const p of niveles) cola.push({ bot, puzle: p.id, desde: SEED0, hasta: SEED0 + N });
+  for (const bot of bots) for (const p of niveles) cola.push({ bot, puzle: p.id, nivel: p, desde: SEED0, hasta: SEED0 + N });
   const peso = { planificador: 3, codicioso: 2, prudente: 2, humano: 2, tonto: 1 };
   cola.sort((a, b) => peso[b.bot] - peso[a.bot]);
   const total = cola.length;
