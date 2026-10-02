@@ -228,6 +228,29 @@ function mesetaDeNivel(s, h) {
   return best;
 }
 
+// Las celdas del grupo más grande, el que da máx: lo que pinta la interfaz al
+// acabar un nivel por fallo (v11.2, T-49). Mismo criterio que mesetaDeNivel (la
+// reina de comodín); con dos del mismo tamaño, el primero (nivel más bajo, celda
+// más baja). Siempre mide lo que biggestCoherentArea.
+function grupoMeseta(s) {
+  const reina = (s.item && s.item.tipo === ITEMS.REINA && jugable(s, s.item.tile)) ? s.item.tile : -1;
+  let mejor = [];
+  for (let h = AGUA; h <= MAX_LEVEL; h++) {
+    const de = i => jugable(s, i) && (s.height[i] === h || i === reina);
+    const seen = new Uint8Array(s.height.length);
+    for (let start = 0; start < s.height.length; start++) {
+      if (seen[start] || !de(start)) continue;
+      const grupo = [], stack = [start]; seen[start] = 1;
+      while (stack.length) {
+        const u = stack.pop(); grupo.push(u);
+        for (const v of vecinas(s, u)) if (!seen[v] && de(v)) { seen[v] = 1; stack.push(v); }
+      }
+      if (grupo.length > mejor.length) mejor = grupo;
+    }
+  }
+  return mejor.sort((a, b) => a - b);
+}
+
 // ---------------------------------------------------------------------------
 // (c) Cometer el turno
 // ---------------------------------------------------------------------------
@@ -800,7 +823,8 @@ function tick(s, dt) {
 //   - romper una regla del objetivo (cosechar una roja; la B con la A
 //     pendiente) PIERDE, aunque esa jugada lo cumpliera;
 //   - el fallo (el paso no cabe) sin cumplirlo PIERDE;
-//   - gastar el límite (mínimo + PUZZLE_MARGEN) PIERDE.
+//   - gastar el límite (mínimo + PUZZLE_MARGEN) PIERDE. Un nivel con
+//     `limite: null` no tiene límite (v11.2: el tutorial, «no es competición»).
 // La máquina de puzles (puzles/objetivos.js) usa estas mismas funciones para el
 // seguimiento, el «¿cumplido?» y las reglas: no hay otra copia. El comprobador
 // de la máquina, a propósito, sí lleva la suya (es la segunda llave).
@@ -820,7 +844,7 @@ function crearPuzle(nivel) {
   s.step = nivel.paso;
   s.puzle = {
     id: nivel.id, objetivo: nivel.objetivo, minimo: nivel.minimo,
-    limite: nivel.minimo + PUZZLE_MARGEN,
+    limite: nivel.limite === null ? null : nivel.minimo + PUZZLE_MARGEN,
     seg: seguimientoPuzle(nivel.objetivo),
     resultado: null,   // { gana: true, turnos, estrellas } | { gana: false, motivo }
   };
@@ -879,7 +903,7 @@ function cerrarTurnoPuzle(s, cells, cosecha, rompe) {
     return;
   }
   else if (s.last.type === 'fallback') motivo = 'fallo';
-  else if (s.turn >= p.limite) motivo = 'limite';
+  else if (p.limite !== null && s.turn >= p.limite) motivo = 'limite';
   if (!motivo) return;
   p.resultado = { gana: false, motivo };
   // El fallo dice qué paso no cupo y qué meseta había (lo trae el evento del fallo).

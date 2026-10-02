@@ -67,7 +67,8 @@ async function copiarTexto(txt) {
 function redraw(now = performance.now()) {
   const ready = dragReady(S);
   const q = abririaAhora(ready);
-  draw(ctx, S, { cells: drag.cells, ready, fuera: drag.fuera, abejas, destellos, abriria: q && q.tocadas }, now);
+  draw(ctx, S, { cells: drag.cells, ready, fuera: drag.fuera, abejas, destellos, abriria: q && q.tocadas,
+                 guia: guiaTutorial(), explica: explicacionFallo() }, now);
   updateHud(now);
   pintarFin();
 }
@@ -396,13 +397,26 @@ function formatoDuracion(seg) {
 }
 function pintarFin() {
   const el = document.getElementById('fin');
-  if (!S.gameOver) { el.hidden = true; finPintado = false; return; }
+  const tutorial = enTutorial();
+  if (!S.gameOver) {
+    el.hidden = true; finPintado = false;
+    // Los botones de abajo vuelven cuando el nivel sigue (al deshacer).
+    mostrar('tut-pie', tutorial);
+    mostrar('puzle-pie', !!S.puzle && !tutorial);
+    return;
+  }
   if (finPintado) return;
   finPintado = true;
   const cfg = CONFIG_MODO[S.modo];
-  document.getElementById('fin-volver').hidden = !cfg.puzle;
+  // El final va debajo del panal, no encima (v11.2), cuando hay que ver el panal:
+  // siempre en el tutorial y en Puzzle al perder por fallo (el grupo de máx).
+  const abajo = tutorial || (!!S.puzle && !S.puzle.resultado.gana && S.puzle.resultado.motivo === 'fallo');
+  colocarFin(abajo);
+  el.classList.remove('tut-bien', 'tut-fallo');
+  document.getElementById('fin-volver').hidden = !cfg.puzle || tutorial;
   el.classList.toggle('puzle', !!cfg.puzle);
-  if (cfg.puzle) { pintarFinPuzle(); el.hidden = false; return; }
+  if (tutorial) { pintarFinTutorial(); return; }
+  if (cfg.puzle) { mostrar('puzle-pie', !abajo); pintarFinPuzle(); el.hidden = false; return; }
   setText('fin-menu', '‹ Menú');
   setText('fin-otra', 'Otra vez');
   borrarPartida();   // acabada no se continúa
@@ -458,6 +472,21 @@ function pintarFin() {
   el.hidden = false;
 }
 
+// hidden sin tocar el DOM si no cambia (se llama en cada fotograma).
+function mostrar(id, si) {
+  const el = document.getElementById(id);
+  if (el.hidden === si) el.hidden = !si;
+}
+// #fin vive dentro de #wrap, encima del panal. Debajo (v11.2) pasa a ir después de
+// #wrap, en el flujo: el hueco del panal encoge y el panal se vuelve a medir solo
+// (ResizeObserver), así la tarjeta no lo tapa.
+function colocarFin(abajo) {
+  const fin = document.getElementById('fin'), wrap = document.getElementById('wrap');
+  fin.classList.toggle('abajo', abajo);
+  if (abajo && fin.parentElement === wrap) wrap.after(fin);
+  else if (!abajo && fin.parentElement !== wrap) wrap.appendChild(fin);
+}
+
 function tituloFin(cfg) {
   if (cfg.reloj) return 'Se acabó el día';
   if (cfg.helada) return 'El invierno se ha comido el panal';
@@ -471,7 +500,7 @@ const ROJO_PISADA = ['#a0442f', '#ab4832', '#b74c36', '#c2503a'];
 
 function updateHud(now = performance.now()) {
   const cfg = CONFIG_MODO[S.modo];
-  if (cfg.puzle) { pintarHudPuzle(); return; }
+  if (cfg.puzle) { if (enTutorial()) pintarHudTutorial(); else pintarHudPuzle(); return; }
   const biggest = biggestCoherentArea(S);
 
   // Paso y máx, grandes y juntos (v8): si el máx es menor que el paso, se falla.
@@ -731,10 +760,18 @@ function contar(eventos) {
 }
 
 function onCommit(cells) {
+  const tutorial = enTutorial();
+  // Nivel 3 del tutorial: hasta cancelar una vez, soltar dentro no juega (es una
+  // regla del tutorial, no del juego: el motor no se entera).
+  if (tutorial && nivelTutorial().cancelar && !tut.cancelado) return;
   const antes = S.height.slice();
   const copia = S.puzle ? copiaPuzle(S) : null;
   if (!commitTurn(S, cells)) return;
-  if (copia) {
+  if (copia && tutorial) {
+    historiaPuzle.push(copia);
+    tut.aviso = '';
+    if (S.puzle.resultado && S.puzle.resultado.gana) guardarTutorial(tut.k + 1);
+  } else if (copia) {
     historiaPuzle.push(copia);
     const antes = abiertosPuzzle(CAPITULOS, PUZLES, progresoPuzzle.mejores).capitulos;
     puzleMejora = apuntarPuzzle(progresoPuzzle, S.puzle.id, S.puzle.resultado);
@@ -797,6 +834,8 @@ function resize() {
   const vertical = r.height > r.width * 1.1;
   const arriba = !vertical ? 0.5 : CONFIG_MODO[S.modo].desastres ? 0.1 : 0.3;
   computeLayout(canvas.width, canvas.height, arriba, TABLEROS[S.tablero].filas);
+  // El tutorial juega en un trozo del tablero de 37: se encuadra en sus celdas (v11.2).
+  if (enTutorial()) encuadrar(S, canvas.width, canvas.height, canvas.width / 9);
   redraw();
 }
 
@@ -819,10 +858,16 @@ function prepararPartida(estado, dur) {
   logItems = ''; logItemsEn = -1; logFallo = ''; logFalloEn = -1;
   falloEn = -1; plagaNueva = null; cascada = null;
   setText('seed', `semilla ${S.seed}`);
-  const esPuzle = !!S.puzle;
+  const tutorial = enTutorial(), esPuzle = !!S.puzle && !tutorial;
   document.getElementById('partida').classList.toggle('es-puzle', esPuzle);
+  document.getElementById('partida').classList.toggle('es-tutorial', tutorial);
+  document.getElementById('partida').classList.remove('tut-acabado');
   document.getElementById('puzle-cab').hidden = !esPuzle;
   document.getElementById('puzle-pie').hidden = !esPuzle;
+  document.getElementById('tut-cab').hidden = !tutorial;
+  document.getElementById('tut-pie').hidden = !tutorial;
+  if (tutorial) prepararNivelTutorial(); else document.getElementById('tut-recuadro').hidden = true;
+  colocarFin(false);
   pintarBarra();
   pintarLeyenda();
   if (canvas) resize(); else redraw();   // cada modo coloca el panal a su altura
@@ -832,6 +877,7 @@ function prepararPartida(estado, dur) {
 function pintarBarra() {
   // «‹ Menú» vuelve al inicio; en un nivel de Puzzle, «‹ Puzzle» vuelve a los capítulos.
   document.getElementById('partida-menu').lastChild.nodeValue = S.puzle ? NOMBRE_MODO.puzzle : 'Menú';
+  if (enTutorial()) return;   // el tutorial lleva su barra (#tut-cab)
   if (S.puzle) {
     const p = PUZLES.find(x => x.id === S.puzle.id);
     setHtml('barra-modo', `Capítulo ${p.capitulo} <span>· nivel ${p.orden}</span>`);
@@ -891,6 +937,7 @@ function deshacerPuzle() {
   S = historiaPuzle.pop();
   finPintado = false;
   capituloAbierto = null;
+  tut.aviso = ''; clearTimeout(tut.alFinal);
   document.getElementById('fin').hidden = true;
   drag.cells = []; drag.desde = []; drag.trail = []; drag.deshaciendo = false; drag.fuera = false;
   abejas.length = 0; destellos.length = 0;
@@ -1040,6 +1087,265 @@ function pintarFinPuzle() {
 }
 
 // ===========================================================================
+// El tutorial, «Aprende a jugar» (v11.2, T-49; LC-Tutorial)
+// ===========================================================================
+// Ocho niveles de js/tutorial.js que por dentro son niveles de Puzzle (crearPuzle,
+// las reglas de siempre, deshacer) y por fuera no: sin límite ni estrellas, con su
+// barra, su tarjeta de guía, la guía en el panal y los avisos al arrastrar. Antes
+// del 1, la escalera de niveles; después del 8, «Has terminado» e «Ir al inicio».
+// Se guarda el último nivel resuelto (colmena.tutorial.v1): quien sale a medias
+// retoma en el primero sin resolver y sigue siendo nuevo; al acabar deja de serlo.
+const TUTORIAL_KEY = 'colmena.tutorial.v1';
+// k: el nivel que se juega (0-7). cancelado: el nivel 3 ya ha cancelado una vez.
+// aviso: lo que dice la línea de aviso hasta el próximo arrastre. pistaEn: el turno
+// en que se pidió la pista. esperados: el panal tras cada jugada de la solución,
+// para saber si el jugador se ha salido de ella.
+const tut = { k: 0, cancelado: false, aviso: '', avisoClase: '', pistaEn: -1, esperados: [], alFinal: 0 };
+
+const nivelTutorial = (id = S && S.puzle && S.puzle.id) => TUTORIAL.find(t => t.id === id) || null;
+const enTutorial = () => !!(S && S.puzle && nivelTutorial());
+
+function leerTutorial() {
+  try { return leerProgresoTutorial(JSON.parse(localStorage.getItem(TUTORIAL_KEY)), TUTORIAL.length); }
+  catch { return 0; }
+}
+function guardarTutorial(resuelto) {
+  try {
+    if (resuelto <= leerTutorial()) return;
+    localStorage.setItem(TUTORIAL_KEY, JSON.stringify({ v: PROGRESO_TUTORIAL_VERSION, resuelto }));
+  } catch { /* da igual: se empezaría por el 1 */ }
+}
+const tutorialAcabado = () => leerTutorial() >= TUTORIAL.length;
+
+// Las marcas de los textos (regla 8): {2} → «huevo (2)», {5s} → «abejas (5)», y
+// {paso} y {max}, del evento del fallo.
+function textoTut(t, extra = {}) {
+  return t.replace(/\{(\d)(s?)\}/g, (_, n, pl) => `${NOMBRE_NIVEL[n]}${pl ? 's' : ''} (${n})`)
+          .replace(/\{(paso|max)\}/g, (_, k) => extra[k]);
+}
+
+// Desde el inicio («Aprende a jugar») retoma en el primero sin resolver; la primera
+// vez, y siempre que se repite, empieza por la escalera.
+function empezarTutorial(repetir) {
+  const resuelto = leerTutorial();
+  cerrarHoja();
+  if (!repetir && resuelto > 0 && resuelto < TUTORIAL.length) { jugarTutorial(resuelto); return; }
+  pintarProgresoTut(-1);
+  mostrarPantalla('escalera');
+  const el = document.getElementById('tut-escalera');
+  el.scrollTop = 0;
+  if (el.animate) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' });
+}
+
+function jugarTutorial(k, fundido = true) {
+  const n = TUTORIAL[k];
+  if (!n) return;
+  tut.k = k; tut.cancelado = false; tut.aviso = ''; tut.pistaEn = -1;
+  clearTimeout(tut.alFinal);
+  // El panal esperado tras cada jugada de la solución (para «Deshaz para volver a la pista»).
+  const e = crearPuzle(n);
+  tut.esperados = [{ h: e.height.join(), step: e.step }];
+  for (const c of n.solucion) { commitTurn(e, c); tut.esperados.push({ h: e.height.join(), step: e.step }); }
+  partida.modo = MODOS.PUZZLE;
+  partida.dificultad = 'normal';
+  historiaPuzle.length = 0;
+  if (pantalla !== 'partida') mostrarPantalla('partida');
+  prepararPartida(crearPuzle(n), 0);
+  if (fundido) document.getElementById('partida').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 250, easing: 'ease-out' });
+}
+
+// Lo de cada nivel que no cambia al jugar: título, recuadro, pista, progreso.
+function prepararNivelTutorial() {
+  const n = nivelTutorial();
+  setText('tut-titulo', `${n.orden} · ${n.titulo}`);
+  const rec = document.getElementById('tut-recuadro');
+  rec.hidden = !n.recuadro;
+  rec.innerHTML = n.recuadro ? textoTut(n.recuadro) : '';
+  document.getElementById('tut-pista').hidden = n.guia !== 'pista';
+  pintarProgresoTut(tut.k);
+}
+
+// Los ocho hexágonos de progreso: rosa los hechos, miel el actual.
+function pintarProgresoTut(k) {
+  const html = TUTORIAL.map((_, j) => `<span class="${j < k ? 'hecho' : j === k ? 'actual' : ''}"></span>`).join('');
+  document.querySelectorAll('[data-tut-prog]').forEach(el => {
+    el.innerHTML = html;
+    el.setAttribute('aria-label', k < 0 ? `${TUTORIAL.length} niveles` : k >= TUTORIAL.length ? 'Tutorial terminado' : `Nivel ${k + 1} de ${TUTORIAL.length}`);
+  });
+}
+
+// ¿Sigue el jugador la solución guardada? Se compara el panal (y el paso) con el
+// que deja la solución tras los mismos turnos, así da igual el orden del arrastre.
+function enLaSolucion() {
+  const e = tut.esperados[S.turn];
+  return !!e && e.h === S.height.join() && e.step === S.step;
+}
+
+// El camino del dedo por las celdas de una jugada: empieza en la primera y va a cada
+// siguiente por el camino más corto entre las ya elegidas (pasar otra vez por una
+// celda es tránsito, como en el nivel 6). Es geometría, no una regla.
+function recorridoGuia(cells) {
+  const tr = [cells[0]], dentro = new Set([cells[0]]);
+  for (const c of cells.slice(1)) {
+    const desde = tr[tr.length - 1], vale = new Set([...dentro, c]);
+    const prev = new Map([[desde, null]]), cola = [desde];
+    while (cola.length) {
+      const u = cola.shift();
+      if (u === c) break;
+      for (const v of vecinas(S, u)) if (vale.has(v) && !prev.has(v)) { prev.set(v, u); cola.push(v); }
+    }
+    const camino = [];
+    for (let u = c; u !== desde && u !== undefined && u !== null; u = prev.get(u)) camino.unshift(u);
+    tr.push(...camino);
+    dentro.add(c);
+  }
+  return tr;
+}
+
+// La guía (Iñigo: «frase y resaltar»): sale cuando no estás arrastrando, sigue la
+// solución guardada (la interfaz no busca jugadas, regla 8) y desaparece si te sales
+// de ella. En los niveles con `guia: 'pista'`, sólo tras pulsar Pista, y sólo para
+// la jugada de ese turno.
+function guiaTutorial() {
+  if (!enTutorial() || S.gameOver || drag.active || drag.cells.length || !enLaSolucion()) return null;
+  const n = nivelTutorial();
+  if (n.guia === 'pista' && tut.pistaEn !== S.turn) return null;
+  const jugada = n.solucion[S.turn];
+  if (!jugada) return null;
+  // Nivel 3, antes de cancelar: el dedo empieza la jugada y se sale del panal.
+  if (n.cancelar && !tut.cancelado) return { celdas: jugada.slice(0, 2), recorrido: jugada.slice(0, 2), salida: true };
+  return { celdas: jugada, recorrido: recorridoGuia(jugada), salida: false };
+}
+
+// El fallo explicado en el panal (v11.2): al acabar un nivel por fallo, en el
+// tutorial y en todo Puzzle, y al ganar el nivel 7 del tutorial (`explicaMax`), que
+// deja el paso siguiente sin sitio. Los números, del evento del fallo; el grupo, del
+// motor (grupoMeseta).
+function explicacionFallo() {
+  if (!S.gameOver || !S.puzle || !S.puzle.resultado) return null;
+  const r = S.puzle.resultado;
+  if (!r.gana && r.motivo === 'fallo') return { grupo: grupoMeseta(S), etiqueta: `máx ${r.meseta} · paso ${r.paso}` };
+  const n = nivelTutorial();
+  if (r.gana && n && n.explicaMax && S.last.type === 'fallback')
+    return { grupo: grupoMeseta(S), etiqueta: `máx ${S.last.meseta} · paso ${S.last.paso}` };
+  return null;
+}
+
+// Lo que pasa al soltar, se juegue o no (initInput → alSoltar). Sólo en el tutorial.
+function alSoltarTutorial({ cells, cancelada, valida }) {
+  if (!enTutorial() || S.gameOver || !cells.length) return;
+  const n = nivelTutorial();
+  if (cancelada) {
+    if (n.cancelar && !tut.cancelado) { tut.cancelado = true; tut.aviso = '¡Eso! No ha contado.'; tut.avisoClase = 'bien'; }
+    else { tut.aviso = 'Lo soltaste fuera del panal: no ha contado.'; tut.avisoClase = ''; }
+  } else if (n.cancelar && !tut.cancelado) {
+    tut.aviso = 'Primero prueba a sacarlo fuera.'; tut.avisoClase = 'mal';
+  } else if (!valida && cells.length < S.step) {
+    tut.aviso = `El paso pide ${S.step} y soltaste con ${cells.length}. Prueba otra vez.`; tut.avisoClase = 'mal';
+  }
+}
+
+// El marcador del tutorial: la tarjeta, paso y máx, el objetivo y la línea de aviso.
+function pintarHudTutorial() {
+  const n = nivelTutorial();
+  const consejo = Array.isArray(n.consejo) ? n.consejo[tut.cancelado ? 1 : 0] : n.consejo;
+  setHtml('tut-consejo', textoTut(consejo));
+  const o = objetivoPuzle(S), g = progresoPuzle(S);
+  setText('tut-frase', o.frase + '.');
+  setText('tut-progreso', `${g.etiqueta} ${g.valor} / ${g.de}`);
+  // Paso y máx con los colores de la v8. Con el fallo explicado, paso enseña el paso
+  // que no cupo (no el 1 al que vuelve el motor) y máx va en rojo, los dos marcados.
+  const ex = explicacionFallo(), biggest = biggestCoherentArea(S);
+  const paso = ex ? S.last.paso : S.step, max = ex ? S.last.meseta : biggest;
+  setText('tut-paso', paso);
+  setText('tut-max', max);
+  const pasoB = document.getElementById('tut-paso'), maxB = document.getElementById('tut-max');
+  pasoB.className = ex ? 'fallo' : '';
+  maxB.className = ex ? 'fallo' : !S.gameOver && biggest === S.step ? 'cuidado' : '';
+  const late = !S.gameOver && n.late;
+  document.getElementById('tut-paso-caja').className = 'tut-n' + (ex ? ' marca' : late === 'paso' ? ' late' : '');
+  document.getElementById('tut-max-caja').className = 'tut-n' + (ex ? ' marca' : late === 'max' ? ' late' : '');
+  // Los avisos al arrastrar (sólo aquí: en el juego normal serían ruido). El motivo de
+  // un rechazo lo da pasoDeCadena (drag.rechazo), no una copia de su lógica.
+  const c = drag.cells;
+  let txt = '', cls = '';
+  if (S.gameOver) txt = '';
+  else if (c.length) {
+    tut.aviso = '';
+    if (drag.fuera) txt = 'Fuera del panal: si sueltas, no cuenta.';
+    else if (drag.rechazo && drag.rechazo.motivo === 'nivel') { const h = S.height[drag.rechazo.tile]; txt = `Ésa es de otro nivel (${h}): no se mezclan.`; cls = 'mal'; }
+    else if (drag.rechazo && drag.rechazo.motivo === 'lleno') { txt = `Ya llevas ${c.length}: el paso no deja coger más.`; cls = 'mal'; }
+    else if (c.length < S.step) txt = `Llevas ${c.length} de ${S.step}.`;
+    else if (dragReady(S)) { const h = nivelCadena(S, c); txt = h === MAX_LEVEL ? `Suelta: cosechas ${c.length}.` : `Suelta: suben a ${NOMBRE_NIVEL[h + 1]} (${h + 1}).`; cls = 'bien'; }
+  } else if (tut.aviso) { txt = tut.aviso; cls = tut.avisoClase; }
+  else if (!enLaSolucion()) txt = 'Deshaz para volver a la pista.';
+  else if (n.guia === 'pista' && tut.pistaEn !== S.turn) txt = '¿Atascado? Pulsa Pista.';
+  setText('tut-aviso', txt);
+  document.getElementById('tut-aviso').className = 'tut-aviso' + (cls ? ' ' + cls : '');
+  document.getElementById('partida').classList.toggle('tut-acabado', S.gameOver);
+  document.getElementById('tut-deshacer').disabled = !historiaPuzle.length;
+  document.getElementById('tut-pista').disabled = !enLaSolucion() || tut.pistaEn === S.turn;
+}
+
+// El final de un nivel: «¡Bien!» con lo aprendido, o «Fallo» con el porqué. El 8 no
+// tiene «¡Bien!»: va directo a «Has terminado».
+function pintarFinTutorial() {
+  const el = document.getElementById('fin'), r = S.puzle.resultado, n = nivelTutorial();
+  setText('fin-score', '');
+  document.getElementById('fin-detalle').innerHTML = '';
+  mostrar('tut-pie', false);
+  if (r.gana && tut.k === TUTORIAL.length - 1) {
+    el.hidden = true;
+    clearTimeout(tut.alFinal);
+    tut.alFinal = setTimeout(acabarTutorial, 900);
+    return;
+  }
+  el.classList.add(r.gana ? 'tut-bien' : 'tut-fallo');
+  const rec = document.getElementById('fin-record');
+  rec.className = 'record';
+  if (r.gana) {
+    setText('fin-titulo', '¡Bien!');
+    rec.innerHTML = textoTut(n.aprendido, { paso: S.last.paso, max: S.last.meseta });
+    setText('fin-menu', 'Otra vez');
+    setText('fin-otra', 'Siguiente ›');
+  } else {
+    setText('fin-titulo', 'Fallo');
+    const extra = n.falloExtra || 'En una partida, fallar devuelve el paso a 1 y se sigue. Aquí, deshaz y prueba otro camino.';
+    rec.innerHTML = `El paso pedía <b>${r.paso}</b> y tu grupo más grande (en rojo) era de <b>${r.meseta}</b>.` +
+      `<span class="extra">${textoTut(extra)}</span>`;
+    setText('fin-menu', '↻ Reiniciar');
+    setText('fin-otra', '↶ Deshacer');
+  }
+  el.hidden = false;
+}
+
+// Después del 8: deja de ser nuevo y «Has terminado el tutorial».
+function acabarTutorial() {
+  if (!enTutorial() || !S.gameOver) return;
+  guardarTutorial(TUTORIAL.length);
+  marcarYaJugado();
+  pintarProgresoTut(TUTORIAL.length);
+  mostrarPantalla('tut-final');
+  const el = document.getElementById('tut-final');
+  if (el.animate) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, easing: 'ease-out' });
+}
+
+// La tira de los seis niveles (tutorial y ficha Básico) y la escalera, desde
+// NOMBRE_NIVEL, LINEA_NIVEL y LEVEL_COLORS.
+function hexNivel(h) {
+  return `<span class="hexn" style="background:${LEVEL_COLORS[h]};color:${h >= LARVA ? '#2a1d06' : '#f6ecd8'}">${h}</span>`;
+}
+function pintarEscaleras() {
+  const tira = Array.from({ length: MAX_LEVEL + 1 }, (_, h) =>
+    `<div${h === MAX_LEVEL ? ' class="abeja"' : ''}>${hexNivel(h)}<small>${NOMBRE_NIVEL[h]}</small></div>`).join('');
+  document.querySelectorAll('[data-tira]').forEach(el => { el.innerHTML = tira; });
+  const may = t => t.charAt(0).toUpperCase() + t.slice(1);
+  document.getElementById('esc-lista').innerHTML = Array.from({ length: MAX_LEVEL + 1 }, (_, k) => MAX_LEVEL - k).map(h =>
+    `<div class="esc-fila${h === MAX_LEVEL ? ' abeja' : ''}">${hexNivel(h)}<span class="txt"><b>${may(NOMBRE_NIVEL[h])}</b><span>${LINEA_NIVEL[h]}</span></span></div>`).join('');
+  setText('tutorial-cuantos', `${TUTORIAL.length} niveles cortos`);
+}
+
+// ===========================================================================
 // Pantallas (v9, T-40)
 // ===========================================================================
 // Al abrir se ve el inicio; de él cuelgan los modos. La ficha de cada modo no
@@ -1054,12 +1360,14 @@ function mostrarPantalla(p) {
   document.getElementById('inicio').hidden = p !== 'inicio';
   document.getElementById('partida').hidden = p !== 'partida';
   document.getElementById('puzles').hidden = p !== 'puzles';
+  document.getElementById('tut-escalera').hidden = p !== 'escalera';
+  document.getElementById('tut-final').hidden = p !== 'tut-final';
   cerrarPop();
   // Las dos pantallas dibujan con el mismo `layout` de render.js: al cambiar,
   // cada una se vuelve a medir. Como sólo se ve una, no chocan.
   if (p === 'partida') resize();
   else if (p === 'puzles') pintarCapitulos();
-  else {
+  else if (p === 'inicio') {
     // Se entra siempre por la portada, con el panal a la vista (v10.2).
     document.getElementById('inicio').scrollTop = 0;
     pintarPrincipal(); medirFondo(); marcarBajado();
@@ -1072,14 +1380,16 @@ function mostrarPantalla(p) {
 // Siempre hay uno, y es lo siguiente que te toca:
 //   · partida a medias (manda sobre los otros dos): «Continuar partida»;
 //   · ya has jugado: «Jugar» el último modo, que abre su ficha;
-//   · primera vez: «Aprende a jugar», que lleva al tutorial; mientras no
-//     exista (T-49), al primer nivel de Puzzle.
+//   · primera vez: «Aprende a jugar», que lleva al tutorial (v11.2, T-49; en
+//     la v11.1, al primer nivel de Puzzle).
 // Para alguien nuevo, ni Contrarreloj (el reloj y las plagas lo machacan antes
 // de entender el paso) ni Panal libre (sin objetivo, se aburre).
 // Deja de ser nuevo al resolver un nivel o al empezar cualquier partida desde
 // una ficha («Elegir modo»): quien quiera saltarse el tutorial, se lo salta.
 // Dos claves nuevas, con el cuidado de siempre: si localStorage falla, se da
 // por no nuevo y sin último modo, y entonces el botón es «Jugar» Contrarreloj.
+// El tutorial no cuenta como último modo; al acabarlo se deja de ser nuevo y,
+// mientras no se juegue otro modo, el botón es «Jugar · Puzzle · capítulo 1».
 const YA_JUGADO_KEY = 'colmena.yaJugado.v1';
 const ULTIMO_KEY = 'colmena.ultimoModo.v1';
 function esNuevo() {
@@ -1117,7 +1427,7 @@ function quienLlega() {
   const g = leerPartida();
   if (g) return { caso: 'continuar', titulo: 'Continuar partida', detalle: describirPartida(g.s) };
   if (esNuevo()) return { caso: 'nuevo', titulo: 'Aprende a jugar', detalle: 'Empieza por aquí: unos niveles cortos.' };
-  const modo = ultimoModo() || MODOS.CONTRARRELOJ;
+  const modo = ultimoModo() || (tutorialAcabado() ? MODOS.PUZZLE : MODOS.CONTRARRELOJ);
   return { caso: 'jugar', titulo: 'Jugar', detalle: describirModo(modo), modo };
 }
 function pintarPrincipal() {
@@ -1129,7 +1439,7 @@ function pintarPrincipal() {
 function pulsarPrincipal() {
   const q = quienLlega();
   if (q.caso === 'continuar') continuarPartida();
-  else if (q.caso === 'nuevo') { const p = nivelesEnOrden()[0]; if (p) jugarNivel(p.id); }
+  else if (q.caso === 'nuevo') empezarTutorial(false);
   else abrirFicha(q.modo);
 }
 
@@ -1510,7 +1820,7 @@ function gestosHoja(hoja) {
 window.addEventListener('DOMContentLoaded', () => {
   canvas = document.getElementById('board');
   ctx = canvas.getContext('2d');
-  initInput(canvas, () => S, onCommit, redraw);
+  initInput(canvas, () => S, onCommit, redraw, alSoltarTutorial);
   rellenarConstantes();
   // Nombres y frases de los modos desde sus tablas: el inicio y la hoja no
   // pueden discrepar.
@@ -1522,6 +1832,7 @@ window.addEventListener('DOMContentLoaded', () => {
   setText('inicio-version', VERSION);
   pintarTarjeta();
   pintarEscalaExpansion('normal');
+  pintarEscaleras();
 
   document.getElementById('inicio').addEventListener('scroll', marcarBajado, { passive: true });
   document.getElementById('elegir-modo').addEventListener('click', verModos);
@@ -1529,7 +1840,23 @@ window.addEventListener('DOMContentLoaded', () => {
   // El inicio: el botón naranja y cada modo, que abre su ficha (también Puzzle,
   // desde la v11.1: antes iba directo a los capítulos).
   document.getElementById('principal').addEventListener('click', pulsarPrincipal);
-  document.querySelectorAll('.modo-fila').forEach(b => b.addEventListener('click', () => abrirFicha(b.dataset.modo)));
+  document.querySelectorAll('.modo-fila[data-modo]').forEach(b => b.addEventListener('click', () => abrirFicha(b.dataset.modo)));
+
+  // El tutorial (v11.2): repetirlo (inicio y ficha Básico), la escalera, sus botones y el final.
+  document.getElementById('repetir-tutorial').addEventListener('click', () => empezarTutorial(true));
+  document.getElementById('basico-tutorial').addEventListener('click', () => {
+    if (pantalla === 'partida') guardarPartida();
+    empezarTutorial(true);
+  });
+  document.getElementById('tut-empezar').addEventListener('click', () => jugarTutorial(0));
+  document.querySelectorAll('[data-tut-salir]').forEach(b => b.addEventListener('click', () => { clearTimeout(tut.alFinal); volverAlInicio(); }));
+  document.getElementById('tut-deshacer').addEventListener('click', deshacerPuzle);
+  document.getElementById('tut-reiniciar').addEventListener('click', () => jugarTutorial(tut.k, false));
+  document.getElementById('tut-pista').addEventListener('click', () => { tut.pistaEn = S.turn; redraw(); });
+  document.getElementById('tut-inicio').addEventListener('click', () => {
+    mostrarPantalla('inicio');
+    document.getElementById('inicio').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
+  });
 
   // Puzzle (v11): los capítulos, el nivel y su final.
   leerProgresoGuardado();
@@ -1568,13 +1895,16 @@ window.addEventListener('DOMContentLoaded', () => {
   // «Otra vez»: el mismo modo y la misma dificultad, sin pasar por la ficha. En un
   // nivel ganado es «Siguiente ›»; en uno perdido, «Deshacer la última».
   document.getElementById('fin-otra').addEventListener('click', () => {
+    // Tutorial: «Siguiente ›» o «↶ Deshacer».
+    if (enTutorial()) { if (!S.gameOver) return; if (S.puzle.resultado.gana) jugarTutorial(tut.k + 1, false); else deshacerPuzle(); return; }
     if (!S.puzle) { restart(); return; }
     if (!S.puzle.resultado.gana) { deshacerPuzle(); return; }
     const sig = siguienteNivel(S.puzle.id);
     if (sig) jugarNivel(sig, false); else irACapitulos();
   });
   // «‹ Menú»; en un nivel, «Repetir» o «Reintentar»: el mismo nivel, desde el principio.
-  document.getElementById('fin-menu').addEventListener('click', () => S.puzle ? jugarNivel(S.puzle.id, false) : volverAlInicio());
+  document.getElementById('fin-menu').addEventListener('click', () =>
+    enTutorial() ? jugarTutorial(tut.k, false) : S.puzle ? jugarNivel(S.puzle.id, false) : volverAlInicio());
 
   // El panel flotante se cierra al tocar fuera. El canvas se lleva sus propios
   // eventos, así que esto escucha en la fase de captura.

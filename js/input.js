@@ -20,8 +20,10 @@
 //   drag.trail       el recorrido del dedo, con repeticiones — dónde está el dedo
 //   drag.deshaciendo se está desandando el camino: volver atrás sigue quitando
 //   drag.fuera       el dedo está fuera del panal: soltar ahí cancela
+//   drag.rechazo     la última vecina que no entró y por qué: { tile, motivo }
+//                    (v11.2, para los avisos del tutorial), o null
 
-const drag = { cells: [], desde: [], trail: [], deshaciendo: false, fuera: false, active: false };
+const drag = { cells: [], desde: [], trail: [], deshaciendo: false, fuera: false, active: false, rechazo: null };
 
 function dragReady(s) {
   return drag.cells.length > 0 && isValidDrag(s, drag.cells);
@@ -40,7 +42,12 @@ function nivelEnCurso(s, cells) {
 // fácil se rompe y hasta la v6 no tenía ni un test.
 //
 //   cadena = { cells, desde, trail, deshaciendo }
-function pasoDeCadena(s, cadena, i) {
+//
+// `porque` (v11.2, T-49), opcional: si la celda es una vecina que no entra, se
+// apunta ahí el motivo, `'nivel'` (de otro nivel) o `'lleno'` (la cadena ya
+// está completa). Los avisos del tutorial lo leen de aquí, de quien decide, y
+// no de una copia de esta lógica. No cambia qué se acepta ni lo que se devuelve.
+function pasoDeCadena(s, cadena, i, porque) {
   const { cells, desde, trail } = cadena;
   if (i < 0 || cells.length === 0) return cadena;
   const aqui = trail[trail.length - 1];
@@ -61,15 +68,21 @@ function pasoDeCadena(s, cadena, i) {
   }
   if (!jugable(s, i)) return cadena;
   const h = nivelEnCurso(s, cells);
-  if (!esReina(s, i) && h !== -1 && s.height[i] !== h) return cadena;   // misma altura
-  if (completa) return cadena;                                          // ni una de más
+  if (!esReina(s, i) && h !== -1 && s.height[i] !== h) {                // misma altura
+    if (porque) porque.motivo = 'nivel';
+    return cadena;
+  }
+  if (completa) { if (porque) porque.motivo = 'lleno'; return cadena; } // ni una de más
 
   return { cells: [...cells, i], desde: [...desde, aqui], trail: [...trail, i], deshaciendo: false };
 }
 
 // getState es una función, no el estado: al reiniciar la partida se crea un
 // objeto nuevo y un closure sobre el viejo seguiría hablando con la anterior.
-function initInput(canvas, getState, onCommit, redraw) {
+// `alSoltar` (v11.2), opcional: se llama al levantar el dedo con lo que había,
+// { cells, cancelada, valida }, se juegue o no. El tutorial lo usa para contar
+// lo que no ha contado (soltar fuera, soltar antes de llegar al paso).
+function initInput(canvas, getState, onCommit, redraw, alSoltar) {
   const pos = (e) => {
     const r = canvas.getBoundingClientRect();
     return [(e.clientX - r.left) * (canvas.width / r.width),
@@ -90,7 +103,7 @@ function initInput(canvas, getState, onCommit, redraw) {
 
   const limpiar = () => {
     drag.cells = []; drag.desde = []; drag.trail = [];
-    drag.deshaciendo = false; drag.fuera = false;
+    drag.deshaciendo = false; drag.fuera = false; drag.rechazo = null;
   };
 
   canvas.addEventListener('pointerdown', (e) => {
@@ -113,9 +126,14 @@ function initInput(canvas, getState, onCommit, redraw) {
     const f = fuera(s, x, y);
     if (f !== drag.fuera) { drag.fuera = f; redraw(); }
     if (f) return;
-    const nueva = pasoDeCadena(s, drag, tileAt(s, x, y));
-    if (nueva === drag) return;
+    const i = tileAt(s, x, y), porque = {};
+    const nueva = pasoDeCadena(s, drag, i, porque);
+    if (nueva === drag) {
+      if (porque.motivo && !(drag.rechazo && drag.rechazo.tile === i)) { drag.rechazo = { tile: i, motivo: porque.motivo }; redraw(); }
+      return;
+    }
     Object.assign(drag, nueva);
+    drag.rechazo = null;
     redraw();
   });
 
@@ -128,7 +146,9 @@ function initInput(canvas, getState, onCommit, redraw) {
     limpiar();
     // Una cadena inválida simplemente se descarta: no gasta turno ni penaliza.
     // Soltar fuera del panal, tampoco: es la salida de emergencia.
-    if (!cancelada && isValidDrag(s, cells)) onCommit(cells);
+    const valida = isValidDrag(s, cells);
+    if (alSoltar) alSoltar({ cells, cancelada, valida });
+    if (!cancelada && valida) onCommit(cells);
     redraw();
   };
 

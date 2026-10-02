@@ -437,6 +437,100 @@ footer .sem{font-variant-numeric:tabular-nums}
 #fin-volver{all:unset;cursor:pointer;display:block;margin:12px auto 0;font-size:14px;color:#9a8d77;padding:6px 10px}
 #fin-volver:hover{color:#c9b99c}
 #fin-volver:focus-visible{outline:2px solid #F79A1F;border-radius:6px}
+
+/* ---------------------------------------------------------------------------
+   El tutorial (v11.2, T-49; LC-Tutorial). Por dentro, un nivel de Puzzle; por
+   fuera, su propia barra (‹ Salir y ocho hexágonos de progreso), la tarjeta de
+   guía, la tira de niveles, paso y máx grandes con el objetivo, la línea de
+   aviso y, abajo, Deshacer, Reiniciar y Pista. El acento es el rosa de Puzzle.
+   --------------------------------------------------------------------------- */
+.tut-pantalla{height:100%;display:flex;flex-direction:column;overflow-y:auto;touch-action:pan-y;
+  padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.tut-barra{display:flex;align-items:center;gap:10px;padding:8px 14px 0;flex:none}
+.tut-barra .tut-salir{min-height:34px;padding:4px 10px 4px 8px;font-size:13px;width:78px}
+.tut-barra .hueco{width:78px;flex:none}
+.tut-prog{flex-grow:1;display:flex;justify-content:center;gap:5px}
+.tut-prog span{width:12px;height:14px;background:#3a3026;clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)}
+.tut-prog span.hecho{background:#F28FB1}
+.tut-prog span.actual{background:#E3C87E}
+/* La escalera: los seis niveles, de abajo arriba (la abeja arriba). */
+.tut-cuerpo{padding:14px 20px 16px;display:flex;flex-direction:column;gap:12px;flex-grow:1;width:100%;max-width:480px;margin:0 auto}
+.tut-cuerpo h1{font-size:24px;font-weight:800;color:#E3C87E;line-height:1.2}
+.tut-cuerpo > p{font-size:14px;line-height:1.45}
+.esc-lista{display:flex;flex-direction:column;gap:7px}
+.esc-fila{display:flex;align-items:center;gap:12px}
+.hexn{flex:none;display:grid;place-items:center;font-weight:700;clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)}
+.esc-fila .hexn{width:38px;height:44px;font-size:18px}
+.esc-fila .txt{display:flex;flex-direction:column}
+.esc-fila .txt b{font-size:16px;color:#ede4d3}
+.esc-fila .txt span{font-size:12px;color:#9a8d77}
+.esc-fila.abeja .txt b{color:#F79A1F}
+.tut-cuerpo .primario{width:100%}
+.tut-fin-cuerpo{justify-content:center;gap:16px}
+.tut-fin-cuerpo h1,.tut-fin-cuerpo > p{text-align:center}
+.tut-fin-cuerpo .tut-prog{flex-grow:0}
+.tut-caja{background:#1c1710;border:1px solid #43372a;border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.45}
+.tut-caja b.racha{color:#F79A1F}
+/* La tira de niveles: los seis en pequeño, para mirar qué era «huevo (2)». */
+.tira{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:3px}
+.tira div{display:flex;flex-direction:column;align-items:center;gap:1px}
+.tira .hexn{width:20px;height:23px;font-size:11px}
+.tira small{font-size:9.5px;color:#9a8d77}
+.tira .abeja small{color:#F79A1F}
+.tira.grande .hexn{width:24px;height:27px;font-size:12px}
+.tira.grande small{font-size:10px}
+/* En la partida. */
+#partida.es-tutorial #barra,#partida.es-tutorial #puzle-cab,#partida.es-tutorial #puzle-pie,
+#partida.es-tutorial header,#partida.es-tutorial .sub-con-info,#partida.es-tutorial #leyenda,
+#partida.es-tutorial #linea-items,#partida.es-tutorial #riesgo,#partida.es-tutorial footer{display:none}
+#tut-cab{flex:none;display:flex;flex-direction:column;gap:8px;padding-bottom:2px}
+#tut-cab .tut-barra{padding:8px 2px 0}
+/* Al acabar el nivel, la tira se esconde: el panal necesita el sitio que deja la tarjeta. */
+#partida.tut-acabado #tut-cab .tira,#partida.tut-acabado #tut-cab .tut-aviso,#partida.tut-acabado #tut-recuadro{display:none}
+.tut-guia{background:#1c1710;border:1px solid #43372a;border-top:3px solid #F28FB1;border-radius:14px;padding:8px 12px 10px}
+.tut-guia .tit{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#F28FB1;margin-bottom:2px}
+.tut-guia .consejo{font-size:14px;line-height:1.4}
+.tut-guia .consejo b{color:#E3C87E}
+.tut-datos{display:flex;gap:8px;align-items:stretch}
+.tut-n{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:62px;border-radius:12px;padding:2px 8px;border:1px solid transparent}
+.tut-n span{font-size:11px;letter-spacing:.08em;color:#9a8d77}
+.tut-n b{font-size:28px;font-weight:700;line-height:1.05;font-variant-numeric:tabular-nums}
+.tut-n b.cuidado{color:#E3C87E}
+.tut-n b.fallo{color:#e5484d}
+.tut-n.marca{border-color:#F28FB1}
+.tut-n.late{animation:latido 1.4s ease-in-out infinite}
+@keyframes latido{0%,100%{border-color:#F28FB1;box-shadow:0 0 0 0 rgba(242,143,177,.0)}50%{border-color:#F28FB1;box-shadow:0 0 0 4px rgba(242,143,177,.22)}}
+@media (prefers-reduced-motion:reduce){.tut-n.late{animation:none;border-color:#F28FB1}}
+.tut-obj{flex-grow:1;display:flex;flex-direction:column;justify-content:center;border-left:1px solid #43372a;padding-left:10px;font-size:13px;min-width:0}
+.tut-obj small{color:#9a8d77;font-size:12px}
+.tut-aviso{text-align:center;font-size:12.5px;color:#9a8d77;min-height:18px}
+.tut-aviso.mal{color:#f0a0a0}
+.tut-aviso.bien{color:#9fd67a}
+#tut-recuadro{margin:0 0 8px;background:#1c1710;border:1px solid #43372a;border-radius:12px;padding:8px 12px;font-size:13px;line-height:1.4;flex:none}
+#tut-pie{display:flex;gap:8px;padding:2px 0 12px;flex:none}
+#tut-pie button{flex:1 1 0;min-height:44px;border-radius:12px;font-size:14.5px;font-weight:600;white-space:nowrap;padding:6px 8px}
+#tut-pie button:disabled{color:#6d6150;border-color:#2e261b;background:#1c1710;cursor:default}
+#tut-pista{color:#F28FB1}
+/* El final debajo del panal (v11.2): en el tutorial siempre, y en Puzzle al perder
+   por fallo, para que se vea el panal con el grupo de máx. */
+#fin.abajo{position:static;display:block;background:none;backdrop-filter:none;flex:none;margin:0 0 12px}
+#fin.abajo .caja{background:#1c1710;border:1px solid #43372a;border-radius:16px;padding:12px 14px;text-align:left;max-width:none}
+#fin.abajo h2{font-size:18px;font-weight:700;margin-bottom:4px}
+#fin.abajo .marcador:empty,#fin.abajo .detalle:empty{display:none}
+#fin.abajo .record{font-size:14px;line-height:1.4;color:#ede4d3;margin:0 0 10px}
+#fin.abajo .record b{color:#ede4d3}
+#fin.abajo .fin-botones{max-width:none}
+#fin.abajo .fin-botones > *{flex:1 1 0;min-height:44px}
+#fin.puzle.abajo.tut-bien h2{color:#F28FB1}
+#fin.tut-fallo h2,#fin.puzle.abajo h2{color:#e5484d}
+#fin .extra{display:block;margin-top:6px;font-size:13px;color:#9a8d77;line-height:1.4}
+/* Inicio: la fila de «Repetir el tutorial» (grupo Aprender). */
+#repetir-tutorial .frase{color:#E3C87E}
+/* La ficha Básico: la escalera con nombres y el enlace al tutorial. */
+.basico-escalera{flex:none;display:flex;flex-direction:column;gap:6px;padding:8px 10px;border:1px solid #E3C87E;border-radius:12px}
+.basico-escalera p{font-size:14px}
+.basico-tutorial{all:unset;flex:none;cursor:pointer;align-self:flex-start;font-size:14px;font-weight:600;color:#F28FB1;padding:4px 0}
+.basico-tutorial:focus-visible{outline:2px solid #F28FB1;border-radius:4px}
 </style>
 </head>
 <body>
@@ -507,6 +601,13 @@ footer .sem{font-variant-numeric:tabular-nums}
       <span class="txt"><span class="nom" data-nombre="libre"></span><span class="frase" data-frase="libre"></span></span>
       <svg width="8" height="13" viewBox="0 0 10 16" aria-hidden="true"><path d="M2 2l6 6-6 6" stroke="#6d6150" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
+    <!-- El tutorial (v11.2, T-49): repetirlo desde el inicio. -->
+    <h2 class="modos-grupo">Aprender</h2>
+    <button class="modo-fila pequena" id="repetir-tutorial">
+      <svg width="24" height="21" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#E3C87E"/><g stroke="#1c1710" stroke-width="3" fill="none" stroke-linecap="round"><path d="M18 16a5 5 0 1 1 7 4.6c-1.3.6-2 1.6-2 3V25"/></g><circle cx="23" cy="30" r="2" fill="#1c1710"/></svg>
+      <span class="txt"><span class="nom">Repetir el tutorial</span><span class="frase" id="tutorial-cuantos"></span></span>
+      <svg width="8" height="13" viewBox="0 0 10 16" aria-hidden="true"><path d="M2 2l6 6-6 6" stroke="#6d6150" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
 
     <span id="inicio-version"></span>
   </div>
@@ -525,6 +626,30 @@ footer .sem{font-variant-numeric:tabular-nums}
   <div id="pz-capitulos"></div>
 </section>
 
+<!-- El tutorial (v11.2, T-49): la escalera antes del nivel 1 y el final. Los niveles
+     se juegan en #partida, con la clase es-tutorial. La escalera, la tira y los
+     hexágonos de progreso los pinta app.js (NOMBRE_NIVEL, LINEA_NIVEL, LEVEL_COLORS). -->
+<section id="tut-escalera" class="tut-pantalla" hidden>
+  <div class="tut-barra"><button class="tut-salir" data-tut-salir><svg width="7" height="11" viewBox="0 0 8 12" aria-hidden="true"><path d="M6 1L1 6l5 5" stroke="#ede4d3" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg> Salir</button><div class="tut-prog" data-tut-prog></div><span class="hueco"></span></div>
+  <div class="tut-cuerpo">
+    <h1>Las celdas suben de nivel</h1>
+    <p>Cada arrastre sube las celdas un nivel. Arriba del todo está la abeja: se cosecha y la celda vuelve a agua.</p>
+    <div class="esc-lista" id="esc-lista"></div>
+    <div style="flex-grow:1"></div>
+    <button class="primario" id="tut-empezar">Empezar</button>
+  </div>
+</section>
+
+<section id="tut-final" class="tut-pantalla" hidden>
+  <div class="tut-cuerpo tut-fin-cuerpo">
+    <div class="tut-prog" data-tut-prog></div>
+    <h1>Has terminado el tutorial</h1>
+    <p>Ya sabes lo básico. Vuelve al inicio y elige un modo: cada uno añade su propia presión, y su ficha te lo cuenta al entrar.</p>
+    <div class="tut-caja"><b>Un truco para las partidas con puntos:</b> cada cosecha sin fallar sube la <b class="racha">racha</b>, y cada cosecha vale más que la anterior. Fallar la pierde.</div>
+    <button class="primario" id="tut-inicio">Ir al inicio</button>
+  </div>
+</section>
+
 <div id="partida" hidden>
 
 <!-- La barra (v9): sustituye a la fila de modos. El modo se elige en el inicio. -->
@@ -532,6 +657,20 @@ footer .sem{font-variant-numeric:tabular-nums}
   <button id="partida-menu"><svg width="7" height="11" viewBox="0 0 8 12" aria-hidden="true"><path d="M6 1L1 6l5 5" stroke="#ede4d3" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>Menú</button>
   <span id="barra-modo"></span>
   <button id="semilla-btn" aria-label="Semilla">#</button>
+</div>
+
+<!-- El tutorial (v11.2): su barra, la tarjeta de guía, la tira de niveles, paso y máx
+     con el objetivo, y la línea de aviso. -->
+<div id="tut-cab" hidden>
+  <div class="tut-barra"><button class="tut-salir" data-tut-salir><svg width="7" height="11" viewBox="0 0 8 12" aria-hidden="true"><path d="M6 1L1 6l5 5" stroke="#ede4d3" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg> Salir</button><div class="tut-prog" data-tut-prog></div><span class="hueco"></span></div>
+  <div class="tut-guia"><p class="tit" id="tut-titulo"></p><p class="consejo" id="tut-consejo"></p></div>
+  <div class="tira" data-tira></div>
+  <div class="tut-datos">
+    <div class="tut-n" id="tut-paso-caja"><span>PASO</span><b id="tut-paso">1</b></div>
+    <div class="tut-n" id="tut-max-caja"><span>MÁX</span><b id="tut-max">1</b></div>
+    <div class="tut-obj"><span id="tut-frase"></span><small id="tut-progreso"></small></div>
+  </div>
+  <p class="tut-aviso" id="tut-aviso"></p>
 </div>
 
 <!-- Puzzle (v11): el objetivo y cuatro datos, en vez del marcador de los otros modos. -->
@@ -608,6 +747,10 @@ footer .sem{font-variant-numeric:tabular-nums}
   </div>
 </div>
 
+<!-- El tutorial (v11.2): el recuadro fijo del nivel 3 y los botones. -->
+<div id="tut-recuadro" hidden></div>
+<div id="tut-pie" hidden><button id="tut-deshacer">↶ Deshacer</button><button id="tut-reiniciar">↻ Reiniciar</button><button id="tut-pista" hidden>Pista</button></div>
+
 <div id="puzle-pie" hidden>
   <p class="pz-aviso" id="pz-aviso"></p>
   <div class="pz-botones"><button id="pz-deshacer">↶ Deshacer</button><button id="pz-reiniciar">↻ Reiniciar</button></div>
@@ -643,9 +786,11 @@ footer .sem{font-variant-numeric:tabular-nums}
         <div class="ico-paso" aria-hidden="true"><span style="color:#6d6150">1</span><span style="color:#9a8d77">2</span><span style="color:#ede4d3">3</span><span style="color:#F79A1F">4…</span></div>
         <p>Cada turno, el <b>paso</b> pide <b>una celda más</b>.</p>
       </div>
-      <div class="hoja-fila">
-        <svg width="78" height="16" viewBox="0 0 138 28" aria-hidden="true"><g stroke="#1c1710" stroke-width="1.5"><polygon points="11,1 22,6 22,20 11,26 0,20 0,6" fill="#2E4756"/><polygon points="34,1 45,6 45,20 34,26 23,20 23,6" fill="#6E5A32"/><polygon points="57,1 68,6 68,20 57,26 46,20 46,6" fill="#9C7F3C"/><polygon points="80,1 91,6 91,20 80,26 69,20 69,6" fill="#C8A14A"/><polygon points="103,1 114,6 114,20 103,26 92,20 92,6" fill="#E3C87E"/><polygon points="126,1 137,6 137,20 126,26 115,20 115,6" fill="#F79A1F"/></g></svg>
-        <p>De <b>agua (0)</b> a <b>abeja (<span data-const="MAX_LEVEL">5</span>)</b>. Arrastra abejas para <b>cosechar</b>: vuelven a agua y ganas puntos.</p>
+      <!-- La escalera con nombres (v11.2, T-49): seis hexágonos con número y nombre;
+           la tira la pinta app.js desde NOMBRE_NIVEL y LEVEL_COLORS. -->
+      <div class="basico-escalera">
+        <p>De <b>agua</b> a <b>abeja</b>. Las abejas se <b>cosechan</b> y vuelven a agua.</p>
+        <div class="tira grande" data-tira></div>
       </div>
       <!-- La racha (v11.1, T-48): multiplica los puntos de cada cosecha (× (1 + racha)). -->
       <div class="hoja-fila">
@@ -660,6 +805,7 @@ footer .sem{font-variant-numeric:tabular-nums}
         <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="11" fill="#ffd23f" stroke="rgba(0,0,0,.5)" stroke-width="1.5"/><text x="13" y="14" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="700" fill="#3a2a00">J</text></svg>
         <p>Pasa por una <b>gota</b> para coger su ítem: la gota se <b>evapora</b> en <span data-const="ITEM_TURNOS">2</span> turnos. Toca una ficha para ver qué hace.</p>
       </div>
+      <button class="basico-tutorial" id="basico-tutorial">Repetir el tutorial ›</button>
     </div>
   </div>
 
@@ -843,6 +989,8 @@ footer .sem{font-variant-numeric:tabular-nums}
 <script src="js/input.js"></script>
 <!-- Los niveles del modo Puzzle (v11): sólo datos, los escribe `npm run puzles -- meter`. -->
 <script src="js/puzles.js"></script>
+<!-- El tutorial (v11.2): sus ocho niveles, sólo datos, aparte de los de Puzzle. -->
+<script src="js/tutorial.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

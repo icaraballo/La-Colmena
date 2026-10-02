@@ -14,7 +14,8 @@ const fs = require('fs'), vm = require('vm'), path = require('path');
 // (el DOM lo toca initInput, que aquí nadie llama), y así pasoDeCadena, la
 // lógica del arrastre, se puede probar. render.js y app.js necesitan canvas y DOM.
 // Desde la v11 también puzles.js: los niveles del modo Puzzle (sólo datos).
-const FILES = ['constants.js', 'state.js', 'bot-tonto.js', 'guardado.js', 'input.js', 'puzles.js'];
+// Desde la v11.2 también tutorial.js: los ocho niveles del tutorial (sólo datos).
+const FILES = ['constants.js', 'state.js', 'bot-tonto.js', 'guardado.js', 'input.js', 'puzles.js', 'tutorial.js'];
 
 const src = FILES
   .map(f => fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8'))
@@ -42,7 +43,8 @@ const FOOTER = `
      PUZZLE_MARGEN, PUZZLE_ABIERTOS, PUZZLE_ABRE_CAPITULO, OBJETIVO_INFO, NOMBRE_MODO, FRASE_MODO, COLOR_MODO,
      crearPuzle, seguimientoPuzle, avanzarPuzle, cumplidoPuzle, rompePuzle, estrellasPuzle,
      objetivoPuzle, progresoPuzle, abiertosPuzzle, PUZLES_VERSION, CAPITULOS, PUZLES,
-     PROGRESO_PUZZLE_VERSION, progresoPuzzleVacio, leerProgresoPuzzle, apuntarPuzzle })
+     PROGRESO_PUZZLE_VERSION, progresoPuzzleVacio, leerProgresoPuzzle, apuntarPuzzle,
+     grupoMeseta, TUTORIAL, TUTORIAL_VERSION, PROGRESO_TUTORIAL_VERSION, leerProgresoTutorial, NOMBRE_NIVEL, LINEA_NIVEL })
 `;
 
 module.exports = vm.runInNewContext(src + FOOTER, {});

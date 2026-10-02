@@ -115,3 +115,15 @@ function apuntarPuzzle(p, id, resultado) {
   return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// El progreso del tutorial (v11.2, T-49)
+// ---------------------------------------------------------------------------
+// { v: 1, resuelto: N }: el último nivel resuelto, de 0 a `total` (el número de
+// niveles). Lo guarda app.js en localStorage (colmena.tutorial.v1). Quien sale a
+// medias retoma en el primero sin resolver. Si no vale, se empieza por el 1.
+const PROGRESO_TUTORIAL_VERSION = 1;
+function leerProgresoTutorial(g, total) {
+  return g && g.v === PROGRESO_TUTORIAL_VERSION && esEntero(g.resuelto) && g.resuelto >= 0 && g.resuelto <= total
+    ? g.resuelto : 0;
+}

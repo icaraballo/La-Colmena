@@ -123,6 +123,20 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   eq(recorre(s, [0, 1, 2]).cells.join(), '0,1,2', 'añadir: el dedo va sumando vecinas del mismo nivel');
   eq(recorre(s, [0, 2]).cells.join(), '0', 'una celda que no es vecina no entra');
   eq(recorre(s, [0, 1, 2, 3]).cells.join(), '0,1,2', 'con la cadena completa no entra ni una más');
+  // Por qué no entra (v11.2, para los avisos del tutorial), sin cambiar qué entra.
+  {
+    const c = recorre(s, [0, 1, 2]), porque = {};
+    eq(T.pasoDeCadena(s, c, 3, porque), c, 'llena: devuelve la misma cadena');
+    eq(porque.motivo, 'lleno', '…y dice «lleno»');
+    const m = tablero('libre', 1, { 1: 2 }); m.step = 3;
+    const c2 = recorre(m, [0]), p2 = {};
+    eq(T.pasoDeCadena(m, c2, 1, p2), c2, 'otro nivel: devuelve la misma cadena');
+    eq(p2.motivo, 'nivel', '…y dice «nivel»');
+    const p3 = {};
+    T.pasoDeCadena(s, recorre(s, [0]), 2, p3);
+    eq(p3.motivo, undefined, 'una celda que no es vecina no tiene motivo');
+    eq(T.pasoDeCadena(s, recorre(s, [0]), 1).cells.join(), '0,1', 'sin `porque` funciona igual');
+  }
 
   // Tránsito: con la cadena incompleta, volver atrás NO quita: pasa.
   const tr = recorre(s, [0, 1, 0, 5]);
@@ -1226,6 +1240,71 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   }
   eq(ganan, T.PUZLES.length, 'cada nivel de js/puzles.js se gana con su solución, con ★★★');
   eq(minimos, T.PUZLES.length, 'y su mínimo no ha bajado');
+}
+
+// --- el tutorial (v11.2, T-49) ----------------------------------------------------------------
+// Hecho a mano, pero comprobado como un nivel de verdad: cada uno se gana con su
+// solución, el resolutor no encuentra nada más corto y el comprobador la rejuega. Y
+// lo que cambia del contrato del motor: el límite opcional y grupoMeseta.
+{
+  eq(T.TUTORIAL_VERSION, 1, 'js/tutorial.js: versión 1');
+  eq(T.TUTORIAL.length, 8, 'el tutorial tiene ocho niveles');
+  eq(T.TUTORIAL.map(t => t.orden).join(), '1,2,3,4,5,6,7,8', 'en orden, del 1 al 8');
+  ok(T.TUTORIAL.every(t => /^C0-0\d$/.test(t.id) && !T.PUZLES.some(p => p.id === t.id)), 'ids C0-0N, que no están en js/puzles.js');
+  ok(T.TUTORIAL.every(t => t.limite === null), 'ninguno tiene límite');
+  ok(T.TUTORIAL.every(t => ['siempre', 'pista'].includes(t.guia)), 'la guía, siempre o con pista');
+  ok(T.TUTORIAL.slice(0, -1).every(t => typeof t.aprendido === 'string' && t.aprendido.length), 'cada uno, menos el último, dice lo aprendido');
+  const marcas = T.TUTORIAL.flatMap(t => [t.consejo, t.aprendido, t.recuadro, t.falloExtra].flat()).filter(Boolean).join(' ');
+  ok(!/\(\d\)/.test(marcas), 'los textos no escriben «(2)» a mano: usan la marca {2}');
+  const { buscar } = require('../puzles/buscador.js');
+  const { juegoDeNivel } = require('../puzles/colmena.js');
+  const { comprobar } = require('../puzles/comprobador.js');
+  let ganan = 0, minimos = 0, comprobados = 0;
+  for (const t of T.TUTORIAL) {
+    const s = T.crearPuzle(t);
+    for (const c of t.solucion) T.commitTurn(s, c);
+    if (s.puzle.resultado && s.puzle.resultado.gana && s.puzle.resultado.turnos === t.minimo) ganan++;
+    else console.log(`  ${t.id}: su solución no lo gana`);
+    const b = buscar(juegoDeNivel(t), { maxProf: t.minimo, maxEstados: 2e6, maxMs: 60000 });
+    if (b.resuelto && b.minimo === t.minimo) minimos++; else console.log(`  ${t.id}: el mínimo ya no es ${t.minimo}`);
+    if (comprobar({ nivel: t, solucion: t.solucion, minimo: t.minimo }) === 'ok') comprobados++;
+    else console.log(`  ${t.id}: el comprobador no lo acepta`);
+  }
+  eq(ganan, 8, 'cada nivel del tutorial se gana con su solución, en su mínimo');
+  eq(minimos, 8, 'el resolutor demuestra el mínimo de cada uno');
+  eq(comprobados, 8, 'el comprobador rejuega cada solución');
+  // Lo que se ve jugándolo, comprobado el 02-10 con el motor (LC-Tutorial §3).
+  const t7 = T.TUTORIAL[6], s7 = T.crearPuzle(t7);
+  T.commitTurn(s7, [17, 18, 19]);
+  ok(s7.puzle.resultado && s7.puzle.resultado.motivo === 'fallo', 'nivel 7: la línea recta por el centro acaba en fallo');
+  eq(T.grupoMeseta(s7).length, s7.puzle.resultado.meseta, '…y grupoMeseta mide la meseta del fallo');
+  const g7 = T.crearPuzle(t7);
+  for (const c of t7.solucion) T.commitTurn(g7, c);
+  eq(`${g7.last.type} ${g7.last.paso} ${g7.last.meseta}`, 'fallback 6 5', 'nivel 7: ganar deja el paso 6 sin sitio (máx 5), y lo dice el evento');
+  // Sin límite: jugar muchos turnos no pierde por límite.
+  const t4 = T.TUTORIAL[3], s4 = T.crearPuzle(t4);
+  eq(s4.puzle.limite, null, 'crearPuzle: `limite: null` es sin límite');
+  for (let k = 0; k < 12 && !s4.gameOver; k++) T.commitTurn(s4, [11]);
+  ok(!s4.puzle.resultado || s4.puzle.resultado.motivo !== 'limite', 'sin límite no se pierde por turnos');
+  eq(T.crearPuzle(T.PUZLES[0]).puzle.limite, T.PUZLES[0].minimo + T.PUZZLE_MARGEN, 'los niveles de Puzzle siguen con su límite');
+  // grupoMeseta mide siempre lo que biggestCoherentArea, en partidas de verdad.
+  let iguales = 0, vistos = 0;
+  for (let semilla = 1; semilla <= 40; semilla++) {
+    const s = T.createState(T.MODOS.CONTRARRELOJ, 'normal', semilla), r = T.rng(semilla);
+    for (let k = 0; k < 30 && !s.gameOver; k++) {
+      vistos++;
+      const g = T.grupoMeseta(s);
+      if (g.length === T.biggestCoherentArea(s) && new Set(g.map(i => s.height[i])).size <= 2) iguales++;
+      const c = T.elegirJugada(s, r); if (!c) break; T.commitTurn(s, c);
+    }
+  }
+  eq(iguales, vistos, `grupoMeseta mide lo que biggestCoherentArea (${vistos} paneles)`);
+  // El progreso guardado.
+  eq(T.leerProgresoTutorial({ v: 1, resuelto: 3 }, 8), 3, 'el progreso del tutorial se lee');
+  eq(T.leerProgresoTutorial({ v: 1, resuelto: 9 }, 8), 0, 'uno de más no vale: se empieza por el 1');
+  eq(T.leerProgresoTutorial({ v: 2, resuelto: 3 }, 8), 0, 'otra versión: se empieza por el 1');
+  eq(T.leerProgresoTutorial(null, 8), 0, 'sin nada guardado: el 1');
+  eq(T.LINEA_NIVEL.length, T.NOMBRE_NIVEL.length, 'una línea de la escalera por nivel');
 }
 
 // --- el motor no toca el DOM ---------------------------------------------------------------

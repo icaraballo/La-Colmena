@@ -25,6 +25,10 @@ const OPERCULADA = 4;
 const MAX_LEVEL  = 5;   // abeja lista: se cosecha
 
 const NOMBRE_NIVEL = ['agua', 'cera', 'huevo', 'larva', 'operculada', 'abeja'];
+// Una línea por nivel, de la colonia: la escalera del tutorial y de la ficha
+// Básico (v11.2, T-49). Texto, no reglas.
+const LINEA_NIVEL = ['vacía; también se juega', 'la obrera la prepara', 'la reina pone',
+                     'crece la cría', 'la cría, tapada', 'lista: se cosecha y vuelve a agua'];
 
 // Rampa de luminosidad 1→4 y un ámbar saturado en el 5 (DESIGN §2). La
 // información va en el brillo, no en el tono: se juzga "¿están a la misma
@@ -410,7 +414,7 @@ function tieneDificultad(modo) {
 // jugando en el móvil no hay forma de saber si lo que tienes delante es lo
 // último que se subió.
 // Se mantiene a mano y tiene que coincidir con package.json (ver Recetas).
-const VERSION = 'v11.1';
+const VERSION = 'v11.2';
 
 const NOMBRE_MODO = {
   contrarreloj: 'Contrarreloj',

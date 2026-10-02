@@ -7,7 +7,7 @@
 //   npm run puzles -- evaluar   [lote]     (re)calcula las notas
 //   npm run puzles -- resumen   [lote]     tabla por tipo, nota, mínimo y forma
 //   npm run puzles -- meter     <seleccion.json> [--capitulo N]   → js/puzles.js
-//   npm run puzles -- verificar                comprueba js/puzles.js con el motor actual
+//   npm run puzles -- verificar                comprueba js/puzles.js y js/tutorial.js con el motor actual
 //   npm run puzles -- repescar  [agotadas] [--segundos 60] [--hilos N]
 //                               repite con más paciencia lo que el resolutor no terminó
 //
@@ -532,16 +532,30 @@ async function repescar(a) {
   }
 }
 
+// El tutorial (v11.2, T-49) vive aparte, en js/tutorial.js, y no lo pisa `meter`;
+// pero se verifica igual, más el comprobador (está hecho a mano, no sale de un lote).
+function leerTutorialJs() {
+  const f = path.join(path.dirname(PUZLES_JS), 'tutorial.js');
+  if (!fs.existsSync(f)) return [];
+  return require('vm').runInNewContext(fs.readFileSync(f, 'utf8') + '\nTUTORIAL', {});
+}
 function verificar() {
+  const { comprobar } = require('./comprobador.js');
   const { PUZLES } = leerPuzlesJs();
-  if (!PUZLES.length) { console.log('js/puzles.js no tiene niveles.'); return; }
-  let mal = 0;
+  const TUTORIAL = leerTutorialJs();
+  if (!PUZLES.length && !TUTORIAL.length) { console.log('js/puzles.js no tiene niveles.'); return; }
+  let mal = 0, malT = 0;
   for (const p of PUZLES) {
     const r = [jugarConElJuego(p), minimoSigue(p)].find(x => x !== 'ok');
     if (r) { mal++; console.log(`  ${p.id}: ${r}`); }
   }
   console.log(`js/puzles.js: ${PUZLES.length} niveles, ${PUZLES.length - mal} bien.`);
-  if (mal) process.exit(1);
+  for (const t of TUTORIAL) {
+    const r = [comprobar({ nivel: t, solucion: t.solucion, minimo: t.minimo }), jugarConElJuego(t), minimoSigue(t)].find(x => x !== 'ok');
+    if (r) { malT++; console.log(`  ${t.id}: ${r}`); }
+  }
+  if (TUTORIAL.length) console.log(`js/tutorial.js: ${TUTORIAL.length} niveles, ${TUTORIAL.length - malT} bien.`);
+  if (mal || malT) process.exit(1);
 }
 
 // Las tablas del resumen: por tipo × nota, por mínimo y por forma.
