@@ -1,4 +1,4 @@
-// El tutorial, «Aprende a jugar» (v11.2, T-49; LC-Tutorial). Ocho niveles cortos, una
+// El tutorial, «Aprende a jugar» (v11.2, T-49; LC-DESIGN §23). Ocho niveles cortos, una
 // idea cada uno. Por dentro es el capítulo 0 de Puzzle: los mismos campos que un nivel
 // de js/puzles.js y las reglas de siempre. Por fuera no es Puzzle: no sale en el mapa,
 // no da estrellas y no tiene límite de turnos (`limite: null`). Va aparte de

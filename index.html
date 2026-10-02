@@ -32,7 +32,7 @@ button.on{background:#F79A1F;color:#231500;border-color:#F79A1F;font-weight:600}
    render.js.
    --------------------------------------------------------------------------- */
 #partida{
-  height:100%;display:flex;flex-direction:column;
+  height:100%;display:flex;flex-direction:column;position:relative;
   padding:env(safe-area-inset-top) 12px env(safe-area-inset-bottom);
 }
 
@@ -57,7 +57,7 @@ button.on{background:#F79A1F;color:#231500;border-color:#F79A1F;font-weight:600}
 .inicio-pie,.inicio-botones{padding:0 16px;display:flex;flex-direction:column;gap:8px;flex:none;
   width:100%;max-width:480px;margin:0 auto}
 .inicio-pie{padding-bottom:16px}
-.inicio-botones{padding:4px 16px 18px;scroll-snap-align:end}
+.inicio-botones{padding:4px 16px 12px;scroll-snap-align:end}
 /* El botón naranja (v11.1, T-48): siempre hay uno, y es lo siguiente que te
    toca. «Continuar partida» si hay una guardada; si no, «Jugar» el último modo;
    la primera vez, «Aprende a jugar». Lo rellena pintarPrincipal(). */
@@ -88,7 +88,7 @@ button.on{background:#F79A1F;color:#231500;border-color:#F79A1F;font-weight:600}
 .modo-fila svg{flex:none}
 /* Los modos, agrupados (v11.3): Modos de juego, Practicar y Aprender, con un título
    pequeño por grupo. Panal libre va en una fila más pequeña. Sin récords. */
-.modos-grupo{margin:8px 4px 0;font-size:10.5px;font-weight:400;letter-spacing:.08em;text-transform:uppercase;color:#8c7f6a}
+.modos-grupo{margin:4px 4px 0;font-size:10.5px;font-weight:400;letter-spacing:.08em;text-transform:uppercase;color:#8c7f6a}
 .modos-grupo:first-child{margin-top:0}
 .modo-fila.pequena{min-height:46px;padding:6px 14px;background:transparent}
 .modo-fila.pequena:hover{background:#1c1710}
@@ -265,6 +265,7 @@ footer .sem.copiada{color:#9fd67a}
 .encima{
   position:absolute;inset:0;display:grid;place-items:center;
   background:rgba(18,16,12,.88);backdrop-filter:blur(2px);z-index:5;
+  overflow-y:auto;touch-action:pan-y;place-items:safe center;
 }
 .encima .caja{text-align:center;padding:20px;width:100%;max-width:420px}
 #fin h2{font-size:19px;font-weight:600;margin-bottom:12px;color:#ede4d3}
@@ -439,7 +440,7 @@ footer .sem{font-variant-numeric:tabular-nums}
 #fin-volver:focus-visible{outline:2px solid #F79A1F;border-radius:6px}
 
 /* ---------------------------------------------------------------------------
-   El tutorial (v11.2, T-49; LC-Tutorial). Por dentro, un nivel de Puzzle; por
+   El tutorial (v11.2, T-49; LC-DESIGN §23). Por dentro, un nivel de Puzzle; por
    fuera, su propia barra (‹ Salir y ocho hexágonos de progreso), la tarjeta de
    guía, la tira de niveles, paso y máx grandes con el objetivo, la línea de
    aviso y, abajo, Deshacer, Reiniciar y Pista. El acento es el rosa de Puzzle.
@@ -531,6 +532,116 @@ footer .sem{font-variant-numeric:tabular-nums}
 .basico-escalera p{font-size:14px}
 .basico-tutorial{all:unset;flex:none;cursor:pointer;align-self:flex-start;font-size:14px;font-weight:600;color:#F28FB1;padding:4px 0}
 .basico-tutorial:focus-visible{outline:2px solid #F28FB1;border-radius:4px}
+
+/* ---------------------------------------------------------------------------
+   Tus partidas y el código de cada partida (v11.4, T-50; LC-DESIGN §24).
+   En el inicio, al bajar a los modos (opción B del boceto): «⌃ Inicio» para volver
+   a la portada y, a la derecha de «Modos de juego», Tus partidas y «#».
+   --------------------------------------------------------------------------- */
+.modos-subir{display:flex;flex:none}
+/* A 360×640 el tramo de los modos no cabe entero (mide 640 justos con la fila
+   nueva): la fila de la flecha se queda arriba al bajar del todo, para que se vea. */
+.modos-subir{position:sticky;top:0;z-index:2;margin:0 -16px;padding:0 16px 4px;
+  background:linear-gradient(#12100C 85%,rgba(18,16,12,0))}
+.subir{display:flex;align-items:center;gap:6px;min-height:44px;padding:0 14px 0 10px;background:#1c1710;
+  border:1px solid #43372a;border-radius:22px;font-size:13px;font-weight:600;color:#ede4d3}
+.subir:hover{background:#241d14}
+.modos-titulo{display:flex;align-items:center;justify-content:space-between;margin:4px 0 0 4px}
+.modos-titulo .modos-grupo{margin:0}
+.modos-iconos{display:flex;gap:8px}
+.ico-btn{display:grid;place-items:center;width:44px;height:44px;padding:0;background:#1c1710;border:1px solid #43372a;
+  border-radius:12px;font-size:17px;font-weight:700;color:#ede4d3}
+.ico-btn:hover{background:#241d14}
+.ico-btn.abierto{background:#2a2218;border-color:#F79A1F}
+/* El «#» del inicio: el mismo panel flotante, más ancho y con velo. */
+#pop-velo{position:fixed;inset:0;z-index:19;background:rgba(18,16,12,.55)}
+#pop.semilla-inicio{width:min(300px,calc(100vw - 32px));max-width:none;padding:12px 14px;border-radius:14px}
+#pop.semilla-inicio b{font-size:14px;margin-bottom:6px}
+#pop input.codigo{font-family:ui-monospace,Menlo,monospace;font-size:15px;padding:9px 10px;text-transform:uppercase}
+#pop input.codigo::placeholder{text-transform:none;color:#6d6150}
+#pop input.codigo.vale{border-color:#9fd67a}
+#pop .sem-estado{display:block;min-height:18px;margin:-2px 0 8px;font-size:13px;font-weight:600}
+#pop .sem-aviso{display:block;margin:0 0 8px;font-size:12px;color:#8c7f6a}
+#pop .jugar-codigo{width:100%;min-height:44px;border:0;border-radius:12px;font-size:15px;font-weight:700;background:#2a2218;color:#6d6150}
+#pop .jugar-codigo.vale{background:#F79A1F;color:#231500}
+/* La pantalla final: el código con «Copiar» y «Repetir este panal». */
+.fin-codigo{display:flex;align-items:center;gap:10px;width:100%;max-width:320px;min-height:44px;margin:0 auto 14px;
+  padding:0 12px;background:#1c1710;border:1px solid #43372a;border-radius:10px}
+.fin-codigo:hover{background:#241d14}
+.fin-codigo .lbl-sem{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#8c7f6a}
+.fin-codigo .cod{flex-grow:1;text-align:left;font-family:ui-monospace,Menlo,monospace;font-size:14px;color:#c9b99c;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fin-codigo .acc{font-size:13px;font-weight:600;color:#c9b99c}
+.fin-codigo.copiado{border-color:#9fd67a}
+.fin-codigo.copiado .cod,.fin-codigo.copiado .acc{color:#9fd67a}
+#fin-repetir{all:unset;cursor:pointer;display:block;margin:10px auto 0;font-size:14px;color:#9a8d77;padding:6px 10px}
+#fin-repetir:hover{color:#c9b99c}
+#fin-repetir:focus-visible{outline:2px solid #F79A1F;border-radius:6px}
+/* Tus partidas: la barra, las pestañas (se desplazan sin barra si no caben),
+   Normal / Difícil y la lista, que es lo único que se desplaza en vertical. */
+#historial{height:100%;display:flex;flex-direction:column;max-width:520px;margin:0 auto;
+  padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.hist-barra{display:flex;align-items:center;gap:10px;padding:8px 14px 0;flex:none}
+#hist-menu{display:flex;align-items:center;gap:5px;min-height:34px;padding:4px 10px 4px 8px;font-size:13px}
+.hist-barra h1{flex-grow:1;font-size:17px;font-weight:700;color:#ede4d3}
+.hist-tabs{display:flex;gap:6px;padding:12px 14px 4px;overflow-x:auto;flex:none;touch-action:pan-x;scrollbar-width:none}
+.hist-tabs::-webkit-scrollbar{display:none}
+.hist-tabs button{flex:none;min-height:36px;padding:0 12px;border-radius:999px;font-size:13px;font-weight:600;white-space:nowrap;
+  background:transparent;color:#9a8d77;border:1px solid #33291d}
+.hist-tabs button:hover{background:#1c1710}
+.hist-tabs button[aria-selected="true"]{background:#2a2218;color:var(--c);border-color:var(--c)}
+.hist-dif{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin:8px 14px 0;border:1px solid #33291d;border-radius:10px;overflow:hidden;flex:none}
+.hist-dif button{min-height:38px;border:0;border-radius:0;font-size:13px;font-weight:600;background:transparent;color:#9a8d77}
+.hist-dif button+button{border-left:1px solid #33291d}
+.hist-dif button:hover{background:#1c1710}
+.hist-dif button[aria-checked="true"]{background:#2a2218;color:#ede4d3}
+.hist-aviso{margin:8px 14px 0;font-size:12px;line-height:1.35;color:#8c7f6a;text-align:center;flex:none}
+.hist-lista{flex:1 1 auto;min-height:0;overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;
+  padding:12px 14px 20px;display:flex;flex-direction:column;gap:8px}
+.hist-lista > *{flex:none}
+.hist-puntos{display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;color:#6d6150}
+.hist-puntos span{width:6px;height:6px;border-radius:3px;background:#43372a}
+.hist-puntos span.actual{width:18px;background:var(--c)}
+.hist-puntos em{font-style:normal;margin-left:4px}
+.hist-record{background:#18200f;border:1.5px solid #9fd67a;border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+.hist-rec-cab{display:flex;justify-content:space-between;align-items:center}
+.hist-rec-et{font-size:12px;font-weight:700;color:#173404;background:#9fd67a;border-radius:6px;padding:2px 8px}
+.hist-rec-v{font-size:34px;font-weight:700;color:#9fd67a;letter-spacing:-.02em;line-height:1.15;font-variant-numeric:tabular-nums}
+.hist-rec-v small{font-size:14px;font-weight:400;letter-spacing:0}
+.hist-rec-det{font-size:12.5px;color:#c9b99c}
+.hist-rec-antes{font-size:12px;color:#8c7f6a;margin-top:2px}
+.hist-fecha{font-size:12px;color:#8c7f6a;white-space:nowrap}
+.hist-card{background:#1c1710;border:1px solid #33291d;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:3px}
+.hist-card.estrella{border-color:#7a6418}
+.hist-modo{font-size:12px;font-weight:700}
+.hist-f1{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.hist-v{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums}
+.hist-v small{font-size:13px;font-weight:400;color:#9a8d77}
+.hist-dcha{display:flex;align-items:center;gap:2px}
+.hist-estrella{display:grid;place-items:center;width:36px;height:36px;margin:-8px 0 -8px -6px;padding:0;background:transparent;border:0}
+.hist-estrella:hover{background:transparent}
+.hist-estrella path{fill:none;stroke:#6d6150}
+.hist-estrella[aria-pressed="true"] path{fill:#ffd23f;stroke:#ffd23f}
+.hist-det{font-size:12px;color:#9a8d77}
+.hist-f3{display:flex;align-items:center;gap:8px;margin-top:5px}
+.hist-cod{flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:36px;padding:0 10px;
+  background:#12100C;border:1px solid #2a2218;border-radius:8px;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;color:#c9b99c}
+.hist-cod:hover{background:#17140f}
+.hist-cod span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist-cod svg{flex:none;color:#8c7f6a}
+.hist-cod.copiado{color:#9fd67a;border-color:#4d6b38}
+.hist-jugar{flex:none;min-height:36px;padding:0 12px;border-radius:8px;font-size:13px;font-weight:600;white-space:nowrap}
+.hist-record .hist-cod{min-height:40px;font-size:13px;border-color:#33291d}
+.hist-jugar.verde{min-height:40px;padding:0 14px;background:#9fd67a;border:0;color:#173404;font-weight:700}
+.hist-jugar.verde:hover{background:#b0e08e}
+.hist-ultimas{display:flex;justify-content:space-between;margin:8px 2px 0;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#8c7f6a}
+.hist-vacio{border:1px dashed #43372a;border-radius:14px;padding:22px 16px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+.hist-vacio b{font-size:15px;font-weight:700;color:#ede4d3}
+.hist-vacio span{font-size:13px;color:#9a8d77}
+.hist-vacio .primario{min-height:44px;padding:0 24px;font-size:14px}
+.hist-pie{margin:8px 4px 0;font-size:11.5px;line-height:1.45;color:#6d6150;text-align:center}
+.aviso-abajo{position:fixed;left:14px;right:14px;bottom:calc(20px + env(safe-area-inset-bottom));max-width:480px;margin:0 auto;z-index:25;
+  background:#2a2218;border:1px solid #9fd67a;border-radius:12px;padding:10px 12px;font-size:13px;color:#ede4d3}
 </style>
 </head>
 <body>
@@ -567,9 +678,20 @@ footer .sem{font-variant-numeric:tabular-nums}
 
   <div class="inicio-botones" id="modos">
     <!-- Agrupados (v11.3; en la v11.1, Partidas y Niveles por separado): Modos de juego,
-         con Puzzle dentro, Practicar y Aprender. El historial («Pronto»)
-         se quitó hasta que exista (idea del §9). -->
-    <h2 class="modos-grupo">Modos de juego</h2>
+         con Puzzle dentro, Practicar y Aprender. El historial («Pronto», hasta la
+         v11.1) es desde la v11.4 el icono de Tus partidas, junto al título. -->
+    <!-- v11.4 (T-50, opción B): «⌃ Inicio» vuelve a la portada; a la derecha del
+         título, Tus partidas y «#» (jugar un código). -->
+    <div class="modos-subir">
+      <button class="subir" id="subir-inicio"><svg width="14" height="9" viewBox="0 0 22 14" aria-hidden="true"><path d="M3 11l8-8 8 8" stroke="currentColor" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Inicio</button>
+    </div>
+    <div class="modos-titulo">
+      <h2 class="modos-grupo">Modos de juego</h2>
+      <div class="modos-iconos">
+        <button class="ico-btn" id="abrir-historial" aria-label="Tus partidas"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#ede4d3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3 4v4.5h4.5"/><path d="M12 7.5V12l3 2"/></svg></button>
+        <button class="ico-btn" id="inicio-semilla" aria-label="Jugar una semilla">#</button>
+      </div>
+    </div>
     <button class="modo-fila" data-modo="contrarreloj">
       <svg width="34" height="30" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#F79A1F"/><g stroke="#1c1710" stroke-width="3" fill="none" stroke-linecap="round"><circle cx="23" cy="21" r="9"/><path d="M23 15v6l4 3"/></g></svg>
       <span class="txt"><span class="nom" data-nombre="contrarreloj"></span><span class="frase" data-frase="contrarreloj"></span></span>
@@ -612,6 +734,23 @@ footer .sem{font-variant-numeric:tabular-nums}
     <span id="inicio-version"></span>
   </div>
 </section>
+
+<!-- Tus partidas (v11.4, T-50): una pestaña por modo (también deslizando), Normal /
+     Difícil, el récord arriba en verde y las últimas con su código, «Jugar ésta» y
+     la estrella. La lista la pinta pintarHistorial() desde historial.js. -->
+<section id="historial" hidden>
+  <div class="hist-barra">
+    <button id="hist-menu"><svg width="7" height="11" viewBox="0 0 8 12" aria-hidden="true"><path d="M6 1L1 6l5 5" stroke="#ede4d3" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>Menú</button>
+    <h1>Tus partidas</h1>
+  </div>
+  <div class="hist-tabs" id="hist-tabs" role="tablist" aria-label="Modo"></div>
+  <div class="hist-dif" id="hist-dif" role="radiogroup" aria-label="Dificultad">
+    <button role="radio" data-dif="normal" aria-checked="true">Normal</button><button role="radio" data-dif="dificil" aria-checked="false">Difícil</button>
+  </div>
+  <p class="hist-aviso" id="hist-aviso" hidden></p>
+  <div class="hist-lista" id="hist-lista"></div>
+</section>
+<div class="aviso-abajo" id="aviso-abajo" role="status" hidden></div>
 
 <!-- Los capítulos de Puzzle (v11): todos en una pantalla que se desliza. Los pinta
      pintarCapitulos() desde CAPITULOS y PUZLES (js/puzles.js); qué está abierto lo
@@ -737,12 +876,16 @@ footer .sem{font-variant-numeric:tabular-nums}
       <div class="marcador" id="fin-score"></div>
       <div class="record" id="fin-record"></div>
       <div class="detalle" id="fin-detalle"></div>
+      <!-- El código de la partida (v11.4): tocarlo lo copia. -->
+      <button class="fin-codigo" id="fin-codigo" hidden><span class="lbl-sem">Semilla</span><span class="cod" id="fin-cod"></span><span class="acc" id="fin-cod-acc">Copiar</span></button>
       <div class="fin-botones">
         <button id="fin-menu" class="secundario">‹ Menú</button>
         <button id="fin-otra" class="primario">Otra vez</button>
       </div>
       <!-- Puzzle (v11): volver a los capítulos, además de los dos botones. -->
       <button id="fin-volver" hidden>‹ Volver a los capítulos</button>
+      <!-- v11.4: la misma semilla otra vez («Otra vez» es semilla nueva). -->
+      <button id="fin-repetir" hidden>Repetir este panal</button>
     </div>
   </div>
 </div>
@@ -979,12 +1122,15 @@ footer .sem{font-variant-numeric:tabular-nums}
   </div>
 </div>
 
+<div id="pop-velo" hidden></div>
 <div id="pop" hidden></div>
 
 <script src="js/constants.js"></script>
 <script src="js/state.js"></script>
 <script src="js/bot-tonto.js"></script>
 <script src="js/guardado.js"></script>
+<!-- El código de partida y el historial (v11.4): funciones puras. -->
+<script src="js/historial.js"></script>
 <script src="js/render.js"></script>
 <script src="js/input.js"></script>
 <!-- Los niveles del modo Puzzle (v11): sólo datos, los escribe `npm run puzles -- meter`. -->

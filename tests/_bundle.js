@@ -15,7 +15,8 @@ const fs = require('fs'), vm = require('vm'), path = require('path');
 // lógica del arrastre, se puede probar. render.js y app.js necesitan canvas y DOM.
 // Desde la v11 también puzles.js: los niveles del modo Puzzle (sólo datos).
 // Desde la v11.2 también tutorial.js: los ocho niveles del tutorial (sólo datos).
-const FILES = ['constants.js', 'state.js', 'bot-tonto.js', 'guardado.js', 'input.js', 'puzles.js', 'tutorial.js'];
+// Desde la v11.4 también historial.js: el código de partida y el historial (puro).
+const FILES = ['constants.js', 'state.js', 'bot-tonto.js', 'guardado.js', 'historial.js', 'input.js', 'puzles.js', 'tutorial.js'];
 
 const src = FILES
   .map(f => fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8'))
@@ -44,7 +45,10 @@ const FOOTER = `
      crearPuzle, seguimientoPuzle, avanzarPuzle, cumplidoPuzle, rompePuzle, estrellasPuzle,
      objetivoPuzle, progresoPuzle, abiertosPuzzle, PUZLES_VERSION, CAPITULOS, PUZLES,
      PROGRESO_PUZZLE_VERSION, progresoPuzzleVacio, leerProgresoPuzzle, apuntarPuzzle,
-     grupoMeseta, TUTORIAL, TUTORIAL_VERSION, PROGRESO_TUTORIAL_VERSION, leerProgresoTutorial, NOMBRE_NIVEL, LINEA_NIVEL })
+     grupoMeseta, TUTORIAL, TUTORIAL_VERSION, PROGRESO_TUTORIAL_VERSION, leerProgresoTutorial, NOMBRE_NIVEL, LINEA_NIVEL,
+     PREFIJO_MODO, LETRA_DIF, MODOS_HISTORIAL, HISTORIAL_POR_LISTA, HISTORIAL_VERSION, historialVacio,
+     jugadasValidas, codigoPartida, leerCodigo, entradaDePartida, listaDe, todas, recordDe, apuntarEnHistorial,
+     marcarEstrella, leerHistorial, rejugarPartida, EXTRAS_GUARDADO, NOMBRE_DIF, VERSION })
 `;
 
 module.exports = vm.runInNewContext(src + FOOTER, {});

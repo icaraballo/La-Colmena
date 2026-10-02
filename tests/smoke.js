@@ -1355,5 +1355,220 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   eq(enJs, 'v' + menor + (parche !== '0' ? '.' + parche : ''), 'VERSION coincide con package.json');
 }
 
+// --- historial de partidas y código de partida (v11.4, T-50; LC-DESIGN §24) ----------
+{
+  // 1. El código, ida y vuelta: los cinco modos con código, sus dificultades y
+  // semillas de los extremos y al azar.
+  const azar = T.rng(77);
+  for (const modo of ['contrarreloj', 'invierno', 'contagio', 'expansion', 'libre'])
+    for (const dif of T.tieneDificultad(modo) ? ['normal', 'dificil'] : ['normal'])
+      for (const semilla of [0, 1, 4294967295, Math.floor(azar() * 4294967296)]) {
+        const c = T.codigoPartida(modo, dif, semilla);
+        const l = T.leerCodigo(c);
+        ok(l && l.modo === modo && l.dificultad === dif && l.semilla === semilla && !l.sinModo,
+           `el código ${c} se lee de vuelta (${modo} ${dif} ${semilla})`);
+      }
+  eq(T.codigoPartida('contrarreloj', 'normal', 4069568398), 'CR-N-4069568398', 'el código de Contrarreloj normal');
+  eq(T.codigoPartida('invierno', 'dificil', 2210457781), 'IN-D-2210457781', 'el de Invierno difícil');
+  eq(T.codigoPartida('libre', 'normal', 7), 'PL-7', 'Panal libre, sin dificultad');
+  eq(T.codigoPartida('puzzle', 'normal', 7), null, 'Puzzle no tiene código');
+  ok(Object.values(T.PREFIJO_MODO).every(p => /^[A-Z]{2}$/.test(p)) &&
+     new Set(Object.values(T.PREFIJO_MODO)).size === Object.keys(T.PREFIJO_MODO).length, 'los prefijos son dos letras y distintos');
+
+  // 2. Lo que tolera y lo que no.
+  const igual = (t, modo, dif, semilla) => {
+    const l = T.leerCodigo(t);
+    ok(l && l.modo === modo && l.dificultad === dif && l.semilla === semilla, `«${t}» se lee como ${modo} ${dif} ${semilla}`);
+  };
+  igual('cr-n-123', 'contrarreloj', 'normal', 123);
+  igual('  CR-N-123  ', 'contrarreloj', 'normal', 123);
+  igual('CR N 123', 'contrarreloj', 'normal', 123);
+  igual('ex-d-0', 'expansion', 'dificil', 0);
+  igual('pl 55', 'libre', 'normal', 55);
+  const solo = T.leerCodigo(' 4069568398 ');
+  ok(solo && solo.sinModo && solo.semilla === 4069568398 && !solo.modo, 'un número solo vale, sin modo');
+  for (const malo of ['CR-X-1', 'XX-N-1', 'CR-N-4294967296', 'CR-N-', 'PL-N-1', 'CR-1', 'hola', '', 'CR_N_1',
+                      'CR-N-01', 'CR-N-1 extra', '4294967296', '-1', 'CR--N-1', 'PZ-N-1'])
+    eq(T.leerCodigo(malo), null, `«${malo}» no es un código`);
+  eq(T.leerCodigo(undefined), null, 'nada no es un código');
+
+  // Entradas hechas a mano para las listas (sólo lo que miran).
+  let n = 0;
+  const entrada = (modo, dif, extra = {}) => ({
+    id: 'e' + (n++), modo, dificultad: dif, semilla: n, version: 'v11.4',
+    fecha: new Date(Date.UTC(2026, 9, 1) + n * 60000).toISOString(),
+    puntos: 1000, turnos: 50, duracion: 100, rachaMax: 1, jugadaMax: 3, estrella: false,
+    ...(modo === 'contagio' ? { contagio: { bruto: 1000, marcadas: 0, resta: 0 } } : {}),
+    ...(modo === 'expansion' ? { expansion: { completado: true, abiertas: 18, total: 18 } } : {}),
+    ...extra,
+  });
+
+  // 3. La poda: 25 por lista sin estrella; el récord no se borra; las de estrella, aparte.
+  let h = T.historialVacio();
+  const primera = entrada('contrarreloj', 'normal', { puntos: 99999 });   // la más antigua y el récord
+  T.apuntarEnHistorial(h, primera);
+  for (let k = 0; k < 29; k++) T.apuntarEnHistorial(h, entrada('contrarreloj', 'normal', { puntos: 100 + k }));
+  eq(T.listaDe(h, 'contrarreloj', 'normal').length, T.HISTORIAL_POR_LISTA, '30 partidas en una lista: quedan 25');
+  ok(h.partidas.includes(primera), 'el récord no se borra aunque sea la más antigua');
+  eq(T.recordDe(h, 'contrarreloj', 'normal'), primera, '…y sigue siendo el récord');
+  ok(!h.partidas.some(e => e.puntos >= 100 && e.puntos <= 104), 'se borran las más antiguas sin estrella');
+  T.apuntarEnHistorial(h, entrada('contrarreloj', 'dificil'));
+  eq(T.listaDe(h, 'contrarreloj', 'dificil').length, 1, 'cada dificultad es su lista');
+  T.apuntarEnHistorial(h, h.partidas[1]);
+  eq(T.listaDe(h, 'contrarreloj', 'normal').length, 25, 'apuntar dos veces la misma no la duplica');
+
+  h = T.historialVacio();
+  const tres = [];
+  for (let k = 0; k < 30; k++) {
+    const e = entrada('invierno', 'normal', { puntos: 100 + k });
+    T.apuntarEnHistorial(h, e);
+    if (k < 3) { tres.push(e); T.marcarEstrella(h, e.id, true); }
+  }
+  eq(T.listaDe(h, 'invierno', 'normal').length, 28, 'con 3 de estrella: quedan 28');
+  ok(tres.every(e => h.partidas.includes(e)), 'las de estrella no se borran');
+  const lista = T.listaDe(h, 'invierno', 'normal');
+  ok(lista.slice(0, 3).every(e => e.estrella) && lista[0] === tres[2], 'las de estrella salen primero, la más reciente arriba');
+  ok(lista.slice(3).every((e, k, l) => !k || Date.parse(l[k - 1].fecha) >= Date.parse(e.fecha)),
+     'las demás, de la más reciente a la más antigua');
+  T.marcarEstrella(h, tres[0].id, false);
+  eq(T.listaDe(h, 'invierno', 'normal').length, 27, 'desmarcar una con 25 ya llenas poda una');
+  ok(!h.partidas.includes(tres[0]), '…la más antigua sin estrella, que ahora es ella');
+  eq(T.marcarEstrella(h, 'no-existe', true), false, 'marcar una que no está no hace nada');
+
+  // 4. El récord.
+  h = T.historialVacio();
+  eq(T.recordDe(h, 'contagio', 'normal'), null, 'sin partidas no hay récord');
+  const a = entrada('contagio', 'normal', { puntos: 500 }), b = entrada('contagio', 'normal', { puntos: 900 });
+  const c = entrada('contagio', 'normal', { puntos: 900 }), d = entrada('contagio', 'normal', { puntos: 300 });
+  [a, b, c, d].forEach(e => T.apuntarEnHistorial(h, e));
+  eq(T.recordDe(h, 'contagio', 'normal'), b, 'el récord es la de más puntos y, con empate, la más antigua');
+  eq(T.recordDe(h, 'contagio', 'dificil'), null, '…de su dificultad');
+  const x1 = entrada('expansion', 'normal', { turnos: 80, expansion: { completado: false, abiertas: 14, total: 18 } });
+  T.apuntarEnHistorial(h, x1);
+  eq(T.recordDe(h, 'expansion', 'normal'), null, 'Expansión sin completadas no tiene récord');
+  const x2 = entrada('expansion', 'normal', { turnos: 120 }), x3 = entrada('expansion', 'normal', { turnos: 95 });
+  T.apuntarEnHistorial(h, x2); T.apuntarEnHistorial(h, x3);
+  eq(T.recordDe(h, 'expansion', 'normal'), x3, 'en Expansión, menos turnos entre las completadas');
+  eq(T.todas(h).length, 7, '«Todas» las junta');
+  ok(T.todas(h).every((e, k, l) => !k || Date.parse(l[k - 1].fecha) >= Date.parse(e.fecha)), '…de la más reciente a la más antigua');
+
+  // 5. Leer lo guardado: una entrada rota se descarta sola; unas jugadas rotas se quitan.
+  const buena = entrada('contrarreloj', 'normal', { turnos: 2, jugadas: [[1], [2, 3]], tiempos: [0, 2.5], tiempoFinal: 9 });
+  const g = JSON.parse(JSON.stringify({ v: 1, partidas: [
+    buena, { ...buena, id: 'x1', modo: 'puzzle' }, { ...buena, id: 'x2', semilla: -1 }, { ...buena, id: 'x3', fecha: 'ayer' },
+    { ...buena, id: 'x4', puntos: 'mucho' }, null, 7, { ...buena, id: buena.id },
+    entrada('contagio', 'normal', { id: 'x5', contagio: null }),
+    { ...buena, id: 'j1', jugadas: [[1], [99]] }, { ...buena, id: 'j2', tiempos: [3, 1] },
+    { ...buena, id: 'j3', jugadas: [[1]] , tiempos: [0] }, { ...buena, id: 'j4', tiempoFinal: 1 },
+  ] }));
+  const leido = T.leerHistorial(g);
+  eq(leido.partidas.length, 5, 'un historial con entradas rotas conserva las buenas');
+  ok(leido.partidas[0].jugadas && leido.partidas[0].jugadas.length === 2, 'la buena conserva sus jugadas');
+  ok(['j1', 'j2', 'j3', 'j4'].every(id => { const e = leido.partidas.find(x => x.id === id); return e && !e.jugadas && !e.tiempos; }),
+     'unas jugadas rotas se quitan y la entrada se queda');
+  eq(T.leerHistorial({ v: 2, partidas: [buena] }).partidas.length, 0, 'otra versión del historial no se lee');
+  eq(T.leerHistorial(null).partidas.length, 0, 'sin historial, vacío');
+  eq(T.leerHistorial(JSON.parse(JSON.stringify(leido))).partidas.length, 5, 'leído y vuelto a leer, igual');
+
+  // 6. La repetición: partidas del bot tonto jugadas como en la interfaz (el reloj en
+  // fotogramas de ≤ 0,25 s, la duración que se apunta en cada jugada) y rejugadas con
+  // un tick por turno. Mismos puntos, turnos y final.
+  const jugarComoLaInterfaz = (modo, dif, semilla) => {
+    const s = T.createState(modo, dif, semilla);
+    s.jugadas = []; s.tiempos = [];
+    const R = T.rng(semilla ^ 0x5bd1e995), ruido = T.rng(semilla + 11);
+    let duracion = 0, guarda = 0;
+    while (!s.gameOver && guarda++ < 3000) {
+      // Lo que tarda en pensar: 2,5 s con ruido, en fotogramas como frame().
+      let piensa = 1 + ruido() * 3;
+      while (piensa > 0 && !s.gameOver) {
+        const dt = Math.min(0.25, piensa, 1 / 60 + ruido() * 0.25);
+        piensa -= dt;
+        if (s.arrancado && !s.gameOver) duracion += dt;
+        T.tick(s, dt);
+      }
+      if (s.gameOver) break;
+      // Con la danza vale cualquier longitud; el tonto sólo busca la del paso.
+      let cells = T.elegirJugada(s, R);
+      for (let L = s.step; !cells && s.danza && L >= 1; L--) cells = T.buscarJugada(s, L, undefined, R);
+      if (!cells || !T.commitTurn(s, cells)) break;
+      s.jugadas.push(cells.slice()); s.tiempos.push(duracion);
+      s.streakMax = Math.max(s.streakMax || 0, s.streak); s.jugadaMax = Math.max(s.jugadaMax || 0, cells.length);
+    }
+    return { s, duracion };
+  };
+  for (const modo of T.MODOS_HISTORIAL) for (const dif of ['normal', 'dificil']) {
+    let bien = 0, total = 0, conJugadas = 0;
+    for (let semilla = 1; semilla <= 50; semilla++) {
+      const { s, duracion } = jugarComoLaInterfaz(modo, dif, semilla);
+      if (!s.gameOver) continue;
+      total++;
+      const e = T.entradaDePartida(s, { id: 'r' + semilla, fecha: new Date().toISOString(), duracion, version: T.VERSION });
+      if (e.jugadas) conJugadas++;
+      const r = T.rejugarPartida(JSON.parse(JSON.stringify(e)));
+      if (r && r.gameOver && r.score === s.score && r.turn === s.turn) bien++;
+      else console.error(`    ${modo} ${dif} semilla ${semilla}: ${s.score}/${s.turn} → ${r && r.score}/${r && r.turn} ${r && r.gameOver}`);
+    }
+    eq(total, 50, `${modo} ${dif}: las 50 partidas del bot terminan`);
+    eq(conJugadas, total, `${modo} ${dif}: todas llevan sus jugadas`);
+    eq(bien, total, `${modo} ${dif}: rejugar da los mismos puntos, turnos y final`);
+  }
+  eq(T.rejugarPartida({ modo: 'invierno', dificultad: 'normal', semilla: 1 }), null, 'sin jugadas no se rejuega');
+  const { s: s1, duracion: d1 } = jugarComoLaInterfaz('invierno', 'normal', 3);
+  const e1 = T.entradaDePartida(s1, { id: 'q', fecha: 'x', duracion: d1, version: 'v' });
+  e1.jugadas[0] = [0, 1, 2, 3, 4, 5, 6, 7];
+  eq(T.rejugarPartida(e1), null, 'una jugada que no vale no se rejuega');
+
+  // Lo que se apunta de cada modo.
+  eq(T.entradaDePartida(T.createState('invierno', 'normal', 1), { duracion: 0 }), null, 'una partida sin terminar no se apunta');
+  const libre = T.createState('libre', 'normal', 1); libre.gameOver = true;
+  eq(T.entradaDePartida(libre, { duracion: 0 }), null, 'Panal libre no entra');
+  const cg = jugarComoLaInterfaz('contagio', 'normal', 4);
+  const ecg = T.entradaDePartida(cg.s, { id: 'cg', fecha: 'x', duracion: cg.duracion, version: 'v' });
+  ok(ecg.contagio && ecg.puntos === Math.max(0, ecg.contagio.bruto - ecg.contagio.resta), 'Contagio apunta los puntos ya con las huellas restadas');
+  const ex = jugarComoLaInterfaz('expansion', 'normal', 4);
+  const eex = T.entradaDePartida(ex.s, { id: 'ex', fecha: 'x', duracion: ex.duracion, version: 'v' });
+  ok(eex.expansion && eex.expansion.total === T.CERRADAS_EXPANSION.length && typeof eex.expansion.completado === 'boolean', 'Expansión apunta si completó y las abiertas');
+
+  // 7. Continuar: una partida guardada a medias conserva jugadas y tiempos, y la
+  // completa sigue cuadrando.
+  {
+    const modo = 'contrarreloj', semilla = 21;
+    const { s: entera } = jugarComoLaInterfaz(modo, 'normal', semilla);
+    // La misma partida, cortada a la mitad, guardada y restaurada.
+    const mitad = Math.floor(entera.jugadas.length / 2);
+    const s = T.createState(modo, 'normal', semilla);
+    s.jugadas = []; s.tiempos = [];
+    let antes = 0;
+    for (let k = 0; k < mitad; k++) {
+      T.tick(s, entera.tiempos[k] - antes); antes = entera.tiempos[k];
+      T.commitTurn(s, entera.jugadas[k]); s.jugadas.push(entera.jugadas[k]); s.tiempos.push(entera.tiempos[k]);
+    }
+    const r = T.restaurarPartida(JSON.parse(JSON.stringify(T.serializarPartida(s, { duracion: antes }))));
+    ok(r && r.jugadas.length === mitad && r.tiempos.length === mitad && r.tiempos[mitad - 1] === antes,
+       'una partida restaurada conserva sus jugadas y sus tiempos');
+    for (let k = mitad; k < entera.jugadas.length; k++) {
+      T.tick(r, entera.tiempos[k] - antes); antes = entera.tiempos[k];
+      T.commitTurn(r, entera.jugadas[k]); r.jugadas.push(entera.jugadas[k]); r.tiempos.push(entera.tiempos[k]);
+    }
+    const final = T.rejugarPartida({ modo, dificultad: 'normal', semilla, jugadas: r.jugadas, tiempos: r.tiempos, tiempoFinal: 1e6 });
+    ok(final && final.score === entera.score && final.turn === entera.turn, '…y la repetición de la partida completa cuadra');
+    // Las jugadas que no valen se pierden solas; la partida sigue.
+    const g2 = JSON.parse(JSON.stringify(T.serializarPartida(s, { duracion: antes })));
+    g2.estado.jugadas = [[999]];
+    const r2 = T.restaurarPartida(g2);
+    ok(r2 && r2.jugadas === null && r2.tiempos === null && r2.turn === s.turn, 'unas jugadas guardadas rotas se pierden solas');
+    const g3 = JSON.parse(JSON.stringify(T.serializarPartida(s, { duracion: antes })));
+    delete g3.estado.jugadas; delete g3.estado.tiempos;
+    const r3 = T.restaurarPartida(g3);
+    ok(r3 && !r3.jugadas && !r3.tiempos && r3.turn === s.turn, 'una partida de antes de la v11.4 sigue, sin jugadas');
+  }
+
+  // historial.js no toca el DOM ni localStorage (como guardado.js).
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'historial.js'), 'utf8')
+    .replace(/\/\/.*$/gm, '');
+  ok(!/document|localStorage|window|Math\.random|Date\.now/.test(src), 'historial.js no toca DOM, localStorage, el azar ni el reloj');
+}
+
 console.log(`${total - fallos}/${total} comprobaciones correctas`);
 if (fallos) process.exit(1);

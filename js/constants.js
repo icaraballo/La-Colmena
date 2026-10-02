@@ -414,7 +414,7 @@ function tieneDificultad(modo) {
 // jugando en el móvil no hay forma de saber si lo que tienes delante es lo
 // último que se subió.
 // Se mantiene a mano y tiene que coincidir con package.json (ver Recetas).
-const VERSION = 'v11.3';
+const VERSION = 'v11.4';
 
 const NOMBRE_MODO = {
   contrarreloj: 'Contrarreloj',
@@ -447,6 +447,18 @@ const COLOR_MODO = {
   // juego (el verde agua se confundía con Invierno; el coral, con Contrarreloj).
   puzzle: '#F28FB1',
 };
+
+// El código de una partida (v11.4, T-50; LC-DESIGN §24): el modo, la dificultad y
+// la semilla en una pieza que se copia y se pega, «CR-N-4069568398». Panal libre no
+// tiene dificultad («PL-…»); Puzzle y el tutorial no tienen código (niveles fijos).
+// Ningún prefijo usa nombres del original (regla 2).
+const PREFIJO_MODO = { contrarreloj: 'CR', invierno: 'IN', contagio: 'CG', expansion: 'EX', libre: 'PL' };
+const LETRA_DIF = { normal: 'N', dificil: 'D' };
+// Tus partidas (v11.4): las pestañas, en este orden, y cuántas partidas sin
+// estrella se guardan de cada modo y dificultad. Panal libre no puntúa y Puzzle
+// tiene sus estrellas en su pantalla: no entran.
+const MODOS_HISTORIAL = [MODOS.CONTRARRELOJ, MODOS.INVIERNO, MODOS.CONTAGIO, MODOS.EXPANSION];
+const HISTORIAL_POR_LISTA = 25;
 
 // Segundos que da una cosecha de L celdas: L·(L+3)/2 (DESIGN §9).
 function segundosCosecha(L) { return L * (L + 3) / 2; }

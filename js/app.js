@@ -41,8 +41,15 @@ let ultimoFrame = 0;
 function nuevaPartida(semilla) {
   const seed = semilla !== undefined ? semilla
              : (Date.now() ^ (Math.random() * 0x7fffffff)) >>> 0;
-  return createState(partida.modo, partida.dificultad, seed);
+  const s = createState(partida.modo, partida.dificultad, seed);
+  // Las jugadas y sus tiempos (v11.4, T-50), para el historial: viajan con el
+  // estado, como streakMax, para que se guarden con la partida a medias.
+  s.jugadas = []; s.tiempos = [];
+  return s;
 }
+
+// El código de la partida de ahora (v11.4): «CR-N-4069568398». Puzzle no tiene.
+const codigoActual = () => codigoPartida(S.modo, S.dificultad, S.seed);
 
 // Copiar al portapapeles. `navigator.clipboard` sólo existe en contexto seguro
 // (el juego se sirve por https), así que hay un plan B con un textarea suelto.
@@ -103,7 +110,9 @@ function setHtml(id, v) {
 let popAncla = null;
 function cerrarPop() {
   const p = document.getElementById('pop');
-  p.hidden = true; p.innerHTML = ''; popAncla = null;
+  if (popAncla) popAncla.classList.remove('abierto');
+  p.hidden = true; p.innerHTML = ''; p.className = ''; popAncla = null;
+  document.getElementById('pop-velo').hidden = true;
 }
 function abrirPop(ancla, contenido) {
   const p = document.getElementById('pop');
@@ -171,46 +180,100 @@ function describirPartida(s) {
 
 // La semilla: copiar la de ahora o jugar otra. Es lo que le faltaba a QA para
 // poder reproducir un bug raro, y de paso deja rejugar una partida que salió
-// buena (T-29).
-function panelSemilla() {
+// buena (T-29). Desde la v11.4 (T-50) es el código de la partida, con su modo y su
+// dificultad, y hay dos sitios: el «#» de la partida (copiar el de ahora o jugar
+// otro; un número solo, en el modo de ahora) y el del inicio (pegar uno y jugarlo:
+// antes de jugar dice qué modo y qué dificultad son).
+function panelSemilla(desde) {
+  const enInicio = desde === 'inicio';
   const caja = document.createElement('div');
   const t = document.createElement('b');
-  t.textContent = 'Semilla';
+  t.textContent = enInicio ? 'Jugar una semilla' : 'Semilla';
   const input = document.createElement('input');
-  input.value = String(S.seed);
-  input.inputMode = 'numeric';
-  input.setAttribute('aria-label', 'Semilla de la partida');
-  const fila = document.createElement('div');
-  fila.className = 'difs';
+  input.className = 'codigo';
+  input.value = enInicio ? '' : codigoActual();
+  input.placeholder = 'CR-N-4069568398';
+  input.inputMode = 'text';
+  input.autocomplete = 'off';
+  input.setAttribute('autocapitalize', 'characters');
+  input.spellcheck = false;
+  input.setAttribute('aria-label', enInicio ? 'Código de la partida' : 'Código de la partida de ahora');
+  const estado = document.createElement('span');
+  estado.className = 'sem-estado';
+  estado.setAttribute('aria-live', 'polite');
 
   const jugar = document.createElement('button');
   jugar.textContent = 'Jugar';
-  const copiar = document.createElement('button');
-  copiar.textContent = 'Copiar';
   const nota = document.createElement('span');
   nota.className = 'nota';
-  nota.textContent = 'Misma semilla, mismo panal. Se juega en el modo y la dificultad de ahora.';
+  nota.textContent = enInicio
+    ? 'El código lleva el modo y la dificultad. Lo encuentras en tus partidas y al acabar cada una.'
+    : 'El código lleva el modo y la dificultad. Un número solo se juega en el modo de ahora.';
+
+  // Lo que se ha reconocido, mientras se escribe o se pega.
+  const leido = () => {
+    const r = leerCodigo(input.value);
+    if (r && r.sinModo && enInicio) return { r: null, txt: 'Le falta el modo: pega el código entero.', color: '#ff7a45' };
+    if (!input.value.trim()) return { r: null, txt: enInicio ? 'Pega el código que te han pasado.' : '', color: '#8c7f6a' };
+    if (!r) return { r: null, txt: 'Eso no es un código de semilla.', color: '#ff7a45' };
+    const modo = r.sinModo ? S.modo : r.modo, dif = r.sinModo ? S.dificultad : r.dificultad;
+    return { r, txt: describirModoDif(modo, dif) + (r.sinModo ? ' (el de ahora)' : ''), color: COLOR_MODO[modo] };
+  };
+  const actualizar = () => {
+    const { r, txt, color } = leido();
+    estado.textContent = txt;
+    estado.style.color = color;
+    input.classList.toggle('vale', !!r);
+    jugar.classList.toggle('vale', !!r);
+  };
+  input.addEventListener('input', actualizar);
 
   jugar.addEventListener('click', () => {
-    // Una semilla es un entero sin signo de 32 bits: lo que createState espera.
-    const n = Number(input.value.trim());
-    if (!Number.isInteger(n) || n < 0 || n > 0xffffffff) {
-      nota.textContent = 'Eso no es una semilla: tiene que ser un número entero.';
-      input.focus();
-      return;
-    }
+    const { r } = leido();
+    if (!r) { actualizar(); input.focus(); return; }
     cerrarPop();
-    restart(n >>> 0);
-  });
-  copiar.addEventListener('click', async () => {
-    copiar.textContent = await copiarTexto(input.value.trim()) ? '¡Copiada!' : 'No se pudo';
-    setTimeout(() => { copiar.textContent = 'Copiar'; }, 1200);
+    if (enInicio) { jugarCodigo(r); return; }
+    // En la partida: un código juega su modo y su dificultad, aunque sean otros.
+    if (!r.sinModo) {
+      partida.modo = r.modo;
+      partida.dificultad = r.dificultad;
+      guardarUltimoModo(r.modo);
+    }
+    restart(r.semilla);
   });
   input.addEventListener('keydown', e => { if (e.key === 'Enter') jugar.click(); });
 
-  fila.appendChild(jugar); fila.appendChild(copiar);
-  caja.appendChild(t); caja.appendChild(input); caja.appendChild(fila); caja.appendChild(nota);
+  caja.appendChild(t); caja.appendChild(input); caja.appendChild(estado);
+  if (enInicio) {
+    // Jugar sustituye a la guardada (§5.36), como «Empezar» en una ficha.
+    const g = leerPartida();
+    if (g) {
+      const aviso = document.createElement('span');
+      aviso.className = 'sem-aviso';
+      aviso.textContent = `Jugar sustituye tu partida guardada de ${NOMBRE_MODO[g.s.modo]} (turno ${g.s.turn}).`;
+      caja.appendChild(aviso);
+    }
+    jugar.className = 'jugar-codigo';
+    caja.appendChild(jugar);
+  } else {
+    const fila = document.createElement('div');
+    fila.className = 'difs';
+    const copiar = document.createElement('button');
+    copiar.textContent = 'Copiar';
+    copiar.addEventListener('click', async () => {
+      copiar.textContent = await copiarTexto(input.value.trim()) ? '¡Copiada!' : 'No se pudo';
+      setTimeout(() => { copiar.textContent = 'Copiar'; }, 1200);
+    });
+    fila.appendChild(jugar); fila.appendChild(copiar);
+    caja.appendChild(fila);
+  }
+  caja.appendChild(nota);
+  actualizar();
   return caja;
+}
+// «Contrarreloj · Normal»; Panal libre, sin dificultad.
+function describirModoDif(modo, dif) {
+  return NOMBRE_MODO[modo] + (tieneDificultad(modo) ? ` · ${NOMBRE_DIF[dif]}` : '');
 }
 
 // Qué es esta ficha. En el móvil la leyenda está plegada a símbolos, así que
@@ -414,12 +477,21 @@ function pintarFin() {
   colocarFin(abajo);
   el.classList.remove('tut-bien', 'tut-fallo');
   document.getElementById('fin-volver').hidden = !cfg.puzle || tutorial;
+  // El código y «Repetir este panal» (v11.4): sólo en los modos con código.
+  document.getElementById('fin-codigo').hidden = !!cfg.puzle;
+  document.getElementById('fin-repetir').hidden = !!cfg.puzle;
   el.classList.toggle('puzle', !!cfg.puzle);
   if (tutorial) { pintarFinTutorial(); return; }
   if (cfg.puzle) { mostrar('puzle-pie', !abajo); pintarFinPuzle(); el.hidden = false; return; }
   setText('fin-menu', '‹ Menú');
   setText('fin-otra', 'Otra vez');
   borrarPartida();   // acabada no se continúa
+  apuntarPartida();
+  const cod = document.getElementById('fin-codigo');
+  cod.classList.remove('copiado');
+  setText('fin-cod', codigoActual());
+  setText('fin-cod-acc', 'Copiar');
+  cod.setAttribute('aria-label', `Copiar el código de esta partida, ${codigoActual()}`);
 
   document.getElementById('fin-titulo').textContent = tituloFin(cfg);
 
@@ -477,14 +549,27 @@ function mostrar(id, si) {
   const el = document.getElementById(id);
   if (el.hidden === si) el.hidden = !si;
 }
-// #fin vive dentro de #wrap, encima del panal. Debajo (v11.2) pasa a ir después de
-// #wrap, en el flujo: el hueco del panal encoge y el panal se vuelve a medir solo
+// #fin va encima de la partida, de la barra para abajo (v11.4, como el boceto del
+// final: con el código y «Repetir este panal» ya no cabía en el hueco del panal, y
+// en Contrarreloj los botones quedaban cortados). En Puzzle sigue encima del panal,
+// dentro de #wrap, donde cabe y deja ver el objetivo. Debajo (v11.2) pasa a ir después
+// de #wrap, en el flujo: el hueco del panal encoge y el panal se vuelve a medir solo
 // (ResizeObserver), así la tarjeta no lo tapa.
 function colocarFin(abajo) {
   const fin = document.getElementById('fin'), wrap = document.getElementById('wrap');
+  const partidaEl = document.getElementById('partida');
   fin.classList.toggle('abajo', abajo);
-  if (abajo && fin.parentElement === wrap) wrap.after(fin);
-  else if (!abajo && fin.parentElement !== wrap) wrap.appendChild(fin);
+  if (abajo) {
+    if (fin.previousElementSibling !== wrap) wrap.after(fin);
+    fin.style.top = '';
+  } else if (S.puzle) {
+    if (fin.parentElement !== wrap) wrap.appendChild(fin);
+    fin.style.top = '';
+  } else {
+    if (fin.parentElement !== partidaEl || fin.nextElementSibling) partidaEl.appendChild(fin);
+    const barra = document.getElementById('barra');
+    fin.style.top = (barra.offsetTop + barra.offsetHeight + 4) + 'px';
+  }
 }
 
 function tituloFin(cfg) {
@@ -696,7 +781,10 @@ function trasElFallo(e) {
   return `<b>¡Velutina!</b> ${d.tiles.length} celdas a cera · ${CALMA_TRAS_VELUTINA} turnos de calma`;
 }
 
-function contar(eventos) {
+// `cells`, la jugada: el tamaño de la cosecha no se lee de S.last, que el fallo del
+// mismo turno sustituye (v11.4; hasta entonces, en Expansión, una cosecha que abría
+// y dejaba el panal sin sitio para el paso daba un error y el turno no se guardaba).
+function contar(eventos, cells) {
   const items = [], fallo = [];
   const now = performance.now();
   let hayCascada = false;
@@ -734,7 +822,7 @@ function contar(eventos) {
     }
     // Expansión (v10): lo que abre la cosecha, y si se pierde algo, por qué.
     if (e.type === 'abre') {
-      const n = e.tiles.length, pierde = e.gana - n, cosecha = S.last.path.length;
+      const n = e.tiles.length, pierde = e.gana - n, cosecha = cells.length;
       fallo.push(n === 0 ? `Cosecha de ${cosecha}: no toca el borde, no abre nada`
         : `Cosecha de ${cosecha}: ${n === 1 ? 'abres 1 celda' : `abres ${n} celdas`}` +
           (pierde > 0 ? ` (${pierde === 1 ? 'otra no tocaba' : `otras ${pierde} no tocaban`} el borde)` : ''));
@@ -785,6 +873,9 @@ function onCommit(cells) {
     // Resolver un nivel (hoy, C1-01 desde «Aprende a jugar») deja de ser «primera vez».
     if (S.puzle.resultado && S.puzle.resultado.gana) marcarYaJugado();
   }
+  // Las jugadas y la duración al jugarlas (v11.4), para el historial y para poder
+  // repetir la partida: en Contrarreloj el reloj es parte de ella.
+  if (!S.puzle && S.jugadas && S.tiempos) { S.jugadas.push(cells.slice()); S.tiempos.push(duracion); }
   // Máximos de la partida, sólo para la pantalla de fin: se llevan aquí para no
   // meter datos de interfaz en el estado del motor.
   S.streakMax = Math.max(S.streakMax || 0, S.streak);
@@ -795,7 +886,7 @@ function onCommit(cells) {
       x: layout.cx[i], y: layout.cy[i] - Math.max(0, antes[i] - 1) * LIFT, t0: t + k * 60,
     }));
   }
-  contar(S.eventos);
+  contar(S.eventos, cells);
   guardarPartida();
 }
 
@@ -857,7 +948,7 @@ function prepararPartida(estado, dur) {
   abejas.length = 0;
   logItems = ''; logItemsEn = -1; logFallo = ''; logFalloEn = -1;
   falloEn = -1; plagaNueva = null; cascada = null;
-  setText('seed', `semilla ${S.seed}`);
+  setText('seed', `semilla ${codigoActual() || S.seed}`);
   const tutorial = enTutorial(), esPuzle = !!S.puzle && !tutorial;
   document.getElementById('partida').classList.toggle('es-puzle', esPuzle);
   document.getElementById('partida').classList.toggle('es-tutorial', tutorial);
@@ -1087,7 +1178,7 @@ function pintarFinPuzle() {
 }
 
 // ===========================================================================
-// El tutorial, «Aprende a jugar» (v11.2, T-49; LC-Tutorial)
+// El tutorial, «Aprende a jugar» (v11.2, T-49; LC-DESIGN §23)
 // ===========================================================================
 // Ocho niveles de js/tutorial.js que por dentro son niveles de Puzzle (crearPuzle,
 // las reglas de siempre, deshacer) y por fuera no: sin límite ni estrellas, con su
@@ -1351,13 +1442,15 @@ function pintarEscaleras() {
 // Al abrir se ve el inicio; de él cuelgan los modos. La ficha de cada modo no
 // es otra pantalla: es la hoja abierta sobre el inicio. Al recargar se vuelve
 // siempre al inicio; la partida a medias, con «Continuar» (v9.1).
-let pantalla = 'inicio';     // 'inicio' | 'partida' | 'puzles' (los capítulos de Puzzle, v11)
+let pantalla = 'inicio';     // 'inicio' | 'partida' | 'puzles' (los capítulos de Puzzle, v11) | 'historial' (v11.4) | …
 let hojaAbierta = null;      // null | { desde: 'ficha' | 'partida', modo, pestana }
 
 // T-30 (compartir por enlace) entrará directo aquí con mostrarPantalla('partida').
-function mostrarPantalla(p) {
+// `bajado`: el inicio con los modos a la vista (al volver de Tus partidas, v11.4).
+function mostrarPantalla(p, { bajado = false } = {}) {
   pantalla = p;
   document.getElementById('inicio').hidden = p !== 'inicio';
+  document.getElementById('historial').hidden = p !== 'historial';
   document.getElementById('partida').hidden = p !== 'partida';
   document.getElementById('puzles').hidden = p !== 'puzles';
   document.getElementById('tut-escalera').hidden = p !== 'escalera';
@@ -1367,10 +1460,14 @@ function mostrarPantalla(p) {
   // cada una se vuelve a medir. Como sólo se ve una, no chocan.
   if (p === 'partida') resize();
   else if (p === 'puzles') pintarCapitulos();
+  else if (p === 'historial') pintarHistorial();
   else if (p === 'inicio') {
-    // Se entra siempre por la portada, con el panal a la vista (v10.2).
-    document.getElementById('inicio').scrollTop = 0;
-    pintarPrincipal(); medirFondo(); marcarBajado();
+    // Se entra por la portada, con el panal a la vista (v10.2); desde Tus partidas,
+    // con los modos bajados, donde estaba su icono (v11.4).
+    const el = document.getElementById('inicio');
+    pintarPrincipal(); medirFondo();
+    el.scrollTop = bajado ? el.scrollHeight : 0;
+    marcarBajado();
   }
 }
 
@@ -1396,7 +1493,7 @@ function esNuevo() {
   try {
     if (localStorage.getItem(YA_JUGADO_KEY) === '1') return false;
     // Quien jugó antes de la v11.1 no tiene la marca, pero sí alguna de éstas.
-    return ![RECORD_KEY, PARTIDA_KEY, PUZZLE_KEY, BASICO_KEY].some(k => localStorage.getItem(k) !== null);
+    return ![RECORD_KEY, PARTIDA_KEY, PUZZLE_KEY, BASICO_KEY, HISTORIAL_KEY].some(k => localStorage.getItem(k) !== null);
   } catch { return false; }
 }
 function marcarYaJugado() {
@@ -1449,10 +1546,16 @@ function marcarBajado() {
   const el = document.getElementById('inicio');
   el.classList.toggle('bajado', el.scrollTop > 24);
 }
+const sinAnimar = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 function verModos() {
   const el = document.getElementById('inicio');
-  const reducir = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  el.scrollTo({ top: el.scrollHeight, behavior: reducir ? 'auto' : 'smooth' });
+  el.scrollTo({ top: el.scrollHeight, behavior: sinAnimar() ? 'auto' : 'smooth' });
+}
+// «⌃ Inicio» (v11.4): la gemela de verModos, para volver a la portada (donde está
+// «Continuar partida») sin recargar. Arrastrar hacia abajo también sube.
+function subirAlInicio() {
+  const el = document.getElementById('inicio');
+  el.scrollTo({ top: 0, behavior: sinAnimar() ? 'auto' : 'smooth' });
 }
 
 // «‹ Menú» (de la barra o de la pantalla final): se guarda y se vuelve, sin
@@ -1471,9 +1574,10 @@ function entrarEnPartida(preparar) {
     preparar();
     document.getElementById('partida').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, easing: 'ease-out' });
   };
-  const inicio = document.getElementById('inicio');
-  if (!inicio.animate) { entrar(); return; }
-  inicio.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 250, easing: 'ease-in' }).onfinish = entrar;
+  // Se funde la pantalla de la que se sale: el inicio o, desde la v11.4, Tus partidas.
+  const desde = document.getElementById(pantalla === 'historial' ? 'historial' : 'inicio');
+  if (!desde.animate) { entrar(); return; }
+  desde.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 250, easing: 'ease-in' }).onfinish = entrar;
 }
 
 // «Continuar partida»: la guardada, tal cual se dejó, sin pasar por la ficha.
@@ -1815,6 +1919,277 @@ function gestosHoja(hoja) {
 }
 
 // ===========================================================================
+// Tus partidas (v11.4, T-50; LC-DESIGN §24)
+// ===========================================================================
+// Las partidas terminadas de Contrarreloj, Invierno, Contagio y Expansión, con su
+// código y sus jugadas: 25 por modo y dificultad, y el récord y las de estrella no
+// se borran nunca. Qué se apunta, la poda, el récord y las listas los dice
+// historial.js; aquí, dónde se guarda y la pantalla.
+// Si localStorage falla, el historial vive en memoria (vale mientras no se recargue).
+const HISTORIAL_KEY = 'colmena.historial.v1';
+const ESTRELLA_KEY = 'colmena.estrella.v1';
+let historial = historialVacio();
+function leerHistorialGuardado() {
+  try { historial = leerHistorial(JSON.parse(localStorage.getItem(HISTORIAL_KEY))); }
+  catch { historial = historialVacio(); }
+}
+// Si no cabe, se quitan las jugadas de las más antiguas (primero las sin estrella)
+// y se reintenta: antes se pierde el detalle que la partida. En memoria siguen enteras.
+function guardarHistorial() {
+  try { localStorage.setItem(HISTORIAL_KEY, JSON.stringify(historial)); return; } catch { /* abajo */ }
+  const copia = JSON.parse(JSON.stringify(historial));
+  const con = copia.partidas.filter(e => e.jugadas)
+    .sort((a, b) => (a.estrella - b.estrella) || (Date.parse(a.fecha) - Date.parse(b.fecha)));
+  for (const e of con) {
+    delete e.jugadas; delete e.tiempos; delete e.tiempoFinal;
+    try { localStorage.setItem(HISTORIAL_KEY, JSON.stringify(copia)); return; } catch { /* la siguiente */ }
+  }
+}
+
+// Al pintar el final por primera vez: una marca en el estado evita apuntarla dos veces.
+function apuntarPartida() {
+  if (S.enHistorial) return;
+  S.enHistorial = true;
+  const e = entradaDePartida(S, {
+    id: Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36),
+    fecha: new Date().toISOString(), duracion, version: VERSION,
+  });
+  if (!e) return;
+  apuntarEnHistorial(historial, e);
+  guardarHistorial();
+}
+
+// Jugar un código (el «#» del inicio, «Jugar ésta»): como «Empezar» en una ficha,
+// ese modo, esa dificultad y esa semilla. No cambia la dificultad elegida del modo:
+// es una partida suelta.
+function jugarCodigo({ modo, dificultad, semilla }) {
+  marcarBasicoVisto();
+  marcarYaJugado();
+  guardarUltimoModo(modo);
+  partida.modo = modo;
+  partida.dificultad = tieneDificultad(modo) ? dificultad : 'normal';
+  cerrarPop();
+  cerrarHoja();
+  entrarEnPartida(() => restart(semilla));
+}
+
+// Lo que se ve de la pantalla: la pestaña («todas» o un modo) y la dificultad.
+const histVista = { tab: 'todas', dif: 'normal' };
+const HIST_PESTANAS = ['todas', ...MODOS_HISTORIAL];
+const colorPestana = t => t === 'todas' ? '#ede4d3' : COLOR_MODO[t];
+
+function irAHistorial() {
+  const u = ultimoModo();
+  histVista.tab = MODOS_HISTORIAL.includes(u) ? u : 'todas';
+  histVista.dif = histVista.tab === 'todas' ? 'normal' : dificultadElegida(histVista.tab);
+  cerrarPop();
+  mostrarPantalla('historial');
+  const el = document.getElementById('historial');
+  if (el.animate) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
+  document.getElementById('hist-lista').scrollTop = 0;
+}
+
+// «hoy 21:40», «ayer», «30-09» (este año), «30-09-2025». Hora local.
+function fechaCorta(iso) {
+  const d = new Date(iso), hoy = new Date();
+  const dia = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const dias = Math.round((dia(hoy) - dia(d)) / 86400000);
+  const dos = n => String(n).padStart(2, '0');
+  if (dias === 0) return `hoy ${dos(d.getHours())}:${dos(d.getMinutes())}`;
+  if (dias === 1) return 'ayer';
+  return `${dos(d.getDate())}-${dos(d.getMonth() + 1)}` + (d.getFullYear() === hoy.getFullYear() ? '' : `-${d.getFullYear()}`);
+}
+const miles = n => n.toLocaleString('es-ES');
+
+// El número grande de una partida y su unidad: puntos; en Expansión, los turnos
+// con el panal completo y, sin completar, las abiertas.
+function valorPartida(e) {
+  if (!e.expansion) return [miles(e.puntos), 'puntos'];
+  return e.expansion.completado ? [miles(e.turnos), 'turnos'] : [`${e.expansion.abiertas} de ${e.expansion.total}`, 'abiertas'];
+}
+// La línea de detalle, según el modo. Todo sale de la entrada (regla 8).
+function detallePartida(e, rachaLarga = false) {
+  const racha = `${rachaLarga ? 'racha máxima' : 'racha'} ${e.rachaMax}`;
+  let txt;
+  if (e.contagio) {
+    const n = e.contagio.marcadas;
+    txt = `${e.turnos} turnos · ` + (n ? `${n} ${n === 1 ? 'huella' : 'huellas'} (−${miles(e.contagio.resta)})` : 'sin huellas');
+  } else if (e.expansion) {
+    txt = e.expansion.completado ? `panal completo · ${formatoDuracion(e.duracion)}`
+      : `sin completar · ${e.expansion.abiertas} de ${e.expansion.total} abiertas`;
+  } else txt = `${e.turnos} turnos · ${formatoDuracion(e.duracion)} · ${racha}`;
+  // Una partida de otra versión: el mismo código puede dar otra partida (§2.4).
+  return txt + (e.version !== VERSION ? ` · ${e.version}` : '');
+}
+
+const ICO_COPIAR = '<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>';
+const ICO_ESTRELLA = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.9z" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+
+// La fila del código (se copia al tocarlo) y «Jugar ésta».
+function filaCodigo(e, clase = '') {
+  const cod = codigoPartida(e.modo, e.dificultad, e.semilla);
+  return `<div class="hist-f3"><button class="hist-cod" data-accion="copiar" data-cod="${cod}" aria-label="Copiar el código ${cod}">` +
+    `<span>${cod}</span>${ICO_COPIAR}</button><button class="hist-jugar${clase}" data-accion="jugar">Jugar ésta</button></div>`;
+}
+
+function tarjetaPartida(e, conModo) {
+  const [v, u] = valorPartida(e);
+  const modo = conModo ? `<span class="hist-modo" style="color:${COLOR_MODO[e.modo]}">${describirModoDif(e.modo, e.dificultad)}</span>` : '';
+  return `<div class="hist-card${e.estrella ? ' estrella' : ''}" data-id="${e.id}">${modo}` +
+    `<div class="hist-f1"><span class="hist-v">${v} <small>${u}</small></span><span class="hist-dcha">` +
+    `<button class="hist-estrella" data-accion="estrella" aria-pressed="${e.estrella}" aria-label="${e.estrella ? 'Quitar de guardadas' : 'Guardar esta partida'}">${ICO_ESTRELLA}</button>` +
+    `<span class="hist-fecha">${fechaCorta(e.fecha)}</span></span></div>` +
+    `<div class="hist-det">${detallePartida(e)}</div>${filaCodigo(e)}</div>`;
+}
+
+// El récord de un modo y dificultad, arriba en verde (§5.4). Si colmena.records.v1
+// (de antes del historial) tiene uno mejor, se enseña ese número, sin código.
+function tarjetaRecord(modo, dif) {
+  const rec = recordDe(historial, modo, dif);
+  const menos = !!CONFIG_MODO[modo].abre;
+  const antiguo = leerRecords()[`${modo}.${dif}`];
+  const ganaAntiguo = Number.isFinite(antiguo) && antiguo > 0 &&
+    (!rec || (menos ? antiguo < rec.turnos : antiguo > rec.puntos));
+  if (!rec && !ganaAntiguo) return '';
+  const cab = f => `<div class="hist-rec-cab"><span class="hist-rec-et">Tu récord</span><span class="hist-fecha">${f}</span></div>`;
+  if (ganaAntiguo)
+    return `<div class="hist-record">${cab('')}<div class="hist-rec-v">${miles(antiguo)} <small>${menos ? 'turnos' : 'puntos'}</small></div>` +
+      '<p class="hist-rec-antes">De antes del historial: no tiene semilla guardada.</p></div>';
+  const [v, u] = valorPartida(rec);
+  return `<div class="hist-record" data-id="${rec.id}">${cab(fechaCorta(rec.fecha))}<div class="hist-rec-v">${v} <small>${u}</small></div>` +
+    `<div class="hist-rec-det">${detallePartida(rec, true)}</div>${filaCodigo(rec, ' verde')}</div>`;
+}
+
+function pintarHistorial() {
+  const { tab, dif } = histVista;
+  const conModo = tab === 'todas';
+  // Las pestañas.
+  document.getElementById('hist-tabs').innerHTML = HIST_PESTANAS.map(t =>
+    `<button role="tab" data-tab="${t}" aria-selected="${t === tab}" tabindex="${t === tab ? 0 : -1}" style="--c:${colorPestana(t)}">${t === 'todas' ? 'Todas' : NOMBRE_MODO[t]}</button>`).join('');
+  const activa = document.querySelector('#hist-tabs [aria-selected="true"]');
+  if (activa && activa.scrollIntoView) activa.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+  // Normal / Difícil: un filtro, no cambia la dificultad elegida para jugar.
+  const difs = document.getElementById('hist-dif');
+  difs.hidden = conModo;
+  difs.querySelectorAll('[data-dif]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.dif === dif)));
+  // Si hay partida guardada, jugar una de aquí la sustituye.
+  const g = leerPartida();
+  const aviso = document.getElementById('hist-aviso');
+  aviso.hidden = !g;
+  if (g) aviso.textContent = `Jugar una de aquí sustituye tu partida guardada de ${NOMBRE_MODO[g.s.modo]} (turno ${g.s.turn}).`;
+
+  const k = HIST_PESTANAS.indexOf(tab);
+  let html = `<div class="hist-puntos" aria-hidden="true" style="--c:${colorPestana(tab)}">` +
+    HIST_PESTANAS.map((_, j) => `<span${j === k ? ' class="actual"' : ''}></span>`).join('') +
+    '<em>desliza para cambiar de modo</em></div>';
+  const lista = conModo ? todas(historial) : listaDe(historial, tab, dif);
+  const record = conModo ? '' : tarjetaRecord(tab, dif);
+  html += record;
+  if (!lista.length && !record) {
+    html += conModo
+      ? '<div class="hist-vacio"><b>Aún no has terminado ninguna partida.</b></div>'
+      : `<div class="hist-vacio"><b>Aún no has jugado ${NOMBRE_MODO[tab]} ${NOMBRE_DIF[dif].toLowerCase()}</b>` +
+        `<span>Tu primera partida saldrá aquí, con su código para compartirla.</span><button class="primario" data-accion="ficha">Jugar</button></div>`;
+  }
+  if (lista.length) {
+    const fav = lista.filter(e => e.estrella).length;
+    const cuenta = (fav ? `${fav} ${fav === 1 ? 'guardada' : 'guardadas'} · ` : '') +
+      (conModo ? 'todos los modos' : `${lista.length - fav} de ${HISTORIAL_POR_LISTA}`);
+    html += `<div class="hist-ultimas"><span>Últimas</span><span>${cuenta}</span></div>` +
+      lista.map(e => tarjetaPartida(e, conModo)).join('');
+  }
+  html += `<p class="hist-pie">Se guardan las ${HISTORIAL_POR_LISTA} últimas de cada modo y dificultad. El récord y las marcadas con estrella no se borran nunca.</p>`;
+  document.getElementById('hist-lista').innerHTML = html;
+}
+
+// Cambiar de pestaña: con los dedos (deslizar) o tocándola. La lista entra desde el
+// lado (40 px y un fundido de 180 ms; sin animación con prefers-reduced-motion).
+function cambiarHistorial(tab, dir = 0) {
+  if (tab === histVista.tab || !HIST_PESTANAS.includes(tab)) return;
+  if (!dir) dir = HIST_PESTANAS.indexOf(tab) > HIST_PESTANAS.indexOf(histVista.tab) ? 1 : -1;
+  if (histVista.tab === 'todas' && tab !== 'todas') histVista.dif = dificultadElegida(tab);
+  histVista.tab = tab;
+  pintarHistorial();
+  const l = document.getElementById('hist-lista');
+  l.scrollTop = 0;
+  if (l.animate && !sinAnimar())
+    l.animate([{ transform: `translateX(${dir * 40}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 180, easing: 'ease-out' });
+}
+
+// Deslizar a los lados sobre la lista cambia de modo, sin dar la vuelta. Como en la
+// ficha: se decide en los primeros ~10 px, y cuenta si pasa de 50 px a lo ancho y es
+// más de 1,5 veces lo vertical. La lista lleva touch-action pan-y: el desplazamiento
+// vertical sigue siendo del navegador (y si lo coge, llega pointercancel).
+function gestosHistorial(lista) {
+  let g = null, tocado = false;
+  lista.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    g = { x: e.clientX, y: e.clientY, id: e.pointerId, eje: null };
+    tocado = false;
+  });
+  lista.addEventListener('pointermove', e => {
+    if (!g || e.pointerId !== g.id || g.eje) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (Math.hypot(dx, dy) < 10) return;
+    g.eje = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    tocado = g.eje === 'x';
+  });
+  const soltar = e => {
+    if (!g || e.pointerId !== g.id) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (e.type !== 'pointercancel' && g.eje === 'x' && Math.abs(dx) > 50 && Math.abs(dx) > 1.5 * Math.abs(dy)) {
+      const k = HIST_PESTANAS.indexOf(histVista.tab) + (dx < 0 ? 1 : -1);
+      if (k >= 0 && k < HIST_PESTANAS.length) cambiarHistorial(HIST_PESTANAS[k], dx < 0 ? 1 : -1);
+    }
+    g = null;
+    setTimeout(() => { tocado = false; }, 50);
+  };
+  lista.addEventListener('pointerup', soltar);
+  lista.addEventListener('pointercancel', soltar);
+  // Un gesto que acaba encima de un botón no es un toque.
+  lista.addEventListener('click', e => { if (tocado) { e.stopPropagation(); e.preventDefault(); tocado = false; } }, true);
+}
+
+// Un aviso abajo, unos segundos (la estrella, la primera vez).
+let avisoT = 0;
+function avisoAbajo(txt) {
+  const el = document.getElementById('aviso-abajo');
+  el.textContent = txt; el.hidden = false;
+  clearTimeout(avisoT);
+  avisoT = setTimeout(() => { el.hidden = true; }, 2200);
+}
+
+// Los botones de la lista: copiar, jugar, la estrella y «Jugar» de un vacío.
+async function accionHistorial(e) {
+  const b = e.target.closest('[data-accion]');
+  if (!b) return;
+  const accion = b.dataset.accion;
+  if (accion === 'ficha') { abrirFicha(histVista.tab); return; }
+  const id = b.closest('[data-id]') && b.closest('[data-id]').dataset.id;
+  const entrada = historial.partidas.find(x => x.id === id);
+  if (!entrada) return;
+  if (accion === 'jugar') jugarCodigo({ modo: entrada.modo, dificultad: entrada.dificultad, semilla: entrada.semilla });
+  else if (accion === 'copiar') {
+    const span = b.querySelector('span');
+    const ok = await copiarTexto(b.dataset.cod);
+    span.textContent = ok ? 'Copiado' : 'No se pudo';
+    b.classList.toggle('copiado', ok);
+    setTimeout(() => { span.textContent = b.dataset.cod; b.classList.remove('copiado'); }, 1500);
+  } else if (accion === 'estrella') {
+    const si = !entrada.estrella;
+    marcarEstrella(historial, id, si);
+    guardarHistorial();
+    pintarHistorial();
+    // Sin explicación aparte; sólo la primera vez que se marca una, un aviso.
+    let vista = false;
+    try { vista = localStorage.getItem(ESTRELLA_KEY) === '1'; localStorage.setItem(ESTRELLA_KEY, '1'); } catch { /* puede repetirse */ }
+    if (si && !vista) avisoAbajo('Guardada: sale arriba y no se borra aunque juegues más.');
+    const otra = document.querySelector(`#hist-lista [data-id="${id}"] .hist-estrella`);
+    if (otra) otra.focus({ preventScroll: true });
+  }
+}
+
+// ===========================================================================
 // Arranque
 // ===========================================================================
 window.addEventListener('DOMContentLoaded', () => {
@@ -1836,6 +2211,48 @@ window.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('inicio').addEventListener('scroll', marcarBajado, { passive: true });
   document.getElementById('elegir-modo').addEventListener('click', verModos);
+  // Al bajar a los modos (v11.4): volver a la portada, Tus partidas y el «#».
+  document.getElementById('subir-inicio').addEventListener('click', subirAlInicio);
+  document.getElementById('abrir-historial').addEventListener('click', irAHistorial);
+  document.getElementById('inicio-semilla').addEventListener('click', e => {
+    const b = e.currentTarget;
+    if (popAncla === b) { cerrarPop(); return; }
+    cerrarPop();
+    const pop = document.getElementById('pop');
+    pop.className = 'semilla-inicio';
+    document.getElementById('pop-velo').hidden = false;
+    abrirPop(b, panelSemilla('inicio'));
+    b.classList.add('abierto');
+    pop.querySelector('input').focus({ preventScroll: true });
+  });
+  document.getElementById('pop-velo').addEventListener('click', cerrarPop);
+
+  // Tus partidas (v11.4).
+  leerHistorialGuardado();
+  document.getElementById('hist-menu').addEventListener('click', () => {
+    mostrarPantalla('inicio', { bajado: true });
+    document.getElementById('inicio').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
+  });
+  document.getElementById('hist-tabs').addEventListener('click', e => {
+    const b = e.target.closest('[data-tab]');
+    if (b) cambiarHistorial(b.dataset.tab);
+  });
+  document.getElementById('hist-tabs').addEventListener('keydown', e => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    const k = HIST_PESTANAS.indexOf(histVista.tab) + (e.key === 'ArrowRight' ? 1 : -1);
+    if (k < 0 || k >= HIST_PESTANAS.length) return;
+    cambiarHistorial(HIST_PESTANAS[k]);
+    const a = document.querySelector('#hist-tabs [aria-selected="true"]');
+    if (a) a.focus();
+  });
+  document.getElementById('hist-dif').addEventListener('click', e => {
+    const b = e.target.closest('[data-dif]');
+    if (!b || b.dataset.dif === histVista.dif) return;
+    histVista.dif = b.dataset.dif;
+    pintarHistorial();
+  });
+  gestosHistorial(document.getElementById('hist-lista'));
+  document.getElementById('hist-lista').addEventListener('click', accionHistorial);
 
   // El inicio: el botón naranja y cada modo, que abre su ficha (también Puzzle,
   // desde la v11.1: antes iba directo a los capítulos).
@@ -1902,6 +2319,20 @@ window.addEventListener('DOMContentLoaded', () => {
     const sig = siguienteNivel(S.puzle.id);
     if (sig) jugarNivel(sig, false); else irACapitulos();
   });
+  // El código de la partida, con «Copiar» (v11.4), y «Repetir este panal»: la misma
+  // semilla en el mismo modo y dificultad («Otra vez» sigue siendo semilla nueva).
+  document.getElementById('fin-codigo').addEventListener('click', async e => {
+    const b = e.currentTarget;
+    const ok = await copiarTexto(codigoActual());
+    setText('fin-cod-acc', ok ? 'Copiado' : 'No se pudo');
+    b.classList.toggle('copiado', ok);
+    clearTimeout(b._t);
+    b._t = setTimeout(() => { setText('fin-cod-acc', 'Copiar'); b.classList.remove('copiado'); }, 1800);
+  });
+  document.getElementById('fin-repetir').addEventListener('click', () => {
+    partida.modo = S.modo; partida.dificultad = S.dificultad;
+    restart(S.seed);
+  });
   // «‹ Menú»; en un nivel, «Repetir» o «Reintentar»: el mismo nivel, desde el principio.
   document.getElementById('fin-menu').addEventListener('click', () =>
     enTutorial() ? jugarTutorial(tut.k, false) : S.puzle ? jugarNivel(S.puzle.id, false) : volverAlInicio());
@@ -1911,13 +2342,15 @@ window.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('pointerdown', e => {
     if (!popAncla) return;
     const p = document.getElementById('pop');
+    if (e.target.id === 'pop-velo') return;   // lo cierra su click, sin tocar lo de debajo
     if (!p.contains(e.target) && !popAncla.contains(e.target)) cerrarPop();
   }, true);
   // Escape cierra lo que esté encima; en la ficha, las flechas cambian de modo.
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       if (hojaAbierta) cerrarHoja();
-      else cerrarPop();
+      else if (popAncla) cerrarPop();
+      else if (pantalla === 'historial') document.getElementById('hist-menu').click();
     } else if (hojaAbierta && hojaAbierta.desde === 'ficha' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
       cambiarModoFicha(e.key === 'ArrowRight' ? 1 : -1);
     }
@@ -1927,16 +2360,17 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('semilla-btn').addEventListener('click', e => {
     const b = e.currentTarget;
     if (popAncla === b) { cerrarPop(); return; }
-    cerrarPop(); abrirPop(b, panelSemilla());
+    cerrarPop(); abrirPop(b, panelSemilla('partida'));
   });
   const seed = document.getElementById('seed');
   async function copiarSemilla() {
-    if (!await copiarTexto(String(S.seed))) return;
+    const cod = codigoActual() || String(S.seed);
+    if (!await copiarTexto(cod)) return;
     seed.classList.add('copiada');
-    seed.textContent = `semilla ${S.seed} · ¡copiada!`;
+    seed.textContent = `semilla ${cod} · ¡copiada!`;
     setTimeout(() => {
       seed.classList.remove('copiada');
-      seed.textContent = `semilla ${S.seed}`;
+      seed.textContent = `semilla ${cod}`;
     }, 1200);
   }
   seed.addEventListener('click', copiarSemilla);

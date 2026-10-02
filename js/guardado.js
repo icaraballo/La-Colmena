@@ -15,8 +15,10 @@
 
 const GUARDADO_VERSION = 1;
 const NO_SE_GUARDA = ['last', 'eventos'];
-// Datos de la partida que lleva app.js dentro del estado para la pantalla final.
-const EXTRAS_GUARDADO = ['streakMax', 'jugadaMax'];
+// Datos de la partida que lleva app.js dentro del estado: los máximos para la
+// pantalla final y, desde la v11.4 (T-50), las jugadas y sus tiempos para el
+// historial. Los dos primeros son números; los otros dos tienen su validación.
+const EXTRAS_GUARDADO = ['streakMax', 'jugadaMax', 'jugadas', 'tiempos'];
 
 const esTipado = v => v instanceof Uint8Array || v instanceof Int32Array;
 const esEntero = v => Number.isInteger(v);
@@ -61,7 +63,14 @@ function restaurarPartida(g) {
         s[k] = v;
       }
     }
-    for (const k of EXTRAS_GUARDADO) if (Number.isFinite(e[k])) s[k] = e[k];
+    for (const k of ['streakMax', 'jugadaMax']) if (Number.isFinite(e[k])) s[k] = e[k];
+    // Las jugadas (v11.4): si no valen se pierden sólo ellas (null): la partida
+    // sigue y se apuntará sin jugadas. Una de antes de la v11.4 no las tiene.
+    if ('jugadas' in e || 'tiempos' in e) {
+      const valen = jugadasValidas(e.jugadas, e.tiempos, s.height.length, s.turn);
+      s.jugadas = valen ? e.jugadas.map(c => c.slice()) : null;
+      s.tiempos = valen ? e.tiempos.slice() : null;
+    }
 
     // Lo que no puede estar fuera de rango sin romper el motor.
     const celda = t => esEntero(t) && t >= 0 && t < s.height.length;
@@ -84,6 +93,17 @@ function restaurarPartida(g) {
   } catch {
     return null;
   }
+}
+
+// Las jugadas de una partida (v11.4, T-50): las celdas de cada turno que valió y,
+// para cada uno, la duración acumulada al jugarlo (segundos de reloj corrido). Una
+// por turno, con celdas del tablero y tiempos que no bajan. Lo usan el guardado y
+// el historial (historial.js), que no se fían de lo que leen.
+function jugadasValidas(jugadas, tiempos, celdas, turnos) {
+  return Array.isArray(jugadas) && Array.isArray(tiempos) &&
+    jugadas.length === turnos && tiempos.length === turnos &&
+    jugadas.every(c => Array.isArray(c) && c.length > 0 && c.every(t => esEntero(t) && t >= 0 && t < celdas)) &&
+    tiempos.every((t, k) => Number.isFinite(t) && t >= 0 && (k === 0 || t >= tiempos[k - 1]));
 }
 
 // ---------------------------------------------------------------------------

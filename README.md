@@ -56,6 +56,7 @@ js/constants.js panal, niveles, modos, tablas
 js/state.js     estado y reglas: funciones puras, sin DOM y con azar con semilla
 js/render.js    canvas: el panal en falso 2.5D
 js/input.js     el arrastre: tránsito, quitar volviendo atrás, cancelar fuera
+js/historial.js el código de cada partida (CR-N-4069568398) y Tus partidas: funciones puras
 js/app.js       arranque, HUD, reloj y bucle de dibujo
 tests/smoke.js  pruebas de las reglas             · npm test
 tests/bot.js    simulador de partidas             · npm run bot [n] [semilla] [modo] [dificultad] [s/turno]
