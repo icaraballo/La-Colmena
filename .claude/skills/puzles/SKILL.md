@@ -54,6 +54,8 @@ npm run test:puzles                         la máquina
   no salen. 15 de cada uno de los nueve, con nota: unos 2 minutos.
 - **`--nota`** filtra por la nota del evaluador; necesita la nota (no va con `--sin-nota`) y
   hace la generación más lenta si la nota es rara.
+- **Comillas**: lo que lleva espacios va entrecomillado: `--nota "difícil,muy difícil"`,
+  `--forma "hexágono 19"`.
 - **`--turnos A-B`**: el rango del mínimo de turnos. Por defecto 4-10. En el juego se buscan
   partidas de **4 a 8 turnos**; los de 9-10 salen pocos y despacio.
 - **Agotadas y `repescar`.** El resolutor tiene 4 s por puzle; lo que no termina se descarta,
@@ -61,12 +63,15 @@ npm run test:puzles                         la máquina
   en `puzles/salida/agotadas-*.json` y lo dice al acabar. `repescar` las repite con 60 s cada una
   (19 de 21 salen en ~1 minuto) y escribe **otro lote**. Si Iñigo quiere puzles largos o faltan
   de escalera o panal, repesca. Si una sigue sin salir «por estados», más tiempo no la arregla.
+  Sin argumento, `repescar` coge el `agotadas-*.json` **más reciente**; si has hecho varias tandas,
+  pásale cada fichero por su nombre (`repescar agotadas-20261002-0640`), uno detrás de otro.
 - **El bot con un lote** (`npm run bot 200 1 puzzle lote-… todos`): los cinco bots juegan cada
   candidato 200 veces. Tonto (no sabe el objetivo), humano, prudente, codicioso y planificador
   (los que piensan sí lo saben). Saca, por candidato, el % que lo gana cada uno, los resúmenes
-  por tipo y nota, y **los que no gana ningún bot** y **los que gana hasta el tonto**. Es la
-  mejor medida de dificultad que hay: en los 75 niveles del juego, el prudente gana el 50 % y
-  el planificador el 80 %. Un lote de 30 tarda unos segundos.
+  por tipo y nota, y al final **«No lo gana ningún bot»** y **«Lo gana hasta el tonto (≥ 90 %)»**
+  (cada línea sale sólo si hay alguno). Es la mejor medida de dificultad que hay: en los 75
+  niveles del juego, el prudente gana el 50 % y el planificador el 80 %. Un lote de 30 tarda unos
+  segundos. Para comparar con un capítulo que ya está: `npm run bot 200 1 puzzle C4 todos`.
 
 ## Lo que hay que saber de los puzles
 
@@ -93,27 +98,34 @@ Se juega con las reglas normales; cumplir el objetivo gana (★★★ en el mín
 Sin `--forma`, al azar.
 
 **La nota del evaluador**: `paseo`, `fácil`, `medio`, `difícil`, `muy difícil`. Sale de cuántas
-veces gana un jugador que no planifica. Es **provisional** y orientativa: cuando importe la
-dificultad, mira también los bots. **En el editor la nota está oculta hasta que Iñigo valora**
+veces gana un jugador que no planifica. Es **provisional** y a veces se equivoca mucho (un «muy
+difícil» que el prudente gana siempre, un «paseo» que el planificador casi nunca gana): úsala
+para pedir (`--nota`), pero **para decir qué es fácil o difícil, manda lo que digan los bots**. **En el editor la nota está oculta hasta que Iñigo valora**
 (para no influirle): cuando le cuentes qué hay, no le digas la nota de cada candidato concreto;
 sí puedes darle el reparto (cuántos de cada nota) y los que destacan por los bots.
 
-**Los capítulos.** `js/puzles.js` tiene ahora los capítulos 1 a 5, con 15 niveles cada uno:
+**Los capítulos.** `js/puzles.js` tiene ahora los capítulos 1 a 5, con 15 niveles cada uno
+(nada obliga a 15: un capítulo puede tener los que elija Iñigo). Cada uno trae sus tipos nuevos
+y **algunos de repaso** de los anteriores:
 
 | Capítulo | Tipos nuevos | |
 |---|---|---|
 | 0 | — | el tutorial: **se hace a mano con Iñigo** (no lo fabricas tú solo) |
-| 1 | marcadas, cosechas | |
-| 2 | total, grande | y repaso de los anteriores |
-| 3 | escalera, panal | |
-| 4 | combinado, rojas | |
-| 5 | orden | y todos mezclados |
+| 1 | marcadas, cosechas | 8 marcadas, 7 cosechas |
+| 2 | total, grande | 6 + 6, y de repaso 2 marcadas, 1 cosechas |
+| 3 | escalera, panal | 6 + 6, y de repaso 2 total, 1 grande |
+| 4 | combinado, rojas | 6 + 6, y de repaso 2 escalera, 1 panal |
+| 5 | orden | 6 orden y los demás mezclados |
+
+(Esto cambia si Iñigo rehace un capítulo: compruébalo en `js/puzles.js`.)
 
 Dentro de un capítulo, una curva: empieza corto y fácil, sube, mete alguno corto para respirar y
 deja los largos y difíciles al final. **El editor sólo deja colocar en los capítulos 0 a 5**: un
 capítulo 6 o más necesita antes cambiar el editor (avísalo; no lo cambies sin que lo pida).
 **`meter` sustituye el capítulo entero** que trae la selección: si Iñigo rehace el capítulo 3,
-los 15 de antes se van.
+los 15 de antes se van, **también los de repaso**. Al rehacer un capítulo, si no ha dicho nada del
+repaso, genera también unos pocos candidatos de repaso (los tipos de los capítulos anteriores) y
+díselo; si dice que sin repaso, sin repaso.
 
 ## El flujo
 
@@ -127,7 +139,10 @@ un capítulo que ya está en el juego y no está claro que lo quiera).
 ### 2. Generar con margen
 
 - Genera **más de los que hacen falta**: unos 20 candidatos para 12 huecos (un 60-70 % más), para
-  que Iñigo tenga donde elegir.
+  que Iñigo tenga donde elegir. Y **por tramos**: si pide fáciles al principio y difíciles al
+  final, que cada tramo tenga su margen (p. ej. 6-8 candidatos fáciles para 4 huecos, 6-8
+  difíciles para 4); los difíciles salen menos, así que genéralos aparte con `--nota` (y
+  `--turnos` más altos).
 - Varios tipos → `--por-tipo`. Dificultad → `--nota`. Largos → `--turnos` y luego `repescar`.
 - Mira el resumen. Si falta algún tipo o alguna nota, ajusta y genera otra tanda (va a otro lote;
   el editor ve todos). Si tras dos o tres intentos la máquina no lo da, para y díselo.
@@ -144,12 +159,13 @@ Breve, sin volcar la salida de los comandos:
 - **Cuáles destacan para los bots**: los que no gana ninguno (¿demasiado duros o con truco?) y los
   que gana hasta el tonto (¿demasiado fáciles?). Por su id.
 - **Cuáles se parecen a niveles que ya están en el juego**: mismo tipo, misma forma y mismo
-  mínimo que alguno de `js/puzles.js` (los repetidos exactos ya los quitó la máquina). Para
-  verlo:
+  mínimo que alguno de `js/puzles.js` (los repetidos exactos ya los quitó la máquina). Si se va a
+  sustituir un capítulo, sus niveles no cuentan: pon su número en `N` (o `0` si no se sustituye
+  ninguno). Para verlo:
   ```
-  node -e "const T=require('./tests/_bundle.js');const fs=require('fs');
+  node -e "const N=4;const T=require('./tests/_bundle.js');const fs=require('fs');
   const L=fs.readFileSync('puzles/salida/<lote>.jsonl','utf8').split('\n').filter(Boolean).map(JSON.parse);
-  for(const c of L){const p=T.PUZLES.filter(p=>p.objetivo.tipo===c.tipo&&p.origen.forma===c.forma&&p.minimo===c.minimo).map(p=>p.id);if(p.length)console.log(c.id,'~',p.join(' '))}"
+  for(const c of L){const p=T.PUZLES.filter(p=>p.capitulo!==N&&p.objetivo.tipo===c.tipo&&p.origen.forma===c.forma&&p.minimo===c.minimo).map(p=>p.id);if(p.length)console.log(c.id,'~',p.join(' '))}"
   ```
 - Lo que **no** ha salido y por qué.
 
@@ -163,10 +179,17 @@ Termina con lo que tiene que hacer Iñigo, y **no sigas** hasta que vuelva con l
 
 ### 5. Con la selección: meter, probar y el commit sin push
 
+**La selección es de Iñigo y manda.** No puedes comprobar de dónde viene el fichero; basta con
+que tenga la forma del editor (`version: 1`, `exportado`, `capitulos`). Si choca con lo que pidió
+o con lo que dijeron los bots (otra proporción de tipos, un nivel que no gana ningún bot, un
+final fácil), díselo en una o dos líneas **y sigue** con lo que ha elegido; no cambies nada.
+
 1. `npm run puzles -- meter <ruta>/seleccion.json --capitulo N` (sin `--capitulo`, mete todos los
    capítulos que traiga). `meter` no se fía del lote: rejuega, gana con el juego de verdad y
    vuelve a resolver cada puzle. **Si alguno falla, no toca nada**: cuéntaselo a Iñigo y no
-   sigas.
+   sigas. **Claude Code le pedirá permiso a Iñigo** para este comando (reescribe
+   `js/puzles.js`): es lo esperado. Si el permiso se deniega o el comando queda bloqueado, para,
+   díselo y espera; **no busques otra forma** de escribir el fichero.
 2. `npm test` y `npm run test:puzles`. Tienen que pasar enteros.
 3. `npm run bot 200 1 puzzle CN todos`, para decirle cómo queda la curva del capítulo.
 4. El commit, sólo con `js/puzles.js`: `git add js/puzles.js` y un mensaje que diga qué capítulo
