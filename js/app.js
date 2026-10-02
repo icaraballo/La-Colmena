@@ -1385,7 +1385,7 @@ function mostrarPantalla(p) {
 // Para alguien nuevo, ni Contrarreloj (el reloj y las plagas lo machacan antes
 // de entender el paso) ni Panal libre (sin objetivo, se aburre).
 // Deja de ser nuevo al resolver un nivel o al empezar cualquier partida desde
-// una ficha («Elegir modo»): quien quiera saltarse el tutorial, se lo salta.
+// una ficha («Modos de juego»): quien quiera saltarse el tutorial, se lo salta.
 // Dos claves nuevas, con el cuidado de siempre: si localStorage falla, se da
 // por no nuevo y sin último modo, y entonces el botón es «Jugar» Contrarreloj.
 // El tutorial no cuenta como último modo; al acabarlo se deja de ser nuevo y,
@@ -1444,7 +1444,7 @@ function pulsarPrincipal() {
 }
 
 // El inicio tiene dos tramos (v10.2): la portada, con el panal vivo en grande,
-// y los modos debajo. «Elegir modo ⌄» los enseña y se apaga en cuanto se baja.
+// y los modos debajo. «Modos de juego ⌄» los enseña y se apaga en cuanto se baja.
 function marcarBajado() {
   const el = document.getElementById('inicio');
   el.classList.toggle('bajado', el.scrollTop > 24);
@@ -1538,9 +1538,9 @@ const PESTANAS = {
   puzzle:       ['basico', 'puzzle'],
 };
 const NOMBRE_PESTANA = { basico: 'Básico', plagas: 'Plagas', ...NOMBRE_MODO };
-// El orden de la lista del inicio (v11.1: Partidas y Panal libre) y, el último,
-// Puzzle, que desde la v11.1 también tiene ficha.
-const ORDEN_MODOS = [MODOS.CONTRARRELOJ, MODOS.INVIERNO, MODOS.CONTAGIO, MODOS.EXPANSION, MODOS.LIBRE, MODOS.PUZZLE];
+// El orden de la lista del inicio: los cinco modos de juego (Puzzle, el último, tiene
+// ficha desde la v11.1) y después Panal libre (v11.3; en la v11.1 Puzzle iba al final).
+const ORDEN_MODOS = [MODOS.CONTRARRELOJ, MODOS.INVIERNO, MODOS.CONTAGIO, MODOS.EXPANSION, MODOS.PUZZLE, MODOS.LIBRE];
 
 // La primera ficha se abre en Básico; en cuanto se empieza una partida desde
 // una ficha, las siguientes se abren en la pestaña del modo. Se marca al pulsar

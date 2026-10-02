@@ -38,7 +38,7 @@ button.on{background:#F79A1F;color:#231500;border-color:#F79A1F;font-weight:600}
 
 /* La pantalla de inicio (v10.2): dos tramos que se recorren deslizando. La
    portada llena la pantalla: el título, el panal vivo tan grande como quepa,
-   «Continuar partida» si hay una guardada y «Elegir modo ⌄». Debajo, los modos.
+   «Continuar partida» si hay una guardada y «Modos de juego ⌄». Debajo, los modos.
    Deslizar hacia arriba (o tocar la flecha) sube los modos y el panal se va por
    arriba. Hasta la v10.1 todo iba en una columna y el panal cedía: a 360x640
    con cinco modos se quedaba en un tercio de la pantalla. */
@@ -68,7 +68,7 @@ button.on{background:#F79A1F;color:#231500;border-color:#F79A1F;font-weight:600}
 #principal .txt{display:flex;flex-direction:column;gap:1px;flex-grow:1;min-width:0}
 #principal .txt b{font-size:16px;font-weight:700;color:#231500}
 #principal .txt span{font-size:12px;color:#5a3600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* «Elegir modo ⌄»: el botón secundario, siempre el mismo y con borde (v11.1;
+/* «Modos de juego ⌄» («Elegir modo» hasta la v11.2): el botón secundario, siempre el mismo y con borde (v11.1;
    hasta la v11 era un texto suelto). Baja a los modos. La flecha se mece
    despacio; al empezar a bajar se apaga, porque ya no hace falta. */
 #elegir-modo{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
@@ -86,7 +86,7 @@ button.on{background:#F79A1F;color:#231500;border-color:#F79A1F;font-weight:600}
 .modo-fila .nom{font-size:17px;font-weight:700;color:#ede4d3}
 .modo-fila .frase{font-size:12.5px;font-weight:600}
 .modo-fila svg{flex:none}
-/* Los modos, agrupados (v11.1): Partidas, Niveles y Practicar, con un título
+/* Los modos, agrupados (v11.3): Modos de juego, Practicar y Aprender, con un título
    pequeño por grupo. Panal libre va en una fila más pequeña. Sin récords. */
 .modos-grupo{margin:8px 4px 0;font-size:10.5px;font-weight:400;letter-spacing:.08em;text-transform:uppercase;color:#8c7f6a}
 .modos-grupo:first-child{margin-top:0}
@@ -559,16 +559,17 @@ footer .sem{font-variant-numeric:tabular-nums}
       <svg width="9" height="14" viewBox="0 0 10 16" aria-hidden="true"><path d="M2 2l6 6-6 6" stroke="#231500" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
 
-    <button id="elegir-modo" aria-controls="modos">Elegir modo
+    <button id="elegir-modo" aria-controls="modos">Modos de juego
       <svg width="14" height="9" viewBox="0 0 22 14" aria-hidden="true"><path d="M3 3l8 8 8-8" stroke="currentColor" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
   </div>
   </div>
 
   <div class="inicio-botones" id="modos">
-    <!-- Agrupados (v11.1, T-48): Partidas, Niveles, Practicar. El historial («Pronto»)
+    <!-- Agrupados (v11.3; en la v11.1, Partidas y Niveles por separado): Modos de juego,
+         con Puzzle dentro, Practicar y Aprender. El historial («Pronto»)
          se quitó hasta que exista (idea del §9). -->
-    <h2 class="modos-grupo">Partidas</h2>
+    <h2 class="modos-grupo">Modos de juego</h2>
     <button class="modo-fila" data-modo="contrarreloj">
       <svg width="34" height="30" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#F79A1F"/><g stroke="#1c1710" stroke-width="3" fill="none" stroke-linecap="round"><circle cx="23" cy="21" r="9"/><path d="M23 15v6l4 3"/></g></svg>
       <span class="txt"><span class="nom" data-nombre="contrarreloj"></span><span class="frase" data-frase="contrarreloj"></span></span>
@@ -589,7 +590,6 @@ footer .sem{font-variant-numeric:tabular-nums}
       <span class="txt"><span class="nom" data-nombre="expansion"></span><span class="frase" data-frase="expansion"></span></span>
       <svg width="9" height="14" viewBox="0 0 10 16" aria-hidden="true"><path d="M2 2l6 6-6 6" stroke="#6d6150" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
-    <h2 class="modos-grupo">Niveles</h2>
     <button class="modo-fila" data-modo="puzzle">
       <svg width="34" height="30" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#F28FB1"/><g fill="#1c1710"><rect x="15" y="12" width="7" height="7" rx="1.5"/><rect x="24" y="12" width="7" height="7" rx="1.5"/><rect x="15" y="21" width="7" height="7" rx="1.5"/></g><rect x="24" y="21" width="7" height="7" rx="1.5" fill="none" stroke="#1c1710" stroke-width="1.8"/></svg>
       <span class="txt"><span class="nom" data-nombre="puzzle"></span><span class="frase" data-frase="puzzle"></span></span>
