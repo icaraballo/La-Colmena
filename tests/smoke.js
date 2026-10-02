@@ -280,7 +280,7 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   T.fallback(s);
   eq(s.last.desastre.tipo, 'velutina', '4.º fallo: velutina');
   const n = s.last.desastre.tiles.length;
-  ok(n >= 3 && n <= 4, 'la velutina barre 3-4 celdas');
+  ok(n >= T.VELUTINA_CELDAS[0] && n <= T.VELUTINA_CELDAS[1], `la velutina barre ${T.VELUTINA_CELDAS.join('-')} celdas`);
   T.fallback(s);
   eq(s.last.desastre, null, 'tras la velutina hay calma');
   eq(rotas(s), 0, 'ningún desastre rompe celdas');
@@ -1164,6 +1164,9 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   const pr = T.progresoPuzle(jugar(trozo([5, 6, 0], [5, 0, 5], 1, { tipo: 'marcadas', celdas: [5, 0] }, 2), [[5]]));
   eq(`${pr.valor}/${pr.de}`, '1/2', 'progresoPuzle: una de dos marcadas');
   ok(Object.keys(T.OBJETIVO_INFO).length === 9, 'OBJETIVO_INFO tiene los nueve tipos');
+  // La línea «Nuevo · …» de los capítulos (v11.1): una frase por tipo, sin números.
+  for (const [t, info] of Object.entries(T.OBJETIVO_INFO))
+    ok(typeof info.explica === 'string' && info.explica.endsWith('.') && !/\d/.test(info.explica), `OBJETIVO_INFO.${t} tiene su explica`);
 
   // El desbloqueo (01-10, opción b).
   const caps = [{ n: 1 }, { n: 2 }];

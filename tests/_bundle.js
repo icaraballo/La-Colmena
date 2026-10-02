@@ -27,7 +27,7 @@ const FOOTER = `
      ROTAS_ARRANQUE, COSECHA_DEVUELVE, COSECHA_GRANDE, umbralItem,
      PROPOLEO_MIN_AGUA, itemsUtiles, HELADA_MUERDE, RELOJ_ACELERA, ITEM_TURNOS,
      DESASTRE_INFO, DESASTRES_VISIBLES, caducarItem, ITEM_CALMA,
-     RELOJ_INICIAL, RELOJ_TECHO, PUNTOS_POR_SEGUNDO, SEDA_TURNOS, CALMA_TRAS_VELUTINA,
+     RELOJ_INICIAL, RELOJ_TECHO, PUNTOS_POR_SEGUNDO, SEDA_TURNOS, CALMA_TRAS_VELUTINA, VELUTINA_CELDAS,
      createState, isValidDrag, biggestCoherentArea, commitTurn, fallback, tilesPlayable,
      jugable, spawnItemIfEarned, usarItem, sumarTiempo, velocidadReloj, tick,
      siguienteDesastre, mesetaDeNivel, ESCALERA_TOPE, COSECHA_LIMPIA, DESASTRES_MAX_ACTIVOS, ITEM_INFO, ITEMS_VISIBLES, pasoDeCadena,

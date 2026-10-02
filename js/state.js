@@ -489,12 +489,13 @@ function eclosionar(s, capullo) {
   return { tipo: 'seda', tiles, origen: capullo.tile };
 }
 
-// Barre 3-4 celdas de una zona a cera. Después, calma obligada.
+// Barre VELUTINA_CELDAS (3-4) celdas de una zona a cera. Después, calma obligada.
 function velutina(s) {
   const centro = elegir(s, candidatasVelutina(s));
   if (centro === undefined) return null;
+  const [menos, mas] = VELUTINA_CELDAS;
   const zona = [centro, ...barajar(s, vecinas(s, centro).filter(v => existe(s, v) && s.height[v] >= CERA))]
-    .slice(0, 3 + randInt(s, 2));
+    .slice(0, menos + randInt(s, mas - menos + 1));
   let niveles = 0;
   for (const i of zona) { niveles += s.height[i] - CERA; s.height[i] = CERA; }
   marcar(s, 'velutina', zona);

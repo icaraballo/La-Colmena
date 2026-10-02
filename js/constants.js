@@ -171,20 +171,31 @@ const PUZZLE_MARGEN = 2;
 const PUZZLE_ABIERTOS = 2;
 const PUZZLE_ABRE_CAPITULO = 0.8;
 
-// Los nueve tipos de objetivo: el nombre, la frase que lee el jugador y lo que
-// enseña el dato de progreso. La interfaz y la máquina (puzles/objetivos.js) las
-// sacan de aquí: no se escriben a mano en ningún otro sitio.
+// Los nueve tipos de objetivo: el nombre, la frase que lee el jugador, lo que
+// enseña el dato de progreso y, desde la v11.1, `explica`: la línea «Nuevo · …»
+// de la pantalla de capítulos, que no nombra lo que el jugador aún no conoce.
+// La interfaz y la máquina (puzles/objetivos.js) las sacan de aquí: no se
+// escriben a mano en ningún otro sitio.
 const marcadasTxt = cs => cs.length === 1 ? 'la celda marcada' : `las ${cs.length} celdas marcadas`;
 const OBJETIVO_INFO = {
-  marcadas:  { nombre: 'Celdas marcadas',       frase: o => `Cosecha ${marcadasTxt(o.celdas)}`, progreso: 'Marcadas' },
-  cosechas:  { nombre: 'Número de cosechas',    frase: o => `Cosecha ${o.n} veces`, progreso: 'Cosechas' },
-  total:     { nombre: 'Celdas en total',       frase: o => `Cosecha ${o.n} celdas, las que sean`, progreso: 'Cosechadas' },
-  combinado: { nombre: 'Combinado',             frase: o => `Cosecha ${o.n} celdas, incluida ${marcadasTxt(o.celdas)}`, progreso: 'Cosechadas' },
-  grande:    { nombre: 'Cosecha grande',        frase: o => `Cosecha ${o.n} celdas de una vez`, progreso: 'De golpe' },
-  escalera:  { nombre: 'Escalera',              frase: o => `Encadena hasta arrastrar ${o.n} celdas`, progreso: 'Arrastre' },
-  panal:     { nombre: 'Dejar el panal así',    frase: o => `Deja ${o.celdas.length === 1 ? 'la celda marcada' : `las ${o.celdas.length} marcadas`} en ${NOMBRE_NIVEL[o.nivel]} a la vez`, progreso: 'Marcadas' },
-  rojas:     { nombre: 'Sin cosechar las rojas', frase: o => `Cosecha ${marcadasTxt(o.celdas)} sin cosechar ninguna roja`, progreso: 'Marcadas' },
-  orden:     { nombre: 'En orden',              frase: () => 'Cosecha la A y después la B (no a la vez)', progreso: 'A y B' },
+  marcadas:  { nombre: 'Celdas marcadas',       frase: o => `Cosecha ${marcadasTxt(o.celdas)}`, progreso: 'Marcadas',
+               explica: 'Cosecha las celdas marcadas.' },
+  cosechas:  { nombre: 'Número de cosechas',    frase: o => `Cosecha ${o.n} veces`, progreso: 'Cosechas',
+               explica: 'Cosecha varias veces.' },
+  total:     { nombre: 'Celdas en total',       frase: o => `Cosecha ${o.n} celdas, las que sean`, progreso: 'Cosechadas',
+               explica: 'Cosecha un número de celdas, sumando todas las cosechas.' },
+  combinado: { nombre: 'Combinado',             frase: o => `Cosecha ${o.n} celdas, incluida ${marcadasTxt(o.celdas)}`, progreso: 'Cosechadas',
+               explica: 'Cosecha un número de celdas, entre ellas las marcadas.' },
+  grande:    { nombre: 'Cosecha grande',        frase: o => `Cosecha ${o.n} celdas de una vez`, progreso: 'De golpe',
+               explica: 'Cosecha muchas celdas de una sola vez.' },
+  escalera:  { nombre: 'Escalera',              frase: o => `Encadena hasta arrastrar ${o.n} celdas`, progreso: 'Arrastre',
+               explica: 'Encadena turnos hasta hacer un arrastre largo.' },
+  panal:     { nombre: 'Dejar el panal así',    frase: o => `Deja ${o.celdas.length === 1 ? 'la celda marcada' : `las ${o.celdas.length} marcadas`} en ${NOMBRE_NIVEL[o.nivel]} a la vez`, progreso: 'Marcadas',
+               explica: 'Deja las marcadas en un nivel concreto, todas a la vez.' },
+  rojas:     { nombre: 'Sin cosechar las rojas', frase: o => `Cosecha ${marcadasTxt(o.celdas)} sin cosechar ninguna roja`, progreso: 'Marcadas',
+               explica: 'Cosecha las marcadas sin cosechar ninguna roja.' },
+  orden:     { nombre: 'En orden',              frase: () => 'Cosecha la A y después la B (no a la vez)', progreso: 'A y B',
+               explica: 'Cosecha la A antes que la B.' },
 };
 
 // ---------------------------------------------------------------------------
@@ -294,6 +305,9 @@ const PUNTOS_POR_SEGUNDO = 50;
 const DESASTRES_MAX_ACTIVOS = 2;
 const SEDA_TURNOS = 2;
 const CALMA_TRAS_VELUTINA = 5;
+// Las celdas que baja la velutina: de la primera a la segunda, al azar (v11.1,
+// T-48). Hasta la v11 el 3-4 estaba escrito a mano en el motor y en los textos.
+const VELUTINA_CELDAS = [3, 4];
 
 // Ítems (DESIGN §8). Casillas necesarias a un mismo nivel para que aparezca uno,
 // indexado por nivel-1. Los números salen del original y están calibrados para
@@ -375,7 +389,7 @@ const DESASTRE_INFO = {
   seda:     { simbolo: 'S', nombre: 'Seda',     peldano: 3,
               que: `el capullo eclosiona: sus vecinas quedan bloqueadas ${SEDA_TURNOS} turnos, sin remedio` },
   velutina: { simbolo: 'A', nombre: 'Velutina', peldano: 4,
-              que: `3-4 celdas a cera; luego ${CALMA_TRAS_VELUTINA} turnos de calma. Se repite en cada fallo hasta que una cosecha grande la baja` },
+              que: `${VELUTINA_CELDAS[0]}-${VELUTINA_CELDAS[1]} celdas a cera; luego ${CALMA_TRAS_VELUTINA} turnos de calma. Se repite en cada fallo hasta que una cosecha grande la baja` },
 };
 const DESASTRES_VISIBLES = ['varroa', 'polilla', 'seda', 'velutina'];
 
@@ -396,7 +410,7 @@ function tieneDificultad(modo) {
 // jugando en el móvil no hay forma de saber si lo que tienes delante es lo
 // último que se subió.
 // Se mantiene a mano y tiene que coincidir con package.json (ver Recetas).
-const VERSION = 'v11';
+const VERSION = 'v11.1';
 
 const NOMBRE_MODO = {
   contrarreloj: 'Contrarreloj',
@@ -412,7 +426,7 @@ const FRASE_MODO = {
   contrarreloj: 'Cosecha para ganar tiempo.',
   invierno:     'Evita congelarte.',
   libre:        'Para practicar.',
-  contagio:     'Que no se te extienda.',
+  contagio:     'Frena la plaga.',
   expansion:    'Abre el panal, celda a celda.',
   puzzle:       'Encuentra el camino.',
 };

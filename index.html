@@ -49,28 +49,32 @@ button.on{background:#F79A1F;color:#231500;border-color:#F79A1F;font-weight:600}
   scroll-snap-type:y proximity;
 }
 .inicio-portada{min-height:100%;flex:none;display:flex;flex-direction:column;scroll-snap-align:start}
-.inicio-cab{padding:46px 20px 0;display:flex;flex-direction:column;align-items:center;gap:2px;flex:none}
+.inicio-cab{padding:40px 20px 0;display:flex;flex-direction:column;align-items:center;gap:2px;flex:none}
 .inicio-cab h1{font-size:34px;font-weight:800;letter-spacing:-.02em;color:#ede4d3;line-height:1.15}
 .inicio-cab span{font-size:13px;color:#9a8d77}
 #fondo-wrap{flex:1 0 auto;min-height:clamp(110px,30dvh,200px);position:relative}
 #fondo{opacity:.9;pointer-events:none}
 .inicio-pie,.inicio-botones{padding:0 16px;display:flex;flex-direction:column;gap:8px;flex:none;
   width:100%;max-width:480px;margin:0 auto}
-.inicio-pie{padding-bottom:12px}
+.inicio-pie{padding-bottom:16px}
 .inicio-botones{padding:4px 16px 18px;scroll-snap-align:end}
-#continuar{display:flex;align-items:center;gap:12px;width:100%;min-height:62px;padding:10px 14px;
+/* El botón naranja (v11.1, T-48): siempre hay uno, y es lo siguiente que te
+   toca. «Continuar partida» si hay una guardada; si no, «Jugar» el último modo;
+   la primera vez, «Aprende a jugar». Lo rellena pintarPrincipal(). */
+#principal{display:flex;align-items:center;gap:12px;width:100%;min-height:60px;padding:10px 14px;
   background:#F79A1F;border:0;border-radius:14px;text-align:left}
-#continuar:hover{background:#ffa93a}
-#continuar .play{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:#231500;flex:none}
-#continuar .txt{display:flex;flex-direction:column;gap:1px;flex-grow:1}
-#continuar .txt b{font-size:17px;font-weight:700;color:#231500}
-#continuar .txt span{font-size:12.5px;color:#5a3600}
-/* «Elegir modo ⌄»: dice que hay más abajo y, al tocarlo, lo enseña. La flecha
-   se mece despacio; al empezar a bajar se apaga, porque ya no hace falta. */
-#elegir-modo{display:flex;flex-direction:column;align-items:center;gap:2px;align-self:center;
-  min-height:48px;padding:6px 22px;background:transparent;border:0;
-  font-size:14px;font-weight:700;color:#F79A1F;transition:opacity .25s}
-#elegir-modo:hover{background:transparent;color:#ffa93a}
+#principal:hover{background:#ffa93a}
+#principal .play{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:#231500;flex:none}
+#principal .txt{display:flex;flex-direction:column;gap:1px;flex-grow:1;min-width:0}
+#principal .txt b{font-size:16px;font-weight:700;color:#231500}
+#principal .txt span{font-size:12px;color:#5a3600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* «Elegir modo ⌄»: el botón secundario, siempre el mismo y con borde (v11.1;
+   hasta la v11 era un texto suelto). Baja a los modos. La flecha se mece
+   despacio; al empezar a bajar se apaga, porque ya no hace falta. */
+#elegir-modo{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+  min-height:46px;padding:6px 14px;background:#1c1710;border:1px solid #43372a;border-radius:12px;
+  font-size:15px;font-weight:600;color:#ede4d3;transition:opacity .25s}
+#elegir-modo:hover{background:#241d14}
 #elegir-modo svg{animation:mecer 1.8s ease-in-out infinite}
 @keyframes mecer{0%,100%{transform:translateY(0)}50%{transform:translateY(4px)}}
 @media (prefers-reduced-motion:reduce){#elegir-modo svg{animation:none}}
@@ -82,11 +86,15 @@ button.on{background:#F79A1F;color:#231500;border-color:#F79A1F;font-weight:600}
 .modo-fila .nom{font-size:17px;font-weight:700;color:#ede4d3}
 .modo-fila .frase{font-size:12.5px;font-weight:600}
 .modo-fila svg{flex:none}
-#historial{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:44px;margin-top:6px;
-  padding:6px 14px;background:transparent;border:1px solid #33291d;border-radius:12px;font-size:14px;color:#9a8d77;cursor:default}
-#historial:hover{background:transparent}
-#historial .pronto{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#6d6150;
-  border:1px solid #33291d;border-radius:999px;padding:1px 7px}
+/* Los modos, agrupados (v11.1): Partidas, Niveles y Practicar, con un título
+   pequeño por grupo. Panal libre va en una fila más pequeña. Sin récords. */
+.modos-grupo{margin:8px 4px 0;font-size:10.5px;font-weight:400;letter-spacing:.08em;text-transform:uppercase;color:#8c7f6a}
+.modos-grupo:first-child{margin-top:0}
+.modo-fila.pequena{min-height:46px;padding:6px 14px;background:transparent}
+.modo-fila.pequena:hover{background:#1c1710}
+.modo-fila.pequena .txt{flex-direction:row;align-items:baseline;justify-content:space-between;gap:8px}
+.modo-fila.pequena .nom{font-size:14px}
+.modo-fila.pequena .frase{font-size:12px}
 #inicio-version{align-self:center;font-size:11px;color:#6d6150;font-variant-numeric:tabular-nums}
 
 /* La barra de la partida (v9): sustituye a la fila de modos. Menú, el modo y
@@ -390,6 +398,8 @@ footer .sem{font-variant-numeric:tabular-nums}
 .pz-cap h3 b{font-size:13.5px;letter-spacing:0;text-transform:none;color:#ede4d3;font-variant-numeric:tabular-nums}
 .pz-cap p{font-size:12.5px;color:#9a8d77;margin-top:2px}
 .pz-cap.cerrado{opacity:.55}
+/* «Nuevo · …»: una línea por tipo de objetivo nuevo (v11.1). */
+.pz-cap p .nuevo{color:#F28FB1;font-weight:700}
 .pz-niveles{display:grid;grid-template-columns:repeat(5,1fr);gap:2px 2px;margin-top:8px}
 .pz-nivel{all:unset;display:flex;flex-direction:column;align-items:center;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .pz-nivel:focus-visible svg{outline:2px solid #F28FB1;outline-offset:2px;border-radius:8px}
@@ -419,6 +429,9 @@ footer .sem{font-variant-numeric:tabular-nums}
 #partida.es-puzle #linea-items,#partida.es-puzle #riesgo,#partida.es-puzle footer,#partida.es-puzle #semilla-btn{display:none}
 /* En un nivel, los dos botones del final se reparten el ancho. */
 #fin.puzle .fin-botones > *{flex:1 1 0;white-space:nowrap}
+/* El nivel que abre un capítulo lo dice (v11.1). */
+#fin .pz-abierto{flex-basis:100%;font-size:13px;color:#c9b99c}
+#fin .pz-abierto b{display:inline;font-size:13px;color:#F28FB1}
 #fin .estrellas{font-size:40px;letter-spacing:6px;color:#F79A1F;line-height:1.1}
 #fin .estrellas .vacia{color:#4d4232}
 #fin-volver{all:unset;cursor:pointer;display:block;margin:12px auto 0;font-size:14px;color:#9a8d77;padding:6px 10px}
@@ -437,26 +450,31 @@ footer .sem{font-variant-numeric:tabular-nums}
   <div class="inicio-portada">
   <div class="inicio-cab">
     <h1>La Colmena</h1>
-    <span>Hexágonos que suben de nivel.</span>
+    <span>Sube el panal. Cosecha las abejas.</span>
   </div>
 
   <div id="fondo-wrap"><canvas id="fondo" aria-hidden="true"></canvas></div>
 
   <div class="inicio-pie">
-    <!-- La partida guardada (v9.1, T-41): sólo sale si hay una que valga. -->
-    <button id="continuar" hidden>
-      <span class="play"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M4 2l8 5-8 5z" fill="#F79A1F"/></svg></span>
-      <span class="txt"><b>Continuar partida</b><span id="continuar-detalle"></span></span>
-      <svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true"><path d="M2 2l6 6-6 6" stroke="#231500" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <!-- El botón naranja (v11.1, T-48): Continuar partida, Jugar o Aprende a jugar,
+         según quién llega. Lo rellena pintarPrincipal(); el icono es un triángulo
+         (play) o, la primera vez, un hexágono. -->
+    <button id="principal">
+      <span class="play" id="principal-ico" aria-hidden="true"></span>
+      <span class="txt"><b id="principal-titulo"></b><span id="principal-detalle"></span></span>
+      <svg width="9" height="14" viewBox="0 0 10 16" aria-hidden="true"><path d="M2 2l6 6-6 6" stroke="#231500" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
 
     <button id="elegir-modo" aria-controls="modos">Elegir modo
-      <svg width="22" height="14" viewBox="0 0 22 14" aria-hidden="true"><path d="M3 3l8 8 8-8" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg width="14" height="9" viewBox="0 0 22 14" aria-hidden="true"><path d="M3 3l8 8 8-8" stroke="currentColor" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
   </div>
   </div>
 
   <div class="inicio-botones" id="modos">
+    <!-- Agrupados (v11.1, T-48): Partidas, Niveles, Practicar. El historial («Pronto»)
+         se quitó hasta que exista (idea del §9). -->
+    <h2 class="modos-grupo">Partidas</h2>
     <button class="modo-fila" data-modo="contrarreloj">
       <svg width="34" height="30" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#F79A1F"/><g stroke="#1c1710" stroke-width="3" fill="none" stroke-linecap="round"><circle cx="23" cy="21" r="9"/><path d="M23 15v6l4 3"/></g></svg>
       <span class="txt"><span class="nom" data-nombre="contrarreloj"></span><span class="frase" data-frase="contrarreloj"></span></span>
@@ -467,12 +485,6 @@ footer .sem{font-variant-numeric:tabular-nums}
       <span class="txt"><span class="nom" data-nombre="invierno"></span><span class="frase" data-frase="invierno"></span></span>
       <svg width="9" height="14" viewBox="0 0 10 16" aria-hidden="true"><path d="M2 2l6 6-6 6" stroke="#6d6150" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
-    <button class="modo-fila" data-modo="libre">
-      <svg width="34" height="30" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#9fd67a"/><path d="M15 21l6 6 11-13" stroke="#1c1710" stroke-width="3.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span class="txt"><span class="nom" data-nombre="libre"></span><span class="frase" data-frase="libre"></span></span>
-      <svg width="9" height="14" viewBox="0 0 10 16" aria-hidden="true"><path d="M2 2l6 6-6 6" stroke="#6d6150" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </button>
-    <!-- Los dos modos de la v10 (LC-Modos-nuevos). Entran desbloqueados. -->
     <button class="modo-fila" data-modo="contagio">
       <svg width="34" height="30" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#C79BD9"/><g fill="#1c1710"><circle cx="19" cy="22" r="6"/><circle cx="30" cy="15" r="3"/><circle cx="31" cy="27" r="2.3"/></g></svg>
       <span class="txt"><span class="nom" data-nombre="contagio"></span><span class="frase" data-frase="contagio"></span></span>
@@ -483,18 +495,17 @@ footer .sem{font-variant-numeric:tabular-nums}
       <span class="txt"><span class="nom" data-nombre="expansion"></span><span class="frase" data-frase="expansion"></span></span>
       <svg width="9" height="14" viewBox="0 0 10 16" aria-hidden="true"><path d="M2 2l6 6-6 6" stroke="#6d6150" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
-
-    <!-- Puzzle (v11): no abre la ficha, abre sus capítulos. Rosa (01-10). -->
+    <h2 class="modos-grupo">Niveles</h2>
     <button class="modo-fila" data-modo="puzzle">
       <svg width="34" height="30" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#F28FB1"/><g fill="#1c1710"><rect x="15" y="12" width="7" height="7" rx="1.5"/><rect x="24" y="12" width="7" height="7" rx="1.5"/><rect x="15" y="21" width="7" height="7" rx="1.5"/></g><rect x="24" y="21" width="7" height="7" rx="1.5" fill="none" stroke="#1c1710" stroke-width="1.8"/></svg>
       <span class="txt"><span class="nom" data-nombre="puzzle"></span><span class="frase" data-frase="puzzle"></span></span>
       <svg width="9" height="14" viewBox="0 0 10 16" aria-hidden="true"><path d="M2 2l6 6-6 6" stroke="#6d6150" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
-
-    <!-- El historial se hará más adelante (idea del §9); el botón ya existe. -->
-    <button id="historial" disabled>
-      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><g stroke="#9a8d77" stroke-width="1.6" fill="none" stroke-linecap="round"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9"/><path d="M2 2.5v2.8h2.8"/><path d="M8 5v3l2 1.5"/></g></svg>
-      Historial<span class="pronto">Pronto</span>
+    <h2 class="modos-grupo">Practicar</h2>
+    <button class="modo-fila pequena" data-modo="libre">
+      <svg width="24" height="21" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#9fd67a"/><path d="M15 21l6 6 11-13" stroke="#1c1710" stroke-width="3.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="txt"><span class="nom" data-nombre="libre"></span><span class="frase" data-frase="libre"></span></span>
+      <svg width="8" height="13" viewBox="0 0 10 16" aria-hidden="true"><path d="M2 2l6 6-6 6" stroke="#6d6150" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
 
     <span id="inicio-version"></span>
@@ -636,13 +647,18 @@ footer .sem{font-variant-numeric:tabular-nums}
         <svg width="78" height="16" viewBox="0 0 138 28" aria-hidden="true"><g stroke="#1c1710" stroke-width="1.5"><polygon points="11,1 22,6 22,20 11,26 0,20 0,6" fill="#2E4756"/><polygon points="34,1 45,6 45,20 34,26 23,20 23,6" fill="#6E5A32"/><polygon points="57,1 68,6 68,20 57,26 46,20 46,6" fill="#9C7F3C"/><polygon points="80,1 91,6 91,20 80,26 69,20 69,6" fill="#C8A14A"/><polygon points="103,1 114,6 114,20 103,26 92,20 92,6" fill="#E3C87E"/><polygon points="126,1 137,6 137,20 126,26 115,20 115,6" fill="#F79A1F"/></g></svg>
         <p>De <b>agua (0)</b> a <b>abeja (<span data-const="MAX_LEVEL">5</span>)</b>. Arrastra abejas para <b>cosechar</b>: vuelven a agua y ganas puntos.</p>
       </div>
+      <!-- La racha (v11.1, T-48): multiplica los puntos de cada cosecha (× (1 + racha)). -->
+      <div class="hoja-fila">
+        <div class="ico-paso" aria-hidden="true"><span style="color:#9a8d77">×1</span><span style="color:#ede4d3">×2</span><span style="color:#F79A1F">×3</span></div>
+        <p>Cosecha sin fallar y sube la <b>racha</b>: cada cosecha vale más.</p>
+      </div>
       <div class="hoja-fila">
         <div class="ico-pm" aria-hidden="true"><span>PASO<b>6</b></span><span>MÁX<b>4</b></span></div>
-        <p><b>Máx</b> es tu grupo más grande. Si es menor que el paso, <b>fallas</b>: el paso vuelve a 1 y pierdes la racha.</p>
+        <p><b>Máx</b> es tu grupo más grande de celdas <b>juntas y al mismo nivel</b>. Si es menor que el paso, <b>fallas</b>: el paso vuelve a 1 y pierdes la racha.</p>
       </div>
       <div class="hoja-fila">
         <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="11" fill="#ffd23f" stroke="rgba(0,0,0,.5)" stroke-width="1.5"/><text x="13" y="14" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="700" fill="#3a2a00">J</text></svg>
-        <p>Pasa por una <b>gota</b> para coger su ítem (dura <span data-const="ITEM_TURNOS">2</span> turnos). Toca una ficha para ver qué hace.</p>
+        <p>Pasa por una <b>gota</b> para coger su ítem: la gota se <b>evapora</b> en <span data-const="ITEM_TURNOS">2</span> turnos. Toca una ficha para ver qué hace.</p>
       </div>
     </div>
   </div>
@@ -659,7 +675,7 @@ footer .sem{font-variant-numeric:tabular-nums}
       </div>
       <div class="hoja-fila">
         <span class="ico-mas" aria-hidden="true"><svg width="24" height="21" viewBox="0 0 46 40"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#F79A1F" stroke="#1c1710" stroke-width="2"/><text x="23" y="21" text-anchor="middle" dominant-baseline="central" font-size="18" font-weight="700" fill="#3a2a00" data-const="MAX_LEVEL">5</text></svg><span>+s</span></span>
-        <p><b>Cosechar suma segundos.</b> Con el reloj lleno (<span data-const="RELOJ_TECHO">99</span>), cada segundo de más son <b><span data-const="PUNTOS_POR_SEGUNDO">50</span> puntos</b>.</p>
+        <p><b>Cosechar suma segundos</b>, y la <b>racha</b> también: un segundo más por cada cosecha seguida. Con el reloj lleno (<span data-const="RELOJ_TECHO">99</span>), cada segundo de más son <b><span data-const="PUNTOS_POR_SEGUNDO">50</span> puntos</b>.</p>
       </div>
       <div class="hoja-fila">
         <svg width="24" height="21" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#a0442f" stroke="#ff7a45" stroke-width="2"/><text x="23" y="21" text-anchor="middle" dominant-baseline="central" font-size="17" font-weight="700" fill="#fff">V</text></svg>
@@ -674,7 +690,7 @@ footer .sem{font-variant-numeric:tabular-nums}
       <div><h2 id="hoja-titulo-plagas">Espanta las plagas</h2></div>
     </div>
     <div class="hoja-filas">
-      <p>Cada fallo enciende una. Una cosecha grande apaga las de arriba: cuanto más grande, más apaga.</p>
+      <p>Cada fallo enciende una. Una cosecha grande apaga las más graves primero: cuanto más grande, más apaga.</p>
       <div id="plagas-escala"></div>
     </div>
   </div>
@@ -710,7 +726,7 @@ footer .sem{font-variant-numeric:tabular-nums}
       <div><h2 id="hoja-titulo-libre" data-nombre="libre"></h2><span data-frase="libre"></span></div>
     </div>
     <div class="hoja-filas">
-      <p>Sin reloj, sin helada, sin desastres y <b>sin puntos</b>. Está para practicar la mecánica sin que nada te muerda.</p>
+      <p>Sin reloj, sin helada, sin plagas y <b>sin puntos</b>. Está para practicar la mecánica sin que nada te muerda.</p>
     </div>
   </div>
 
@@ -727,11 +743,11 @@ footer .sem{font-variant-numeric:tabular-nums}
       <div class="hoja-fila arriba">
         <svg width="26" height="23" viewBox="0 0 46 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#C8A14A" stroke="#1c1710" stroke-width="2"/><polygon points="23,9 36,15 36,26 23,32 10,26 10,15" fill="none" stroke="#e5484d" stroke-width="3.5"/></svg>
         <div>
-        <p>Las plagas son las de Contrarreloj, pero dejan <b>huella</b>:</p>
+        <p>Cada fallo trae una <b>plaga</b>, cada vez más grave (pestaña Plagas), y cada plaga deja <b>huella</b>:</p>
         <ul class="huellas-lista">
           <li><b>Varroa</b>, la celda que baja a cera</li>
           <li><b>Polilla</b>, el capullo</li>
-          <li><b>Velutina</b>, las 3-4 celdas que baja a cera</li>
+          <li><b>Velutina</b>, las <span data-const="VELUTINA_CELDAS">3-4</span> celdas que baja a cera</li>
           <li><b>Seda</b>, no deja</li>
         </ul>
         </div>
@@ -786,7 +802,7 @@ footer .sem{font-variant-numeric:tabular-nums}
       </div>
       <div class="hoja-fila">
         <span class="ico-seg" aria-hidden="true">en 6</span>
-        <p>Se puede en el <b>mínimo</b> que te dice, y está comprobado. En el mínimo, <b>★★★</b>; con uno de más, ★★; con dos, ★. Con más, se acaba.</p>
+        <p>Cada nivel tiene un <b>mínimo</b> de turnos, y siempre se puede. En el mínimo, <b>★★★</b>; con uno de más, ★★; con dos, ★. Con más, se acaba.</p>
       </div>
       <div class="hoja-fila">
         <svg width="52" height="22" viewBox="0 0 92 40" aria-hidden="true"><polygon points="23,1 45,11 45,29 23,39 1,29 1,11" fill="#C8A14A"/><polygon points="23,7 38,14 38,26 23,33 8,26 8,14" fill="none" stroke="#ffd23f" stroke-width="3" stroke-dasharray="5 4"/><polygon points="68,1 90,11 90,29 68,39 46,29 46,11" fill="#C8A14A"/><polygon points="68,4 86,13 86,27 68,36 50,27 50,13" fill="none" stroke="#e5484d" stroke-width="4"/></svg>

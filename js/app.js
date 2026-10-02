@@ -376,7 +376,7 @@ function rellenarConstantes() {
                     MAX_LEVEL, RELOJ_INICIAL, RELOJ_TECHO, RELOJ_ACELERA_CADA, PUNTOS_POR_SEGUNDO,
                     TURNOS_CONTAGIO, HUELLA_RESTA: HUELLA_RESTA.toLocaleString('es-ES'),
                     CONTAGIO_CADA_NORMAL: CONTAGIO_CADA.normal, CONTAGIO_CADA_DIFICIL: CONTAGIO_CADA.dificil,
-                    N_CERRADAS: CERRADAS_EXPANSION.length };
+                    N_CERRADAS: CERRADAS_EXPANSION.length, VELUTINA_CELDAS: VELUTINA_CELDAS.join('-') };
   document.querySelectorAll('[data-const]').forEach(el => {
     el.textContent = valores[el.dataset.const];
   });
@@ -736,8 +736,17 @@ function onCommit(cells) {
   if (!commitTurn(S, cells)) return;
   if (copia) {
     historiaPuzle.push(copia);
+    const antes = abiertosPuzzle(CAPITULOS, PUZLES, progresoPuzzle.mejores).capitulos;
     puzleMejora = apuntarPuzzle(progresoPuzzle, S.puzle.id, S.puzle.resultado);
-    if (puzleMejora) guardarProgresoPuzzle();
+    if (puzleMejora) {
+      guardarProgresoPuzzle();
+      // El nivel que abre un capítulo lo dice en su final (v11.1).
+      const ahora = abiertosPuzzle(CAPITULOS, PUZLES, progresoPuzzle.mejores).capitulos;
+      const n = Object.keys(ahora).find(k => ahora[k].abierto && !antes[k].abierto);
+      if (n !== undefined) capituloAbierto = Number(n);
+    }
+    // Resolver un nivel (hoy, C1-01 desde «Aprende a jugar») deja de ser «primera vez».
+    if (S.puzle.resultado && S.puzle.resultado.gana) marcarYaJugado();
   }
   // Máximos de la partida, sólo para la pantalla de fin: se llevan aquí para no
   // meter datos de interfaz en el estado del motor.
@@ -852,6 +861,7 @@ function guardarProgresoPuzzle() {
 
 const historiaPuzle = [];    // los estados de antes de cada turno, para deshacer
 let puzleMejora = false;     // el último nivel ganado mejoró la marca
+let capituloAbierto = null;  // el capítulo que acaba de abrir este nivel (v11.1)
 // Lo que cambia un turno, copiado: los arrays y el puzle (su seguimiento es nuevo cada turno).
 function copiaPuzle(s) {
   return { ...s, height: s.height.slice(), roto: s.roto.slice(), cerrada: s.cerrada.slice(),
@@ -866,8 +876,10 @@ function jugarNivel(id, fundido = true) {
   if (!p) return;
   partida.modo = MODOS.PUZZLE;
   partida.dificultad = 'normal';
+  guardarUltimoModo(MODOS.PUZZLE);
   historiaPuzle.length = 0;
   puzleMejora = false;
+  capituloAbierto = null;
   if (!fundido) { prepararPartida(crearPuzle(p), 0); return; }
   mostrarPantalla('partida');
   prepararPartida(crearPuzle(p), 0);
@@ -878,6 +890,7 @@ function deshacerPuzle() {
   if (!S.puzle || !historiaPuzle.length) return;
   S = historiaPuzle.pop();
   finPintado = false;
+  capituloAbierto = null;
   document.getElementById('fin').hidden = true;
   drag.cells = []; drag.desde = []; drag.trail = []; drag.deshaciendo = false; drag.fuera = false;
   abejas.length = 0; destellos.length = 0;
@@ -913,20 +926,23 @@ function pintarCapitulos() {
   setHtml('pz-total', `★ <b>${total}</b> / ${PUZLES.length * 3}`);
   const caja = document.getElementById('pz-capitulos');
   if (!PUZLES.length) { caja.innerHTML = '<div class="pz-cap"><p>Todavía no hay niveles.</p></div>'; return; }
-  const nombre = t => OBJETIVO_INFO[t].nombre.toLowerCase();
-  const lista = ts => ts.length < 2 ? ts.map(nombre).join('') : ts.slice(0, -1).map(nombre).join(', ') + ' y ' + nombre(ts[ts.length - 1]);
+  // Sin nombrar lo que el jugador aún no conoce (v11.1, T-48): cerrado, sólo que
+  // trae objetivos nuevos y cuánto falta; abierto, una línea por tipo nuevo, con
+  // la frase `explica` de OBJETIVO_INFO (la interfaz no inventa reglas).
   const primero = Math.min(...CAPITULOS.map(c => c.n));
   let html = '', anterior = null;
   for (const c of CAPITULOS.slice().sort((a, b) => a.n - b.n)) {
     const info = ab.capitulos[c.n];
-    const que = c.n === 0 ? 'Tutorial' : c.nuevos.length ? (c.n === primero ? lista(c.nuevos) : '+ ' + lista(c.nuevos)) : '';
     if (!info.abierto) {
-      const falta = anterior ? Math.max(1, anterior.info.necesita - anterior.info.resueltos) : 0;
       html += `<div class="pz-cap cerrado"><h3>Capítulo ${c.n} <b>🔒</b></h3>` +
-        `<p>${que ? que.charAt(0).toUpperCase() + que.slice(1) + '. ' : ''}Se abre al resolver ${falta} más del capítulo ${anterior.n}.</p></div>`;
+        (c.nuevos.length ? '<p>Objetivos nuevos.</p>' : '') +
+        `<p>Para abrirlo: ${anterior.info.necesita} niveles del capítulo ${anterior.n} · llevas ${anterior.info.resueltos}</p></div>`;
     } else {
+      // En el primer capítulo todo es nuevo: las líneas van sin la marca.
+      const lineas = c.n === 0 ? '<p>Tutorial</p>'
+        : c.nuevos.map(t => `<p>${c.n === primero ? '' : '<b class="nuevo">Nuevo</b> · '}${OBJETIVO_INFO[t].explica}</p>`).join('');
       html += `<div class="pz-cap"><h3>Capítulo ${c.n} <b>★ ${info.estrellas} / ${info.total * 3}</b></h3>` +
-        (que ? `<p>${que.charAt(0).toUpperCase() + que.slice(1)}</p>` : '') + '<div class="pz-niveles">';
+        lineas + '<div class="pz-niveles">';
       for (const p of PUZLES.filter(x => x.capitulo === c.n).sort((a, b) => a.orden - b.orden)) {
         const est = ab.niveles[p.id], m = progresoPuzzle.mejores[p.id], sig = p.id === ab.siguiente;
         const fill = est === 'resuelto' ? '#C8A14A' : est === 'abierto' ? '#1c1710' : '#171410';
@@ -994,6 +1010,12 @@ function pintarFinPuzle() {
       (r.estrellas === 3 ? 'En el mínimo.' : `Se puede en ${p.minimo}: ¿lo intentas?`) +
       (puzleMejora ? '' : ` · Tu mejor marca: ${ESTRELLAS(m.estrellas)}`);
     rec.className = 'record' + (puzleMejora ? ' nuevo' : '');
+    if (capituloAbierto !== null) {
+      const d = document.createElement('div');
+      d.className = 'pz-abierto';
+      d.innerHTML = `<b>¡Capítulo ${capituloAbierto} abierto!</b> Trae objetivos nuevos.`;
+      det.appendChild(d);
+    }
     setText('fin-menu', '↻ Repetir');
     const sig = siguienteNivel(p.id);
     setText('fin-otra', sig ? 'Siguiente ›' : 'Capítulos');
@@ -1003,7 +1025,7 @@ function pintarFinPuzle() {
       orden: 'La B antes que la A', limite: `Se acabaron los ${p.limite} turnos`,
     }[r.motivo];
     const porque = {
-      fallo: `Tu meseta más grande es de ${r.meseta} y el paso pedía ${r.paso}.`,
+      fallo: `Tu máx era ${r.meseta} y el paso pedía ${r.paso}.`,
       roja: 'Las rojas se pueden subir, pero no cosechar.',
       orden: 'Hay que cosechar la A primero, y no a la vez que la B.',
       limite: `Se puede en ${p.minimo}: prueba otro camino.`,
@@ -1040,16 +1062,75 @@ function mostrarPantalla(p) {
   else {
     // Se entra siempre por la portada, con el panal a la vista (v10.2).
     document.getElementById('inicio').scrollTop = 0;
-    pintarContinuar(); medirFondo(); marcarBajado();
+    pintarPrincipal(); medirFondo(); marcarBajado();
   }
 }
 
-// El botón «Continuar partida», encima de los modos, con lo que se va a
-// continuar. Sólo sale si hay una partida guardada que valga.
-function pintarContinuar() {
+// ---------------------------------------------------------------------------
+// El botón naranja según quién llega (v11.1, T-48)
+// ---------------------------------------------------------------------------
+// Siempre hay uno, y es lo siguiente que te toca:
+//   · partida a medias (manda sobre los otros dos): «Continuar partida»;
+//   · ya has jugado: «Jugar» el último modo, que abre su ficha;
+//   · primera vez: «Aprende a jugar», que lleva al tutorial; mientras no
+//     exista (T-49), al primer nivel de Puzzle.
+// Para alguien nuevo, ni Contrarreloj (el reloj y las plagas lo machacan antes
+// de entender el paso) ni Panal libre (sin objetivo, se aburre).
+// Deja de ser nuevo al resolver un nivel o al empezar cualquier partida desde
+// una ficha («Elegir modo»): quien quiera saltarse el tutorial, se lo salta.
+// Dos claves nuevas, con el cuidado de siempre: si localStorage falla, se da
+// por no nuevo y sin último modo, y entonces el botón es «Jugar» Contrarreloj.
+const YA_JUGADO_KEY = 'colmena.yaJugado.v1';
+const ULTIMO_KEY = 'colmena.ultimoModo.v1';
+function esNuevo() {
+  try {
+    if (localStorage.getItem(YA_JUGADO_KEY) === '1') return false;
+    // Quien jugó antes de la v11.1 no tiene la marca, pero sí alguna de éstas.
+    return ![RECORD_KEY, PARTIDA_KEY, PUZZLE_KEY, BASICO_KEY].some(k => localStorage.getItem(k) !== null);
+  } catch { return false; }
+}
+function marcarYaJugado() {
+  try { localStorage.setItem(YA_JUGADO_KEY, '1'); } catch { /* da igual */ }
+}
+function ultimoModo() {
+  try {
+    const m = localStorage.getItem(ULTIMO_KEY);
+    return m && CONFIG_MODO[m] ? m : null;
+  } catch { return null; }
+}
+function guardarUltimoModo(modo) {
+  try { localStorage.setItem(ULTIMO_KEY, modo); } catch { /* da igual */ }
+}
+// «Contrarreloj · Normal», «Panal libre», «Puzzle · capítulo 2» (el del siguiente
+// nivel abierto). Sin récord, en el botón ni en ningún sitio del inicio.
+function describirModo(modo) {
+  if (modo === MODOS.PUZZLE) {
+    const sig = abiertosPuzzle(CAPITULOS, PUZLES, progresoPuzzle.mejores).siguiente;
+    const p = sig && PUZLES.find(x => x.id === sig);
+    return NOMBRE_MODO.puzzle + (p ? ` · capítulo ${p.capitulo}` : '');
+  }
+  return NOMBRE_MODO[modo] + (tieneDificultad(modo) ? ` · ${NOMBRE_DIF[dificultadElegida(modo)]}` : '');
+}
+const ICO_PLAY = '<svg width="13" height="13" viewBox="0 0 14 14"><path d="M4 2l8 5-8 5z" fill="#F79A1F"/></svg>';
+const ICO_HEX = '<svg width="14" height="14" viewBox="0 0 14 14"><polygon points="7,1 12.5,4 12.5,10 7,13 1.5,10 1.5,4" fill="#F79A1F"/></svg>';
+function quienLlega() {
   const g = leerPartida();
-  document.getElementById('continuar').hidden = !g;
-  if (g) setText('continuar-detalle', describirPartida(g.s));
+  if (g) return { caso: 'continuar', titulo: 'Continuar partida', detalle: describirPartida(g.s) };
+  if (esNuevo()) return { caso: 'nuevo', titulo: 'Aprende a jugar', detalle: 'Empieza por aquí: unos niveles cortos.' };
+  const modo = ultimoModo() || MODOS.CONTRARRELOJ;
+  return { caso: 'jugar', titulo: 'Jugar', detalle: describirModo(modo), modo };
+}
+function pintarPrincipal() {
+  const q = quienLlega();
+  setText('principal-titulo', q.titulo);
+  setText('principal-detalle', q.detalle);
+  setHtml('principal-ico', q.caso === 'nuevo' ? ICO_HEX : ICO_PLAY);
+}
+function pulsarPrincipal() {
+  const q = quienLlega();
+  if (q.caso === 'continuar') continuarPartida();
+  else if (q.caso === 'nuevo') { const p = nivelesEnOrden()[0]; if (p) jugarNivel(p.id); }
+  else abrirFicha(q.modo);
 }
 
 // El inicio tiene dos tramos (v10.2): la portada, con el panal vivo en grande,
@@ -1088,7 +1169,7 @@ function entrarEnPartida(preparar) {
 // «Continuar partida»: la guardada, tal cual se dejó, sin pasar por la ficha.
 function continuarPartida() {
   const g = leerPartida();
-  if (!g) { pintarContinuar(); return; }
+  if (!g) { pintarPrincipal(); return; }
   partida.modo = g.s.modo;
   partida.dificultad = g.s.dificultad;
   entrarEnPartida(() => prepararPartida(g.s, g.duracion));
@@ -1147,7 +1228,9 @@ const PESTANAS = {
   puzzle:       ['basico', 'puzzle'],
 };
 const NOMBRE_PESTANA = { basico: 'Básico', plagas: 'Plagas', ...NOMBRE_MODO };
-const ORDEN_MODOS = [MODOS.CONTRARRELOJ, MODOS.INVIERNO, MODOS.LIBRE, MODOS.CONTAGIO, MODOS.EXPANSION];
+// El orden de la lista del inicio (v11.1: Partidas y Panal libre) y, el último,
+// Puzzle, que desde la v11.1 también tiene ficha.
+const ORDEN_MODOS = [MODOS.CONTRARRELOJ, MODOS.INVIERNO, MODOS.CONTAGIO, MODOS.EXPANSION, MODOS.LIBRE, MODOS.PUZZLE];
 
 // La primera ficha se abre en Básico; en cuanto se empieza una partida desde
 // una ficha, las siguientes se abren en la pestaña del modo. Se marca al pulsar
@@ -1185,6 +1268,11 @@ function textoDificultad(modo, dif) {
   if (CONFIG_MODO[modo].reloj) return `acelera un ${Math.round(RELOJ_ACELERA[dif] * 100)} %`;
   const n = HELADA_MUERDE[dif];
   return `${n} ${n === 1 ? 'celda' : 'celdas'} por fallo`;
+}
+
+// La ficha de un modo, desde el inicio: la primera vez en Básico.
+function abrirFicha(modo) {
+  abrirHoja({ desde: 'ficha', modo, pestana: basicoVisto() ? modo : 'basico' });
 }
 
 let hojaOrigen = null;       // quien la abrió: al cerrar, el foco vuelve ahí
@@ -1255,8 +1343,10 @@ function pintarHoja() {
   pintarDificultad(modo, ficha);
   if (CONFIG_MODO[modo].abre) pintarEscalaExpansion(ficha ? dificultadElegida(modo) : S.dificultad);
 
-  // Empezar otra sustituye a la guardada (v9.1): que no pille por sorpresa.
-  const g = ficha ? leerPartida() : null;
+  // Empezar otra sustituye a la guardada (v9.1): que no pille por sorpresa. Un
+  // nivel de Puzzle no la toca, así que su ficha no avisa.
+  const esPuzzle = modo === MODOS.PUZZLE;
+  const g = ficha && !esPuzzle ? leerPartida() : null;
   const aviso = document.getElementById('hoja-aviso');
   aviso.hidden = !g;
   if (g) aviso.textContent = `Empezar sustituye tu partida guardada de ${NOMBRE_MODO[g.s.modo]} (turno ${g.s.turn}).`;
@@ -1272,6 +1362,8 @@ function pintarHoja() {
   }
   document.getElementById('hoja-menu').hidden = !ficha;
   document.getElementById('hoja-empezar').hidden = !ficha;
+  // Puzzle (v11.1): la ficha no empieza, lleva a los capítulos.
+  setText('hoja-empezar', esPuzzle ? 'Elegir nivel' : 'Empezar');
   document.getElementById('hoja-volver').hidden = ficha;
   // Desde los capítulos de Puzzle no hay partida a la que volver.
   setText('hoja-volver', desde === 'puzles' ? 'Volver' : 'Volver a la partida');
@@ -1348,13 +1440,18 @@ function cambiarModoFicha(dir) {
 
 // «Empezar»: el modo y la dificultad de la ficha. La hoja baja y el inicio se
 // funde mientras aparece la partida. El fundido fino panal → panal es de T-14.
+// En Puzzle es «Elegir nivel» (v11.1): lleva a los capítulos. Las dos cuentan
+// como haber elegido modo: ya no es «primera vez» y es el último modo jugado.
 function empezar() {
   if (!hojaAbierta) return;
   const modo = hojaAbierta.modo;
+  marcarBasicoVisto();
+  marcarYaJugado();
+  guardarUltimoModo(modo);
+  hojaOrigen = null;
+  if (modo === MODOS.PUZZLE) { irACapitulos(); return; }
   partida.modo = modo;
   partida.dificultad = tieneDificultad(modo) ? dificultadElegida(modo) : 'normal';
-  marcarBasicoVisto();
-  hojaOrigen = null;
   cerrarHoja();
   entrarEnPartida(() => restart());
 }
@@ -1429,14 +1526,10 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('inicio').addEventListener('scroll', marcarBajado, { passive: true });
   document.getElementById('elegir-modo').addEventListener('click', verModos);
 
-  // El inicio: cada modo abre su ficha.
-  document.getElementById('continuar').addEventListener('click', continuarPartida);
-  document.querySelectorAll('.modo-fila').forEach(b => b.addEventListener('click', () => {
-    const modo = b.dataset.modo;
-    // Puzzle (v11) no tiene ficha con «Empezar»: va a sus capítulos.
-    if (modo === MODOS.PUZZLE) { irACapitulos(); return; }
-    abrirHoja({ desde: 'ficha', modo, pestana: basicoVisto() ? modo : 'basico' });
-  }));
+  // El inicio: el botón naranja y cada modo, que abre su ficha (también Puzzle,
+  // desde la v11.1: antes iba directo a los capítulos).
+  document.getElementById('principal').addEventListener('click', pulsarPrincipal);
+  document.querySelectorAll('.modo-fila').forEach(b => b.addEventListener('click', () => abrirFicha(b.dataset.modo)));
 
   // Puzzle (v11): los capítulos, el nivel y su final.
   leerProgresoGuardado();
