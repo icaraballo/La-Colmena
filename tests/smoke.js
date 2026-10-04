@@ -1595,5 +1595,102 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   ok(!/document|localStorage|window|Math\.random|Date\.now/.test(src), 'historial.js no toca DOM, localStorage, el azar ni el reloj');
 }
 
+// --- la ayuda de Puzzle: pista y solución guiada (v11.10, T-54; §5.98) --------------
+{
+  const nivel = id => T.PUZLES.find(p => p.id === id);
+  const jugar = (n, jugadas, op) => { const s = T.crearPuzle(n, op); for (const c of jugadas) T.commitTurn(s, c); return s; };
+
+  // 1. El tope de la solución guiada va en el motor.
+  const n1 = nivel('C1-01');
+  const libre = jugar(n1, n1.solucion), guiada = jugar(n1, n1.solucion, { guiada: true });
+  ok(libre.puzle.resultado.gana && libre.puzle.resultado.estrellas === 3 && !libre.puzle.resultado.guiada, 'sin ayuda, en el mínimo: ★★★');
+  ok(guiada.puzle.resultado.gana && guiada.puzle.resultado.guiada, 'con la solución guiada también se gana');
+  eq(guiada.puzle.resultado.estrellas, T.PUZZLE_GUIADA_ESTRELLAS, 'con la solución guiada, como mucho ★');
+  ok(T.PUZZLE_PISTA_TRAS === 5 && T.PUZZLE_SOLUCION_TRAS === 10 && T.PUZZLE_GUIADA_ESTRELLAS === 1, 'pista a las 5, solución a las 10, ★ como mucho');
+
+  // 2. La mejor marca: con las mismas estrellas, sin ayuda gana a con ella.
+  const p = T.progresoPuzzleVacio();
+  ok(T.apuntarPuzzle(p, 'X', { gana: true, estrellas: 1, turnos: 6, guiada: true }), 'la primera marca, guiada, se apunta');
+  eq(p.mejores.X.guiada, true, 'y se sabe que fue con la solución');
+  ok(!T.apuntarPuzzle(p, 'X', { gana: true, estrellas: 1, turnos: 4, guiada: true }) || p.mejores.X.turnos === 4, 'guiada contra guiada: menos turnos');
+  ok(T.apuntarPuzzle(p, 'X', { gana: true, estrellas: 1, turnos: 9, guiada: false }), 'una ★ sin ayuda mejora una ★ guiada, aunque tarde más');
+  ok(!p.mejores.X.guiada, 'y ya no está marcada como guiada');
+  ok(!T.apuntarPuzzle(p, 'X', { gana: true, estrellas: 1, turnos: 1, guiada: true }), 'una guiada no quita una sin ayuda');
+  ok(T.apuntarPuzzle(p, 'X', { gana: true, estrellas: 3, turnos: 4 }) && !T.apuntarPuzzle(p, 'X', { gana: true, estrellas: 1, turnos: 1, guiada: true }),
+     'resolver luego con la solución no baja las estrellas');
+
+  // 3. Las derrotas, por nivel, y lo que se lee de lo guardado.
+  const q = T.progresoPuzzleVacio();
+  eq(T.apuntarDerrota(q, 'C4-03'), 1, 'la primera derrota');
+  eq(T.apuntarDerrota(q, 'C4-03'), 2, 'la segunda');
+  eq(T.apuntarDerrota(q, 'C1-01'), 1, 'cada nivel lleva las suyas');
+  const leido = T.leerProgresoPuzzle(JSON.parse(JSON.stringify({ ...q, mejores: { A: { estrellas: 1, turnos: 5, guiada: true }, B: { estrellas: 2, turnos: 3 } },
+                                                                  derrotas: { ...q.derrotas, R: -1, S: 'x', U: 2.5 } })));
+  ok(leido.derrotas['C4-03'] === 2 && leido.derrotas['C1-01'] === 1, 'las derrotas se guardan y se leen');
+  ok(!('R' in leido.derrotas) && !('S' in leido.derrotas) && !('U' in leido.derrotas), 'una cuenta rota se olvida, sólo ésa');
+  ok(leido.mejores.A.guiada === true && !('guiada' in leido.mejores.B), 'la marca guiada se lee; la otra, sin el campo');
+  const viejo = T.leerProgresoPuzzle({ v: 1, mejores: { A: { estrellas: 3, turnos: 4 } } });
+  ok(viejo.mejores.A.estrellas === 3 && Object.keys(viejo.derrotas).length === 0, 'un progreso de antes de la v11.10 se lee, con cero derrotas');
+
+  // 4. La pista. El camino sale de jugar con el motor del juego (estadoBuscador), así
+  // que también comprueba que el juego y la máquina hablan del mismo estado.
+  const M = T.motorDelJuego();
+  const NO_BUSQUES = () => { throw new Error('ha buscado'); };
+  const caminoDe = (n, jugadas) => {
+    const s = T.crearPuzle(n), camino = [T.estadoBuscador(s)];
+    for (const c of jugadas) { if (!T.commitTurn(s, c)) return null; camino.push(T.estadoBuscador(s)); if (s.gameOver) break; }
+    return { s, camino };
+  };
+  const limiteDe = n => n.minimo + T.PUZZLE_MARGEN;
+  for (const id of ['C1-01', 'C1-02', 'C1-05', 'C2-01']) {
+    const n = nivel(id), juego = T.crearJuego(M).juegoDeNivel(n);
+    // a) Siguiendo la solución guardada, la siguiente es la suya, sin buscar.
+    for (let k = 0; k < n.solucion.length; k++) {
+      const { camino } = caminoDe(n, n.solucion.slice(0, k));
+      const r = T.pistaPuzle({ nivel: n, juego, buscar: NO_BUSQUES, camino, limite: limiteDe(n) });
+      ok(r.tipo === 'jugada' && r.jugada.join() === n.solucion[k].join(), `${id}: en la solución, turno ${k}, la pista es la suya sin buscar`);
+    }
+    // b) Fuera de la solución: o la jugada que da gana a tiempo, o el turno al que
+    // deshacer es el último desde el que se gana. Lo comprueba el buscador aparte.
+    const ganable = (e, quedan) => quedan > 0 && T.buscar({ ...juego, inicial: e }, { maxProf: quedan }).resuelto;
+    const s = T.crearPuzle(n), jugadas = [];
+    const azar = T.rng(n.id.length * 7919 + n.minimo);
+    for (let t = 0; t < limiteDe(n) - 1 && !s.gameOver; t++) {
+      const opciones = juego.jugadas(T.estadoBuscador(s)).filter(c => {
+        const e2 = juego.aplicar(T.estadoBuscador(s), c); return e2 && !juego.objetivo(e2);
+      });
+      if (!opciones.length) break;
+      const c = opciones[Math.floor(azar() * opciones.length)];
+      if (!T.commitTurn(s, c) || s.gameOver) break;
+      jugadas.push(c);
+      const { camino } = caminoDe(n, jugadas);
+      const r = T.pistaPuzle({ nivel: n, juego, buscar: T.buscarPrimera, camino, limite: limiteDe(n), maxMs: 60000 });
+      const tt = camino.length - 1;
+      if (r.tipo === 'jugada') {
+        const e2 = juego.aplicar(camino[tt], r.jugada);
+        ok(e2 && (juego.objetivo(e2) || ganable(e2, limiteDe(n) - tt - 1)), `${id}, turno ${tt}: la jugada de la pista gana a tiempo`);
+      } else {
+        ok(!r.aproximada && r.turno < tt, `${id}, turno ${tt}: la pista manda deshacer a un turno anterior`);
+        ok(ganable(camino[r.turno], limiteDe(n) - r.turno) || r.turno === 0, `${id}: desde el turno ${r.turno} se gana`);
+        let ninguno = true;
+        for (let k = r.turno + 1; k <= tt; k++) if (ganable(camino[k], limiteDe(n) - k)) ninguno = false;
+        ok(ninguno, `${id}: y desde ninguno posterior`);
+      }
+    }
+  }
+  // c) Sin tiempo para buscar: deshacer hasta donde dejaste la solución guardada.
+  {
+    const n = nivel('C1-01'), juego = T.crearJuego(M).juegoDeNivel(n);
+    const otra = juego.jugadas(juego.inicial).find(c => c.join() !== n.solucion[0].slice().sort((a, b) => a - b).join() && juego.aplicar(juego.inicial, c));
+    const { camino } = caminoDe(n, [otra]);
+    const agotado = () => ({ resuelto: false, agotado: true, stats: {} });
+    const r = T.pistaPuzle({ nivel: n, juego, buscar: agotado, camino, limite: limiteDe(n) });
+    ok(r.tipo === 'deshaz' && r.turno === 0 && r.aproximada, 'sin tiempo: «te saliste de la solución en el turno 0»');
+  }
+  // d) pista.js no toca el DOM ni localStorage.
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'pista.js'), 'utf8').replace(/\/\/.*$/gm, '');
+  ok(!/document|localStorage|window/.test(src), 'pista.js no toca DOM ni localStorage');
+}
+
 console.log(`${total - fallos}/${total} comprobaciones correctas`);
 if (fallos) process.exit(1);

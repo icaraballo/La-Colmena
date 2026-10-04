@@ -25,28 +25,9 @@ const M = vm.runInThisContext('(function () {\n' + src + `
            cumplidoPuzle, rompePuzle, estrellasPuzle };
 })`, { filename: 'motor-colmena.js' })();
 
-// El estado del motor para un nivel, para la BÚSQUEDA: un Panal libre con el
-// tablero, la forma, los niveles y el paso del nivel, sin ítems (con `itemCalma`
-// infinito, spawnItemIfEarned no saca ninguno). No es crearPuzle del juego (v11) a
-// propósito: el buscador copia y juega millones de veces y mira el objetivo con su
-// propio seguimiento compacto; el final de un puzle (§17 de state.js) le sobra.
-// Lo que juega el modo Puzzle de verdad lo comprueban `verificar` y tests/smoke.js.
-function estadoPuzle({ tablero = 'panal24', height, rotas = [], paso = 1 }) {
-  const t = M.TABLEROS[tablero];
-  if (!t) throw new Error(`tablero desconocido: ${tablero}`);
-  if (height.length !== t.n) throw new Error(`el tablero ${tablero} tiene ${t.n} celdas, no ${height.length}`);
-  const s = M.createState(M.MODOS.LIBRE, 'normal', 1);
-  s.tablero = tablero;
-  s.height = Uint8Array.from(height);
-  s.roto = new Uint8Array(t.n);
-  for (const i of rotas) { s.roto[i] = 1; s.height[i] = M.AGUA; }
-  s.cerrada = new Uint8Array(t.n);
-  s.sedaHasta = new Int32Array(t.n);
-  s.item = null;
-  s.itemCalma = Infinity;
-  s.step = paso;
-  return s;
-}
+// El estado del motor para un nivel, para la BÚSQUEDA: está en juego.js (v11.10),
+// que lo comparte con el juego.
+const { estadoPuzle } = require('./juego.js').crearJuego(M);
 
 // Un azar reproducible a partir de una semilla: el `rng` del juego, con dos ayudas.
 function azar(semilla) {

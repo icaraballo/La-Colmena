@@ -424,7 +424,20 @@ footer .sem{font-variant-numeric:tabular-nums}
 .pz-aviso{text-align:center;font-size:13px;color:#9a8d77;min-height:20px;margin-bottom:6px}
 .pz-aviso.mal{color:#f0a0a0}
 .pz-botones{display:flex;gap:8px}
-.pz-botones button{flex:1;min-height:44px;border-radius:12px;font-size:14.5px;font-weight:600}
+.pz-botones button{flex:1;min-height:44px;border-radius:12px;font-size:14.5px;font-weight:600;white-space:nowrap;padding:0 6px}
+/* La ayuda (v11.10, T-54): rosa, el color de Puzzle y de la guía del tutorial. */
+.punto{display:inline-block;width:10px;height:10px;border-radius:50%;background:#F28FB1;margin-right:7px;vertical-align:1px}
+.pz-botones button.pz-pista{color:#F28FB1;border-color:#F28FB1;background:#2a1d22}
+.pz-sol{all:unset;cursor:pointer;display:block;margin:0 auto 6px;font-size:13px;font-weight:600;color:#F28FB1;
+  text-decoration:underline;text-underline-offset:3px}
+.pz-sol[hidden]{display:none}
+.pz-sol:focus-visible{outline:2px solid #F28FB1;border-radius:4px}
+.pz-aviso.ayuda{color:#F28FB1}
+.fin-atascado{font-size:13.5px;color:#F28FB1;margin:12px 0 0;text-align:center}
+.fin-ayuda{display:flex;align-items:center;justify-content:center;width:100%;max-width:320px;min-height:44px;margin:8px auto 0;
+  border:1px solid #F28FB1;border-radius:10px;color:#F28FB1;font-size:15px;font-weight:700;background:#2a1d22}
+.fin-ayuda[hidden]{display:none}
+.pz-nivel .e .guiada,#fin .estrellas.guiada,.pz-min-guiada{color:#F28FB1}
 /* En un nivel, fuera lo de los otros modos. */
 #partida.es-puzle header,#partida.es-puzle .sub-con-info,#partida.es-puzle #leyenda,
 #partida.es-puzle #linea-items,#partida.es-puzle #riesgo,#partida.es-puzle footer,#partida.es-puzle #semilla-btn{display:none}
@@ -932,6 +945,9 @@ footer .sem{font-variant-numeric:tabular-nums}
         <button id="fin-menu" class="secundario">‹ Menú</button>
         <button id="fin-otra" class="primario">Otra vez</button>
       </div>
+      <!-- Puzzle (v11.10, T-54): al perder, con derrotas de sobra, la pista. -->
+      <p class="fin-atascado" id="fin-atascado" hidden></p>
+      <button class="fin-ayuda" id="fin-ayuda" hidden><span class="punto" aria-hidden="true"></span>Ver una pista</button>
       <!-- Puzzle (v11): volver a los capítulos, además de los dos botones. -->
       <button id="fin-volver" hidden>‹ Volver a los capítulos</button>
       <!-- v11.4: la misma semilla otra vez («Otra vez» es semilla nueva). -->
@@ -945,8 +961,11 @@ footer .sem{font-variant-numeric:tabular-nums}
 <div id="tut-pie" hidden><button id="tut-deshacer">↶ Deshacer</button><button id="tut-reiniciar">↻ Reiniciar</button><button id="tut-pista" hidden>Pista</button></div>
 
 <div id="puzle-pie" hidden>
+  <!-- La ayuda (v11.10, T-54, §5.98): «Pista» tras PUZZLE_PISTA_TRAS derrotas en el
+       nivel; la solución paso a paso tras PUZZLE_SOLUCION_TRAS. -->
+  <button class="pz-sol" id="pz-solucion" hidden>Ver la solución paso a paso (como mucho <span data-const="GUIADA_ESTRELLAS">★</span>)</button>
   <p class="pz-aviso" id="pz-aviso"></p>
-  <div class="pz-botones"><button id="pz-deshacer">↶ Deshacer</button><button id="pz-reiniciar">↻ Reiniciar</button></div>
+  <div class="pz-botones"><button id="pz-deshacer">↶ Deshacer</button><button id="pz-reiniciar">↻ Reiniciar</button><button class="pz-pista" id="pz-pista" hidden><span class="punto" aria-hidden="true"></span>Pista</button></div>
 </div>
 
 <footer>
@@ -1162,6 +1181,10 @@ footer .sem{font-variant-numeric:tabular-nums}
         <span class="ico-seg" aria-hidden="true">↶</span>
         <p>Si fallas (el paso no cabe) o rompes una regla, <b>pierdes el nivel</b>; pero cumplir el objetivo gana aunque el paso siguiente no quepa. Puedes <b>deshacer</b> y <b>reiniciar</b> siempre.</p>
       </div>
+      <div class="hoja-fila">
+        <span class="ico-seg" aria-hidden="true" style="color:#F28FB1">●</span>
+        <p>¿Atascado? Tras perder un nivel <b><span data-const="PUZZLE_PISTA_TRAS">5</span> veces</b>, la <b>pista</b>: la siguiente jugada desde donde estás. Tras <b><span data-const="PUZZLE_SOLUCION_TRAS">10</span></b>, la <b>solución paso a paso</b>, que haces tú (como mucho <span data-const="GUIADA_ESTRELLAS">★</span>).</p>
+      </div>
     </div>
   </div>
 
@@ -1198,6 +1221,12 @@ footer .sem{font-variant-numeric:tabular-nums}
 <script src="js/puzles.js"></script>
 <!-- El tutorial (v11.2): sus ocho niveles, sólo datos, aparte de los de Puzzle. -->
 <script src="js/tutorial.js"></script>
+<!-- La pista de Puzzle (v11.10, T-54): el resolutor de la máquina, tal cual, y
+     lo que lo usa. Se carga para todos; sólo busca al pedir una pista. -->
+<script src="puzles/objetivos.js"></script>
+<script src="puzles/buscador.js"></script>
+<script src="puzles/juego.js"></script>
+<script src="js/pista.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

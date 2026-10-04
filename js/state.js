@@ -831,7 +831,9 @@ function tick(s, dt) {
 
 // El estado de un nivel. El tablero sale del nivel, no del modo: se crea la
 // partida de Puzzle y se rehacen los arrays con el tablero del nivel.
-function crearPuzle(nivel) {
+// Con `guiada` (v11.10, T-54) es la solución guiada: se juega igual, pero ganar da
+// como mucho PUZZLE_GUIADA_ESTRELLAS. El tope va aquí, no en la interfaz (regla 8).
+function crearPuzle(nivel, { guiada = false } = {}) {
   const s = createState(MODOS.PUZZLE, 'normal', 1);
   const n = TABLEROS[nivel.tablero].n;
   if (nivel.height.length !== n) throw new Error(`el tablero ${nivel.tablero} tiene ${n} celdas`);
@@ -846,7 +848,8 @@ function crearPuzle(nivel) {
     id: nivel.id, objetivo: nivel.objetivo, minimo: nivel.minimo,
     limite: nivel.limite === null ? null : nivel.minimo + PUZZLE_MARGEN,
     seg: seguimientoPuzle(nivel.objetivo),
-    resultado: null,   // { gana: true, turnos, estrellas } | { gana: false, motivo }
+    guiada,
+    resultado: null,   // { gana: true, turnos, estrellas, guiada } | { gana: false, motivo }
   };
   return s;
 }
@@ -897,7 +900,9 @@ function cerrarTurnoPuzle(s, cells, cosecha, rompe) {
   let motivo = null;
   if (rompe) motivo = rompe;
   else if (cumplidoPuzle(p.seg, s.height, p.objetivo)) {
-    p.resultado = { gana: true, turnos: s.turn, estrellas: estrellasPuzle(s.turn, p.minimo) };
+    const estrellas = estrellasPuzle(s.turn, p.minimo);
+    p.resultado = { gana: true, turnos: s.turn, guiada: !!p.guiada,
+                    estrellas: p.guiada ? Math.min(PUZZLE_GUIADA_ESTRELLAS, estrellas) : estrellas };
     s.gameOver = true;
     s.eventos.push({ type: 'puzleGanado', turnos: s.turn, estrellas: p.resultado.estrellas });
     return;

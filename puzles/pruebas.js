@@ -4,7 +4,7 @@
 // esperado, mensaje), y al final «N/N comprobaciones correctas».
 const fs = require('fs'), vm = require('vm'), path = require('path');
 const { M, estadoPuzle, azar, mezclar } = require('./motor.js');
-const { buscar } = require('./buscador.js');
+const { buscar, buscarPrimera } = require('./buscador.js');
 const { juegoDeNivel, jugadas, OBJ } = require('./colmena.js');
 const { FIJAS, conexa, elegirForma } = require('./formas.js');
 const { simetrias, transformar, huellaCanonica } = require('./simetrias.js');
@@ -38,6 +38,39 @@ const juguete = objetivo => ({
   ok(!corto.resuelto && corto.agotado, 'sin presupuesto: «agotado» (no sabe), no «sin solución»');
   const muertas = buscar({ ...juguete(e => e === 10), aplicar: () => null });
   ok(!muertas.resuelto && !muertas.agotado, 'si todas las ramas mueren, no hay solución');
+}
+
+// buscarPrimera (v11.10, la pista): una jugada que llega a tiempo, no la más corta.
+// Con los mismos presupuestos tiene que decir «se puede» exactamente cuando buscar
+// lo dice, y su jugada tiene que llegar.
+{
+  const j = juguete(e => e === 10);
+  const r = buscarPrimera(j, { maxProf: 6 });
+  ok(r.resuelto && r.solucion.length === 1, 'buscarPrimera: resuelve el juguete y da una jugada');
+  ok(buscar({ ...j, inicial: j.aplicar(1, r.solucion[0]) }, { maxProf: 5 }).resuelto, 'y desde su jugada se llega en lo que queda');
+  ok(!buscarPrimera(j, { maxProf: 3 }).resuelto, 'en 3 no se llega (el mínimo es 4)');
+  const nunca = buscarPrimera(juguete(e => e === 0), { maxProf: 6 });
+  ok(!nunca.resuelto && !nunca.agotado, 'buscarPrimera sin solución: no es «agotado»');
+  const corto = buscarPrimera(juguete(e => e === 1e9), { maxProf: 60, maxMs: 0 });
+  ok(!corto.resuelto && corto.agotado, 'buscarPrimera sin tiempo: «agotado»');
+  // Contra buscar, en niveles de verdad desde jugadas de fuera de la solución.
+  const { PUZLES } = vm.runInThisContext('(function(){' + fs.readFileSync(path.join(__dirname, '..', 'js', 'puzles.js'), 'utf8') + ';return {PUZLES};})')();
+  let iguales = 0, casos = 0;
+  for (const n of PUZLES.filter(p => ['C1-03', 'C2-04', 'C3-06', 'C4-01', 'C5-03'].includes(p.id))) {
+    const J = juegoDeNivel(n), lim = n.minimo + 2;
+    for (const c of J.jugadas(J.inicial).slice(0, 8)) {
+      const e1 = J.aplicar(J.inicial, c);
+      if (!e1 || J.objetivo(e1)) continue;
+      const a = buscar({ ...J, inicial: e1 }, { maxProf: lim - 1 }), b = buscarPrimera({ ...J, inicial: e1 }, { maxProf: lim - 1 });
+      casos++;
+      if (a.resuelto === b.resuelto) iguales++;
+      if (b.resuelto) {
+        const e2 = J.aplicar(e1, b.solucion[0]);
+        ok(e2 && (J.objetivo(e2) || buscar({ ...J, inicial: e2 }, { maxProf: lim - 2 }).resuelto), `${n.id}: la jugada de buscarPrimera llega a tiempo`);
+      }
+    }
+  }
+  eq(iguales, casos, `buscarPrimera y buscar dicen lo mismo (${casos} casos)`);
 }
 
 // ---------------------------------------------------------------------------

@@ -16,7 +16,10 @@ const fs = require('fs'), vm = require('vm'), path = require('path');
 // Desde la v11 también puzles.js: los niveles del modo Puzzle (sólo datos).
 // Desde la v11.2 también tutorial.js: los ocho niveles del tutorial (sólo datos).
 // Desde la v11.4 también historial.js: el código de partida y el historial (puro).
-const FILES = ['constants.js', 'state.js', 'bot-tonto.js', 'guardado.js', 'historial.js', 'input.js', 'puzles.js', 'tutorial.js'];
+// Desde la v11.10 también la pista de Puzzle (pista.js) y lo que usa de la máquina:
+// puzles/objetivos.js, buscador.js y juego.js, que el juego carga tal cual.
+const FILES = ['constants.js', 'state.js', 'bot-tonto.js', 'guardado.js', 'historial.js', 'input.js', 'puzles.js', 'tutorial.js',
+               '../puzles/objetivos.js', '../puzles/buscador.js', '../puzles/juego.js', 'pista.js'];
 
 const src = FILES
   .map(f => fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8'))
@@ -44,7 +47,9 @@ const FOOTER = `
      PUZZLE_MARGEN, PUZZLE_ABIERTOS, PUZZLE_ABRE_CAPITULO, OBJETIVO_INFO, NOMBRE_MODO, FRASE_MODO, COLOR_MODO,
      crearPuzle, seguimientoPuzle, avanzarPuzle, cumplidoPuzle, rompePuzle, estrellasPuzle,
      objetivoPuzle, progresoPuzle, abiertosPuzzle, PUZLES_VERSION, CAPITULOS, PUZLES,
-     PROGRESO_PUZZLE_VERSION, progresoPuzzleVacio, leerProgresoPuzzle, apuntarPuzzle,
+     PROGRESO_PUZZLE_VERSION, progresoPuzzleVacio, leerProgresoPuzzle, apuntarPuzzle, apuntarDerrota,
+     PUZZLE_PISTA_TRAS, PUZZLE_SOLUCION_TRAS, PUZZLE_GUIADA_ESTRELLAS,
+     crearJuego, buscar, buscarPrimera, pistaPuzle, motorDelJuego, estadoBuscador,
      grupoMeseta, TUTORIAL, TUTORIAL_VERSION, PROGRESO_TUTORIAL_VERSION, leerProgresoTutorial, NOMBRE_NIVEL, LINEA_NIVEL,
      PREFIJO_MODO, LETRA_DIF, MODOS_HISTORIAL, HISTORIAL_POR_LISTA, HISTORIAL_VERSION, historialVacio,
      jugadasValidas, codigoPartida, leerCodigo, codigoDeBusqueda, enlacePartida, textoCompartir, entradaDePartida, listaDe, todas, recordDe, apuntarEnHistorial,

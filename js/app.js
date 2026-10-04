@@ -75,7 +75,7 @@ function redraw(now = performance.now()) {
   const ready = dragReady(S);
   const q = abririaAhora(ready);
   draw(ctx, S, { cells: drag.cells, ready, fuera: drag.fuera, abejas, destellos, abriria: q && q.tocadas,
-                 guia: guiaTutorial(), explica: explicacionFallo() }, now);
+                 guia: guiaTutorial() || guiaPuzzle(), explica: explicacionFallo() }, now);
   updateHud(now);
   pintarFin();
 }
@@ -444,7 +444,8 @@ function rellenarConstantes() {
                     MAX_LEVEL, RELOJ_INICIAL, RELOJ_TECHO, RELOJ_ACELERA_CADA, PUNTOS_POR_SEGUNDO,
                     TURNOS_CONTAGIO, HUELLA_RESTA: HUELLA_RESTA.toLocaleString('es-ES'),
                     CONTAGIO_CADA_NORMAL: CONTAGIO_CADA.normal, CONTAGIO_CADA_DIFICIL: CONTAGIO_CADA.dificil,
-                    N_CERRADAS: CERRADAS_EXPANSION.length, VELUTINA_CELDAS: VELUTINA_CELDAS.join('-') };
+                    N_CERRADAS: CERRADAS_EXPANSION.length, VELUTINA_CELDAS: VELUTINA_CELDAS.join('-'),
+                    PUZZLE_PISTA_TRAS, PUZZLE_SOLUCION_TRAS, GUIADA_ESTRELLAS: '★'.repeat(PUZZLE_GUIADA_ESTRELLAS) };
   document.querySelectorAll('[data-const]').forEach(el => {
     el.textContent = valores[el.dataset.const];
   });
@@ -474,6 +475,8 @@ function pintarFin() {
   }
   if (finPintado) return;
   finPintado = true;
+  mostrar('fin-atascado', false);
+  mostrar('fin-ayuda', false);
   const cfg = CONFIG_MODO[S.modo];
   // El final va debajo del panal, no encima (v11.2), cuando hay que ver el panal:
   // siempre en el tutorial y en Puzzle al perder por fallo (el grupo de máx).
@@ -870,6 +873,8 @@ function onCommit(cells) {
     historiaPuzle.push(copia);
     const antes = abiertosPuzzle(CAPITULOS, PUZLES, progresoPuzzle.mejores).capitulos;
     puzleMejora = apuntarPuzzle(progresoPuzzle, S.puzle.id, S.puzle.resultado);
+    // Perder el nivel es una derrota (v11.10, T-54): de ahí salen la pista y la solución.
+    if (S.puzle.resultado && !S.puzle.resultado.gana) { apuntarDerrota(progresoPuzzle, S.puzle.id); guardarProgresoPuzzle(); }
     if (puzleMejora) {
       guardarProgresoPuzzle();
       // El nivel que abre un capítulo lo dice en su final (v11.1).
@@ -1015,19 +1020,81 @@ function copiaPuzle(s) {
 const nivelesEnOrden = () => PUZLES.slice().sort((a, b) => a.capitulo - b.capitulo || a.orden - b.orden);
 
 // Empezar (o repetir) un nivel. Desde los capítulos, con fundido; reiniciar, sin.
-function jugarNivel(id, fundido = true) {
+// Con `{ guiada: true }`, la solución paso a paso (v11.10, T-54).
+function jugarNivel(id, fundido = true, { guiada = false } = {}) {
   const p = PUZLES.find(x => x.id === id);
   if (!p) return;
+  ayuda.pista = null; ayuda.texto = '';
+  ayuda.esperados = guiada ? esperadosDe(p) : null;
   partida.modo = MODOS.PUZZLE;
   partida.dificultad = 'normal';
   guardarUltimoModo(MODOS.PUZZLE);
   historiaPuzle.length = 0;
   puzleMejora = false;
   capituloAbierto = null;
-  if (!fundido) { prepararPartida(crearPuzle(p), 0); return; }
+  if (!fundido) { prepararPartida(crearPuzle(p, { guiada }), 0); return; }
   mostrarPantalla('partida');
-  prepararPartida(crearPuzle(p), 0);
+  prepararPartida(crearPuzle(p, { guiada }), 0);
   document.getElementById('partida').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 250, easing: 'ease-out' });
+}
+
+// ---------------------------------------------------------------------------
+// La ayuda de Puzzle (v11.10, T-54, §5.98)
+// ---------------------------------------------------------------------------
+// Pista tras PUZZLE_PISTA_TRAS derrotas en el nivel: la siguiente jugada que gana
+// desde donde estás, o hasta qué turno deshacer (pistaPuzle, js/pista.js). Tras
+// PUZZLE_SOLUCION_TRAS, la solución guiada: la guía marca cada jugada de la solución
+// guardada y la hace el jugador; el motor le pone el tope de estrellas. Las dos se
+// dibujan con la guía del tutorial (ui.guia, el punto rosa).
+const ayuda = { id: null, juego: null, pista: null, texto: '', textoEn: '', esperados: null };
+// Lo que puede tardar la pista antes de dar la respuesta aproximada (§5.98 (c)).
+const PISTA_MS = 4000;
+const nivelActual = () => PUZLES.find(x => x.id === S.puzle.id);
+const derrotasDe = id => (progresoPuzzle.derrotas && progresoPuzzle.derrotas[id]) || 0;
+const claveEstado = () => S.turn + ':' + S.height.join();
+// El panal esperado tras cada jugada de la solución, como en el tutorial.
+function esperadosDe(n) {
+  const e = crearPuzle(n), out = [{ h: e.height.join(), step: e.step }];
+  for (const c of n.solucion) { commitTurn(e, c); out.push({ h: e.height.join(), step: e.step }); }
+  return out;
+}
+function enLaSolucionGuiada() {
+  const e = ayuda.esperados && ayuda.esperados[S.turn];
+  return !!e && S.turn < nivelActual().solucion.length && e.h === S.height.join() && e.step === S.step;
+}
+function ponerAyuda(txt) { ayuda.texto = txt; ayuda.textoEn = claveEstado(); }
+
+function guiaPuzzle() {
+  if (!S || !S.puzle || enTutorial() || S.gameOver || drag.active || drag.cells.length) return null;
+  let jugada = null;
+  if (S.puzle.guiada) { if (enLaSolucionGuiada()) jugada = nivelActual().solucion[S.turn]; }
+  else if (ayuda.pista && ayuda.pista.en === claveEstado()) jugada = ayuda.pista.jugada;
+  return jugada ? { celdas: jugada, recorrido: recorridoGuia(jugada), salida: false } : null;
+}
+
+// «Pista»: desde la caja de perdido, primero se deshace la jugada que perdió. Se
+// pinta «Buscando…» antes de buscar, por si tarda (en el móvil, raro que pase de 1 s).
+function pedirPista() {
+  if (!S.puzle || enTutorial() || S.puzle.guiada) return;
+  if (S.gameOver) deshacerPuzle();
+  ayuda.pista = null;
+  ponerAyuda('Buscando…');
+  redraw();
+  setTimeout(() => {
+    if (!S.puzle) return;
+    if (ayuda.juego === null || ayuda.id !== S.puzle.id) {
+      ayuda.id = S.puzle.id;
+      ayuda.juego = crearJuego(motorDelJuego()).juegoDeNivel(nivelActual());
+    }
+    const camino = [...historiaPuzle, S].map(estadoBuscador);
+    const r = pistaPuzle({ nivel: nivelActual(), juego: ayuda.juego, buscar: buscarPrimera, camino, limite: S.puzle.limite, maxMs: PISTA_MS });
+    if (r.tipo === 'jugada') {
+      ayuda.pista = { en: claveEstado(), jugada: r.jugada };
+      ponerAyuda('Pista: arrastra por las celdas del punto rosa.');
+    } else if (r.aproximada) ponerAyuda(`Te saliste de la solución en el turno ${r.turno}: deshaz hasta ahí.`);
+    else ponerAyuda(r.turno === 0 ? 'Desde aquí ya no se gana: reinicia el nivel.' : `Desde aquí ya no se gana: deshaz hasta el turno ${r.turno}.`);
+    redraw();
+  }, 40);
 }
 
 function deshacerPuzle() {
@@ -1093,9 +1160,10 @@ function pintarCapitulos() {
         const fill = est === 'resuelto' ? '#C8A14A' : est === 'abierto' ? '#1c1710' : '#171410';
         const borde = sig ? 'stroke="#F28FB1" stroke-width="3"' : est === 'abierto' ? 'stroke="#43372a" stroke-width="2"' : '';
         const txt = est === 'resuelto' ? 'rgba(30,20,5,.8)' : sig ? '#F28FB1' : est === 'abierto' ? '#9a8d77' : '#3d342a';
-        const debajo = est === 'resuelto' ? `<span class="e">${ESTRELLAS(m.estrellas)}</span>`
+        // Resuelto con la solución guiada (v11.10, T-54): sus estrellas, en rosa.
+        const debajo = est === 'resuelto' ? (m.guiada ? `<span class="e"><span class="guiada">${'★'.repeat(m.estrellas)}</span>${'☆'.repeat(3 - m.estrellas)}</span>` : `<span class="e">${ESTRELLAS(m.estrellas)}</span>`)
           : sig ? '<span class="e sig">siguiente</span>' : est === 'abierto' ? '<span class="e vacia">☆☆☆</span>' : '<span class="e vacia">🔒</span>';
-        const etiqueta = `Nivel ${p.orden}, ${est === 'resuelto' ? `resuelto, ${m.estrellas} de 3 estrellas` : est === 'abierto' ? 'abierto' : 'cerrado'}`;
+        const etiqueta = `Nivel ${p.orden}, ${est === 'resuelto' ? `resuelto, ${m.estrellas} de 3 estrellas${m.guiada ? ', con la solución' : ''}` : est === 'abierto' ? 'abierto' : 'cerrado'}`;
         html += `<button class="pz-nivel${sig ? ' siguiente' : ''}" data-id="${p.id}" aria-label="${etiqueta}"${est === 'cerrado' ? ' disabled' : ''}>` +
           `<svg width="54" height="50" viewBox="0 0 46 42" aria-hidden="true"><polygon points="23,2 44,12 44,30 23,40 2,30 2,12" fill="${fill}" ${borde}/>` +
           `<text x="23" y="27" text-anchor="middle" font-size="15" font-weight="700" fill="${txt}">${p.orden}</text></svg>${debajo}</button>`;
@@ -1125,7 +1193,7 @@ function pintarHudPuzle() {
   setText('pz-prog', g.valor);
   setText('pz-prog-de', `/ ${g.de}${'marcada' in g ? (g.marcada ? ' ✓' : '') : ''}`);
   const m = progresoPuzzle.mejores[p.id];
-  setHtml('pz-min', `${ESTRELLAS(m ? m.estrellas : 0)} <small>en ${p.minimo}</small>`);
+  setHtml('pz-min', `<span class="${m && m.guiada ? 'pz-min-guiada' : ''}">${ESTRELLAS(m ? m.estrellas : 0)}</span> <small>en ${p.minimo}</small>`);
   // Lo que pide la jugada, como en el editor; en el último turno, se avisa.
   const aviso = document.getElementById('pz-aviso');
   const c = drag.cells;
@@ -1136,7 +1204,20 @@ function pintarHudPuzle() {
     else if (dragReady(S)) { const h = nivelCadena(S, c); txt = h === MAX_LEVEL ? `Suelta: cosechas ${c.length}.` : `Suelta: suben a ${NOMBRE_NIVEL[h + 1]}.`; }
     if (p.limite - S.turn === 1) txt = 'Último turno. ' + txt;
   }
+  // La ayuda (v11.10, T-54) manda sobre lo de la jugada mientras no arrastras.
+  let ayudaTxt = '';
+  const derrotas = derrotasDe(p.id), conAyuda = !enTutorial() && !p.guiada;
+  if (!S.gameOver && !c.length && !enTutorial()) {
+    if (p.guiada) ayudaTxt = enLaSolucionGuiada() ? 'Solución: arrastra por las celdas del punto rosa.' : 'Deshaz para volver a la solución.';
+    else if (ayuda.texto && ayuda.textoEn === claveEstado()) ayudaTxt = ayuda.texto;
+    else if (S.turn === 0 && derrotas === PUZZLE_SOLUCION_TRAS) ayudaTxt = 'Ya puedes ver la solución paso a paso.';
+    else if (S.turn === 0 && derrotas === PUZZLE_PISTA_TRAS) ayudaTxt = '¿Atascado? Ya tienes una pista.';
+  }
+  if (ayudaTxt) txt = ayudaTxt;
+  aviso.classList.toggle('ayuda', !!ayudaTxt);
   if (aviso.textContent !== txt) aviso.textContent = txt;
+  mostrar('pz-pista', conAyuda && derrotas >= PUZZLE_PISTA_TRAS);
+  mostrar('pz-solucion', conAyuda && derrotas >= PUZZLE_SOLUCION_TRAS && !S.gameOver);
   document.getElementById('pz-deshacer').disabled = !historiaPuzle.length;
 }
 
@@ -1149,9 +1230,11 @@ function pintarFinPuzle() {
   det.innerHTML = '';
   if (r.gana) {
     setText('fin-titulo', '¡Resuelto!');
-    sc.innerHTML = `<span class="estrellas">${'★'.repeat(r.estrellas)}<span class="vacia">${'★'.repeat(3 - r.estrellas)}</span></span>`;
+    sc.innerHTML = `<span class="estrellas${r.guiada ? ' guiada' : ''}">${'★'.repeat(r.estrellas)}<span class="vacia">${'★'.repeat(3 - r.estrellas)}</span></span>`;
     const m = progresoPuzzle.mejores[p.id];
-    rec.textContent = `En ${r.turnos} ${r.turnos === 1 ? 'turno' : 'turnos'}. ` +
+    rec.textContent = r.guiada ? `Con la solución. Sin ayuda se puede en ${p.minimo}: ¿lo intentas?` +
+        (puzleMejora ? '' : ` · Tu mejor marca: ${ESTRELLAS(m.estrellas)}`)
+      : `En ${r.turnos} ${r.turnos === 1 ? 'turno' : 'turnos'}. ` +
       (r.estrellas === 3 ? 'En el mínimo.' : `Se puede en ${p.minimo}: ¿lo intentas?`) +
       (puzleMejora ? '' : ` · Tu mejor marca: ${ESTRELLAS(m.estrellas)}`);
     rec.className = 'record' + (puzleMejora ? ' nuevo' : '');
@@ -1181,6 +1264,11 @@ function pintarFinPuzle() {
     rec.className = 'record';
     setText('fin-menu', '↻ Reintentar');
     setText('fin-otra', '↶ Deshacer');
+    // La pista también desde aquí (v11.10, T-54): deshace la jugada que perdió.
+    const derrotas = derrotasDe(p.id), puede = !p.guiada && derrotas >= PUZZLE_PISTA_TRAS;
+    mostrar('fin-atascado', puede);
+    mostrar('fin-ayuda', puede);
+    if (puede) setText('fin-atascado', `Llevas ${derrotas} intentos: ¿quieres una pista?`);
   }
 }
 
@@ -2359,7 +2447,10 @@ window.addEventListener('DOMContentLoaded', () => {
     if (b && !b.disabled) jugarNivel(b.dataset.id);
   });
   document.getElementById('pz-deshacer').addEventListener('click', deshacerPuzle);
-  document.getElementById('pz-reiniciar').addEventListener('click', () => jugarNivel(S.puzle.id, false));
+  document.getElementById('pz-reiniciar').addEventListener('click', () => jugarNivel(S.puzle.id, false, { guiada: S.puzle.guiada }));
+  document.getElementById('pz-pista').addEventListener('click', pedirPista);
+  document.getElementById('fin-ayuda').addEventListener('click', pedirPista);
+  document.getElementById('pz-solucion').addEventListener('click', () => jugarNivel(S.puzle.id, false, { guiada: true }));
   document.getElementById('fin-volver').addEventListener('click', irACapitulos);
 
   // La hoja.
@@ -2406,7 +2497,9 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   // «‹ Menú»; en un nivel, «Repetir» o «Reintentar»: el mismo nivel, desde el principio.
   document.getElementById('fin-menu').addEventListener('click', () =>
-    enTutorial() ? jugarTutorial(tut.k, false) : S.puzle ? jugarNivel(S.puzle.id, false) : volverAlInicio());
+    enTutorial() ? jugarTutorial(tut.k, false)
+      // «↻ Reintentar» sigue con la solución si se perdió con ella; «↻ Repetir», sin.
+      : S.puzle ? jugarNivel(S.puzle.id, false, { guiada: S.puzle.guiada && !S.puzle.resultado.gana }) : volverAlInicio());
 
   // El panel flotante se cierra al tocar fuera. El canvas se lleva sus propios
   // eventos, así que esto escucha en la fase de captura.

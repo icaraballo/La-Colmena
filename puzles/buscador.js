@@ -65,6 +65,48 @@ function buscar(juego, { maxProf = 12, maxEstados = 2e6, maxMs = 60000 } = {}) {
   }
 }
 
+// La primera jugada que resuelve en `maxProf` o menos, sin buscar el mínimo (v11.10,
+// T-54: la pista de Puzzle). En profundidad, con memoria de los estados que ya
+// fallaron y con cuántas jugadas les quedaban: un estado que falló con q jugadas no
+// se vuelve a mirar con q o menos. Para la pista no hace falta la solución más corta,
+// sino una que llegue a tiempo, y por capas había que recorrer cada capa entera
+// (medido el 04-10: las 998 desviaciones del turno 1 de los 75 niveles, 104 s por
+// capas y 7 s así; la peor, 19,6 s y 2,7 s).
+// Si el juego trae `ordenar(e, jugadas)`, prueba primero las que pone delante.
+// Devuelve como buscar: { resuelto, solucion: [la primera jugada] } o
+// { resuelto: false, agotado? }, con ms y stats.
+function buscarPrimera(juego, { maxProf = 12, maxMs = 60000 } = {}) {
+  const t0 = Date.now();
+  const stats = { estados: 0, podados: 0 };
+  const fallo = new Map();
+  let agotado = false;
+  function probar(e, quedan) {
+    if (quedan === 0) return null;
+    if (juego.poda && juego.poda(e, quedan)) { stats.podados++; return null; }
+    const h = juego.huella(e);
+    const f = fallo.get(h);
+    if (f !== undefined && f >= quedan) return null;
+    const js = juego.jugadas(e);
+    if (juego.ordenar) juego.ordenar(e, js);
+    for (const j of js) {
+      const e2 = juego.aplicar(e, j);
+      if (!e2) continue;
+      if (juego.objetivo(e2)) return j;
+      // El reloj, cada 256 estados: en el móvil, con 1024 se pasaba del tope más de 1 s.
+      if ((++stats.estados & 255) === 0 && Date.now() - t0 > maxMs) { agotado = true; return null; }
+      if (probar(e2, quedan - 1) !== null) return j;
+      if (agotado) return null;
+    }
+    fallo.set(h, quedan);
+    return null;
+  }
+  const fin = r => Object.assign(r, { ms: Date.now() - t0, stats });
+  if (juego.objetivo(juego.inicial)) return fin({ resuelto: true, solucion: [] });
+  const j = probar(juego.inicial, maxProf);
+  if (j !== null) return fin({ resuelto: true, solucion: [j] });
+  return fin(agotado ? { resuelto: false, agotado: true, motivo: 'demasiado tiempo' } : { resuelto: false, motivo: `sin solución en ${maxProf}` });
+}
+
 // Sigue el rastro de padres desde el estado resuelto hasta el principio.
 function reconstruir(historia, h) {
   const jugadas = [];
@@ -76,4 +118,4 @@ function reconstruir(historia, h) {
   return jugadas.reverse();
 }
 
-module.exports = { buscar };
+if (typeof module !== 'undefined') module.exports = { buscar, buscarPrimera };

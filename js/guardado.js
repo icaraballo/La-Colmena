@@ -109,30 +109,46 @@ function jugadasValidas(jugadas, tiempos, celdas, turnos) {
 // ---------------------------------------------------------------------------
 // El progreso del modo Puzzle (v11): la mejor marca de cada nivel resuelto
 // ---------------------------------------------------------------------------
-// { v: 1, mejores: { id: { estrellas: 1-3, turnos } } }. Lo guarda app.js en
-// localStorage (colmena.puzzle.v1). Al leer no se fía: un nivel con una marca que
-// no tenga la forma esperada se olvida (sólo ése, no todo el progreso).
+// { v: 1, mejores: { id: { estrellas: 1-3, turnos, guiada? } }, derrotas: { id: n } }.
+// Lo guarda app.js en localStorage (colmena.puzzle.v1). Al leer no se fía: un nivel
+// con una marca que no tenga la forma esperada se olvida (sólo ése, no todo el
+// progreso). Desde la v11.10 (T-54): `guiada` si la mejor marca es de la solución
+// guiada, y las derrotas de cada nivel (para la pista y la solución). Un progreso
+// de antes no las tiene: se leen como cero, sin cambiar de versión.
 const PROGRESO_PUZZLE_VERSION = 1;
-function progresoPuzzleVacio() { return { v: PROGRESO_PUZZLE_VERSION, mejores: {} }; }
+function progresoPuzzleVacio() { return { v: PROGRESO_PUZZLE_VERSION, mejores: {}, derrotas: {} }; }
 
 function leerProgresoPuzzle(g) {
   const p = progresoPuzzleVacio();
   if (!g || g.v !== PROGRESO_PUZZLE_VERSION || !g.mejores || typeof g.mejores !== 'object') return p;
   for (const [id, m] of Object.entries(g.mejores))
     if (typeof id === 'string' && m && [1, 2, 3].includes(m.estrellas) && esEntero(m.turnos) && m.turnos > 0)
-      p.mejores[id] = { estrellas: m.estrellas, turnos: m.turnos };
+      p.mejores[id] = m.guiada === true ? { estrellas: m.estrellas, turnos: m.turnos, guiada: true }
+        : { estrellas: m.estrellas, turnos: m.turnos };
+  if (g.derrotas && typeof g.derrotas === 'object')
+    for (const [id, n] of Object.entries(g.derrotas))
+      if (esEntero(n) && n > 0) p.derrotas[id] = n;
   return p;
 }
 
-// Apunta un nivel ganado si mejora la marca: más estrellas o, con las mismas,
-// menos turnos. Devuelve si ha mejorado.
+// Apunta un nivel ganado si mejora la marca: más estrellas; con las mismas, sin la
+// solución mejor que con ella (v11.10); y si no, menos turnos. Devuelve si ha mejorado.
 function apuntarPuzzle(p, id, resultado) {
   if (!resultado || !resultado.gana) return false;
   const antes = p.mejores[id];
-  if (antes && (antes.estrellas > resultado.estrellas ||
-      (antes.estrellas === resultado.estrellas && antes.turnos <= resultado.turnos))) return false;
-  p.mejores[id] = { estrellas: resultado.estrellas, turnos: resultado.turnos };
+  const rango = m => m.estrellas * 2 + (m.guiada ? 0 : 1);
+  if (antes && (rango(antes) > rango(resultado) ||
+      (rango(antes) === rango(resultado) && antes.turnos <= resultado.turnos))) return false;
+  p.mejores[id] = resultado.guiada ? { estrellas: resultado.estrellas, turnos: resultado.turnos, guiada: true }
+    : { estrellas: resultado.estrellas, turnos: resultado.turnos };
   return true;
+}
+// Una derrota más en el nivel (v11.10, T-54): perderlo. Deshacer o reiniciar no
+// cuenta. Devuelve cuántas lleva.
+function apuntarDerrota(p, id) {
+  if (!p.derrotas) p.derrotas = {};
+  p.derrotas[id] = (p.derrotas[id] || 0) + 1;
+  return p.derrotas[id];
 }
 
 
