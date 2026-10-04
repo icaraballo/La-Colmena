@@ -873,8 +873,8 @@ function onCommit(cells) {
     historiaPuzle.push(copia);
     const antes = abiertosPuzzle(CAPITULOS, PUZLES, progresoPuzzle.mejores).capitulos;
     puzleMejora = apuntarPuzzle(progresoPuzzle, S.puzle.id, S.puzle.resultado);
-    // Perder el nivel es una derrota (v11.10, T-54): de ahí salen la pista y la solución.
-    if (S.puzle.resultado && !S.puzle.resultado.gana) { apuntarDerrota(progresoPuzzle, S.puzle.id); guardarProgresoPuzzle(); }
+    // El intento se cuenta al acabar (v11.11, T-55, §5.102): perder, fallido; ganar, ganado.
+    contarJugada(S.puzle.resultado);
     if (puzleMejora) {
       guardarProgresoPuzzle();
       // El nivel que abre un capítulo lo dice en su final (v11.1).
@@ -980,14 +980,31 @@ function prepararPartida(estado, dur) {
 function pintarBarra() {
   // «‹ Menú» vuelve al inicio; en un nivel de Puzzle, «‹ Puzzle» vuelve a los capítulos.
   document.getElementById('partida-menu').lastChild.nodeValue = S.puzle ? NOMBRE_MODO.puzzle : 'Menú';
+  const pill = document.getElementById('pz-intento');
+  pill.hidden = !S.puzle || enTutorial();
   if (enTutorial()) return;   // el tutorial lleva su barra (#tut-cab)
   if (S.puzle) {
     const p = PUZLES.find(x => x.id === S.puzle.id);
     setHtml('barra-modo', `Capítulo ${p.capitulo} <span>· nivel ${p.orden}</span>`);
+    pintarIntento();
     return;
   }
   const dif = tieneDificultad(S.modo) ? ` <span>· ${NOMBRE_DIF[S.dificultad]}</span>` : '';
   setHtml('barra-modo', NOMBRE_MODO[S.modo] + dif);
+}
+
+
+// «Intento N» en la barra de un nivel (v11.11, T-55). Al reiniciar sube y late una vez.
+let intentoPintado = { id: null, n: 0 };
+function pintarIntento() {
+  const pill = document.getElementById('pz-intento');
+  const id = S.puzle.id, n = numeroIntento(id);
+  setHtml('pz-intento', `Intento <b>${n}</b>`);
+  pill.setAttribute('aria-label', `Intento ${n}`);
+  if (intentoPintado.id === id && n > intentoPintado.n && pill.animate)
+    pill.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.18)', borderColor: '#F28FB1' }, { transform: 'scale(1)' }],
+      { duration: 420, easing: 'ease-out' });
+  intentoPintado = { id, n };
 }
 
 
@@ -1024,6 +1041,9 @@ const nivelesEnOrden = () => PUZLES.slice().sort((a, b) => a.capitulo - b.capitu
 function jugarNivel(id, fundido = true, { guiada = false } = {}) {
   const p = PUZLES.find(x => x.id === id);
   if (!p) return;
+  cerrarFichaNivel();
+  cerrarIntento();
+  intento.id = id;
   ayuda.pista = null; ayuda.texto = '';
   ayuda.esperados = guiada ? esperadosDe(p) : null;
   partida.modo = MODOS.PUZZLE;
@@ -1039,9 +1059,42 @@ function jugarNivel(id, fundido = true, { guiada = false } = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Los intentos de cada nivel (v11.11, T-55, §5.102)
+// ---------------------------------------------------------------------------
+// Un intento va de empezar el nivel a reiniciarlo, salir o empezar otro. Cuenta si
+// has jugado al menos una vez: ganado si acaba ganado; si no, fallido. Perder lo
+// cuenta fallido en el acto (la pista lo necesita en el final); si deshaces y acabas
+// ganando, pasa a ganado; perder otra vez en el mismo intento no suma. Deshacer no
+// cuenta, ni entrar y salir sin jugar. El tutorial, tampoco.
+const intento = { id: null, jugado: false, contado: null };   // contado: null, 'fallido' o 'ganado'
+function contarJugada(r) {
+  if (!intento.id) intento.id = S.puzle.id;   // una página que vuelve de la caché tras pagehide
+  intento.jugado = true;
+  if (!r || intento.contado === 'ganado') return;
+  if (r.gana) {
+    if (intento.contado === 'fallido') fallidoAGanado(progresoPuzzle, intento.id);
+    else apuntarIntento(progresoPuzzle, intento.id, 'ganado');
+    intento.contado = 'ganado';
+  } else if (!intento.contado) {
+    apuntarIntento(progresoPuzzle, intento.id, 'fallido');
+    intento.contado = 'fallido';
+  } else return;
+  guardarProgresoPuzzle();
+}
+function cerrarIntento() {
+  if (intento.id && intento.jugado && !intento.contado) {
+    apuntarIntento(progresoPuzzle, intento.id, 'fallido');
+    guardarProgresoPuzzle();
+  }
+  intento.id = null; intento.jugado = false; intento.contado = null;
+}
+// El número del intento que estás jugando: los contados, más éste si aún no lo está.
+const numeroIntento = id => intentosDe(progresoPuzzle, id).total + (intento.id === id && intento.contado ? 0 : 1);
+
+// ---------------------------------------------------------------------------
 // La ayuda de Puzzle (v11.10, T-54, §5.98)
 // ---------------------------------------------------------------------------
-// Pista tras PUZZLE_PISTA_TRAS derrotas en el nivel: la siguiente jugada que gana
+// Pista tras PUZZLE_PISTA_TRAS intentos fallidos en el nivel (derrotas hasta la v11.10): la siguiente jugada que gana
 // desde donde estás, o hasta qué turno deshacer (pistaPuzle, js/pista.js). Tras
 // PUZZLE_SOLUCION_TRAS, la solución guiada: la guía marca cada jugada de la solución
 // guardada y la hace el jugador; el motor le pone el tope de estrellas. Las dos se
@@ -1050,7 +1103,7 @@ const ayuda = { id: null, juego: null, pista: null, texto: '', textoEn: '', espe
 // Lo que puede tardar la pista antes de dar la respuesta aproximada (§5.98 (c)).
 const PISTA_MS = 4000;
 const nivelActual = () => PUZLES.find(x => x.id === S.puzle.id);
-const derrotasDe = id => (progresoPuzzle.derrotas && progresoPuzzle.derrotas[id]) || 0;
+const fallidosDe = id => intentosDe(progresoPuzzle, id).fallidos;
 const claveEstado = () => S.turn + ':' + S.height.join();
 // El panal esperado tras cada jugada de la solución, como en el tutorial.
 function esperadosDe(n) {
@@ -1121,6 +1174,8 @@ function siguienteNivel(id) {
 
 function irACapitulos() {
   cerrarHoja();
+  cerrarIntento();
+  intentoPintado = { id: null, n: 0 };   // al volver a entrar, sin latido
   mostrarPantalla('puzles');
   const el = document.getElementById('puzles');
   if (el.animate) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
@@ -1175,6 +1230,90 @@ function pintarCapitulos() {
   caja.innerHTML = html;
 }
 
+// La ficha de un nivel (v11.11, T-55): tocar un nivel en el mapa ya no entra, abre
+// esto desde abajo. Cómo lo llevas (resuelto o no), el objetivo, el intento por el
+// que vas, cuánto falta para la pista y «Jugar». Se cierra tocando fuera,
+// deslizándola hacia abajo o con Escape, y te quedas en el mapa.
+let fichaNivel = null, fichaOrigen = null, fichaCierre = 0;
+const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+function abrirFichaNivel(id, origen) {
+  const p = PUZLES.find(x => x.id === id);
+  if (!p) return;
+  clearTimeout(fichaCierre);
+  fichaNivel = id; fichaOrigen = origen || null;
+  const m = progresoPuzzle.mejores[id], it = intentosDe(progresoPuzzle, id);
+  const e = crearPuzle(p), sig = id === abiertosPuzzle(CAPITULOS, PUZLES, progresoPuzzle.mejores).siguiente;
+  // El hexágono, como en el mapa.
+  const fill = m ? '#C8A14A' : '#1c1710', txt = m ? 'rgba(30,20,5,.8)' : sig ? '#F28FB1' : '#9a8d77';
+  const borde = m ? '' : sig ? 'stroke="#F28FB1" stroke-width="3"' : 'stroke="#43372a" stroke-width="2"';
+  setHtml('pz-ficha-hex', `<svg width="54" height="50" viewBox="0 0 46 42" aria-hidden="true"><polygon points="23,2 44,12 44,30 23,40 2,30 2,12" fill="${fill}" ${borde}/>` +
+    `<text x="23" y="27" text-anchor="middle" font-size="15" font-weight="700" fill="${txt}">${p.orden}</text></svg>`);
+  setText('pz-ficha-donde', `Capítulo ${p.capitulo} · Nivel ${p.orden}`);
+  setHtml('pz-ficha-titulo', m ? `<span class="${m.guiada ? 'guiada' : 'oro'}">${'★'.repeat(m.estrellas)}</span><span class="vacia">${'☆'.repeat(3 - m.estrellas)}</span>`
+    : 'Sin resolver');
+  setText('pz-ficha-obj', objetivoPuzle(e).frase + '.');
+  const filas = [];
+  if (m) filas.push(['Tu mejor marca', plural(m.turnos, 'turno', 'turnos') + (m.guiada ? ' · con la solución' : '')]);
+  const cuenta = it.total ? [it.ganados && plural(it.ganados, 'ganado', 'ganados'), it.fallidos && plural(it.fallidos, 'fallido', 'fallidos')].filter(Boolean).join(' · ')
+    : 'el primero';
+  filas.push(['Intento', `<span class="int">${it.total + 1}.º</span> <i>· ${cuenta}</i>`]);
+  if (!m && it.fallidos) {
+    const f = it.fallidos;
+    filas.push(['Ayuda', `<span class="rosa">${f >= PUZZLE_SOLUCION_TRAS ? 'pista y solución, disponibles'
+      : f >= PUZZLE_PISTA_TRAS ? `pista disponible · solución en ${PUZZLE_SOLUCION_TRAS - f}`
+      : `pista a los ${PUZZLE_PISTA_TRAS} fallidos · te ${PUZZLE_PISTA_TRAS - f === 1 ? 'falta 1' : `faltan ${PUZZLE_PISTA_TRAS - f}`}`}</span>`]);
+  }
+  filas.push(['<span class="estrellas">★★★</span>', `en ${plural(p.minimo, 'turno', 'turnos')} · límite ${e.puzle.limite}`]);
+  setHtml('pz-ficha-filas', filas.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join(''));
+  setText('pz-ficha-jugar', m ? 'Jugar otra vez' : 'Jugar');
+  const f = document.getElementById('pz-ficha'), velo = document.getElementById('pz-ficha-fondo');
+  f.style.transform = '';
+  f.hidden = false; velo.hidden = false;
+  f.getBoundingClientRect();              // fuerza el estilo de partida para que haya transición
+  f.classList.add('abierta'); velo.classList.add('abierta');
+  document.getElementById('pz-ficha-jugar').focus({ preventScroll: true });
+}
+function cerrarFichaNivel() {
+  if (!fichaNivel) return;
+  fichaNivel = null;
+  const f = document.getElementById('pz-ficha'), velo = document.getElementById('pz-ficha-fondo');
+  f.classList.remove('abierta', 'arrastrando'); velo.classList.remove('abierta');
+  f.style.transform = '';
+  fichaCierre = setTimeout(() => { f.hidden = true; velo.hidden = true; }, 250);
+  if (fichaOrigen && document.contains(fichaOrigen) && fichaOrigen.offsetParent) fichaOrigen.focus({ preventScroll: true });
+  fichaOrigen = null;
+}
+// Arrastrar hacia abajo la cierra, como la hoja (gestosHoja), sin el gesto lateral.
+function gestosFichaNivel(f) {
+  let g = null;
+  f.addEventListener('pointerdown', e => {
+    if (!fichaNivel || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    g = { y: e.clientY, x: e.clientX, t: performance.now(), activo: false, id: e.pointerId };
+  });
+  f.addEventListener('pointermove', e => {
+    if (!g || e.pointerId !== g.id) return;
+    const dy = e.clientY - g.y;
+    if (!g.activo) {
+      if (Math.hypot(e.clientX - g.x, dy) < 10) return;
+      if (dy <= 0 || Math.abs(e.clientX - g.x) > dy) { g = null; return; }
+      g.activo = true; f.classList.add('arrastrando'); f.setPointerCapture(g.id);
+    }
+    f.style.transform = `translateY(${Math.max(0, dy)}px)`;
+  });
+  const soltar = e => {
+    if (!g || e.pointerId !== g.id) return;
+    const dy = e.clientY - g.y, v = dy / Math.max(1, performance.now() - g.t);
+    if (g.activo) {
+      f.classList.remove('arrastrando');
+      if (e.type !== 'pointercancel' && (dy > 80 || v > 0.6)) cerrarFichaNivel();
+      else f.style.transform = '';
+    }
+    g = null;
+  };
+  f.addEventListener('pointerup', soltar);
+  f.addEventListener('pointercancel', soltar);
+}
+
 // El marcador de un nivel: el objetivo, sus marcas, turno / límite, paso, el
 // progreso y «☆☆☆ en N». Todo lo dice el motor (objetivoPuzle, progresoPuzle).
 function pintarHudPuzle() {
@@ -1206,7 +1345,7 @@ function pintarHudPuzle() {
   }
   // La ayuda (v11.10, T-54) manda sobre lo de la jugada mientras no arrastras.
   let ayudaTxt = '';
-  const derrotas = derrotasDe(p.id), conAyuda = !enTutorial() && !p.guiada;
+  const derrotas = fallidosDe(p.id), conAyuda = !enTutorial() && !p.guiada;
   if (!S.gameOver && !c.length && !enTutorial()) {
     if (p.guiada) ayudaTxt = enLaSolucionGuiada() ? 'Solución: arrastra por las celdas del punto rosa.' : 'Deshaz para volver a la solución.';
     else if (ayuda.texto && ayuda.textoEn === claveEstado()) ayudaTxt = ayuda.texto;
@@ -1265,10 +1404,10 @@ function pintarFinPuzle() {
     setText('fin-menu', '↻ Reintentar');
     setText('fin-otra', '↶ Deshacer');
     // La pista también desde aquí (v11.10, T-54): deshace la jugada que perdió.
-    const derrotas = derrotasDe(p.id), puede = !p.guiada && derrotas >= PUZZLE_PISTA_TRAS;
+    const fallidos = fallidosDe(p.id), puede = !p.guiada && fallidos >= PUZZLE_PISTA_TRAS;
     mostrar('fin-atascado', puede);
     mostrar('fin-ayuda', puede);
-    if (puede) setText('fin-atascado', `Llevas ${derrotas} intentos: ¿quieres una pista?`);
+    if (puede) setText('fin-atascado', `Llevas ${fallidos} intentos fallidos: ¿quieres una pista?`);
   }
 }
 
@@ -2444,8 +2583,12 @@ window.addEventListener('DOMContentLoaded', () => {
     abrirHoja({ desde: 'puzles', modo: MODOS.PUZZLE, pestana: basicoVisto() ? MODOS.PUZZLE : 'basico' }));
   document.getElementById('pz-capitulos').addEventListener('click', e => {
     const b = e.target.closest('.pz-nivel');
-    if (b && !b.disabled) jugarNivel(b.dataset.id);
+    if (b && !b.disabled) abrirFichaNivel(b.dataset.id, b);
   });
+  // La ficha del nivel (v11.11, T-55).
+  document.getElementById('pz-ficha-fondo').addEventListener('click', cerrarFichaNivel);
+  document.getElementById('pz-ficha-jugar').addEventListener('click', () => { if (fichaNivel) jugarNivel(fichaNivel); });
+  gestosFichaNivel(document.getElementById('pz-ficha'));
   document.getElementById('pz-deshacer').addEventListener('click', deshacerPuzle);
   document.getElementById('pz-reiniciar').addEventListener('click', () => jugarNivel(S.puzle.id, false, { guiada: S.puzle.guiada }));
   document.getElementById('pz-pista').addEventListener('click', pedirPista);
@@ -2513,6 +2656,7 @@ window.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       if (hojaAbierta) cerrarHoja();
+      else if (fichaNivel) cerrarFichaNivel();
       else if (popAncla) cerrarPop();
       else if (pantalla === 'historial') document.getElementById('hist-menu').click();
     } else if (hojaAbierta && hojaAbierta.desde === 'ficha' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
@@ -2546,6 +2690,8 @@ window.addEventListener('DOMContentLoaded', () => {
   // partida: en el inicio S puede ser una partida sin empezar, y guardarla
   // borraría la que hay guardada.
   const alSalir = () => { if (pantalla === 'partida') guardarPartida(); };
+  // Cerrar o recargar a mitad de un nivel es salir de él (v11.11): al volver se empieza de cero.
+  window.addEventListener('pagehide', () => cerrarIntento());
   document.addEventListener('visibilitychange', () => { if (document.hidden) alSalir(); });
   window.addEventListener('pagehide', alSalir);
 

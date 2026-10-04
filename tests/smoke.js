@@ -1619,18 +1619,26 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   ok(T.apuntarPuzzle(p, 'X', { gana: true, estrellas: 3, turnos: 4 }) && !T.apuntarPuzzle(p, 'X', { gana: true, estrellas: 1, turnos: 1, guiada: true }),
      'resolver luego con la solución no baja las estrellas');
 
-  // 3. Las derrotas, por nivel, y lo que se lee de lo guardado.
+  // 3. Los intentos (v11.11, T-55), por nivel, y lo que se lee de lo guardado.
   const q = T.progresoPuzzleVacio();
-  eq(T.apuntarDerrota(q, 'C4-03'), 1, 'la primera derrota');
-  eq(T.apuntarDerrota(q, 'C4-03'), 2, 'la segunda');
-  eq(T.apuntarDerrota(q, 'C1-01'), 1, 'cada nivel lleva las suyas');
+  eq(T.apuntarIntento(q, 'C4-03', 'fallido'), 1, 'el primer fallido');
+  eq(T.apuntarIntento(q, 'C4-03', 'fallido'), 2, 'el segundo');
+  eq(T.apuntarIntento(q, 'C1-01', 'fallido'), 1, 'cada nivel lleva los suyos');
+  eq(T.apuntarIntento(q, 'C4-03', 'ganado'), 1, 'un ganado');
+  eq(JSON.stringify(T.intentosDe(q, 'C4-03')), JSON.stringify({ fallidos: 2, ganados: 1, total: 3 }), 'los intentos de un nivel');
+  eq(JSON.stringify(T.intentosDe(q, 'NADA')), JSON.stringify({ fallidos: 0, ganados: 0, total: 0 }), 'un nivel sin jugar, cero');
+  eq(T.fallidoAGanado(q, 'C1-01'), 1, 'perder, deshacer y ganar: el fallido pasa a ganado');
+  ok(!('C1-01' in q.fallidos) && T.intentosDe(q, 'C1-01').total === 1, 'sin dejar un cero, y el total no cambia');
   const leido = T.leerProgresoPuzzle(JSON.parse(JSON.stringify({ ...q, mejores: { A: { estrellas: 1, turnos: 5, guiada: true }, B: { estrellas: 2, turnos: 3 } },
-                                                                  derrotas: { ...q.derrotas, R: -1, S: 'x', U: 2.5 } })));
-  ok(leido.derrotas['C4-03'] === 2 && leido.derrotas['C1-01'] === 1, 'las derrotas se guardan y se leen');
-  ok(!('R' in leido.derrotas) && !('S' in leido.derrotas) && !('U' in leido.derrotas), 'una cuenta rota se olvida, sólo ésa');
+                                                                  fallidos: { ...q.fallidos, R: -1, S: 'x', U: 2.5 } })));
+  ok(leido.fallidos['C4-03'] === 2 && leido.ganados['C4-03'] === 1 && leido.ganados['C1-01'] === 1, 'los intentos se guardan y se leen');
+  ok(!('R' in leido.fallidos) && !('S' in leido.fallidos) && !('U' in leido.fallidos), 'una cuenta rota se olvida, sólo ésa');
   ok(leido.mejores.A.guiada === true && !('guiada' in leido.mejores.B), 'la marca guiada se lee; la otra, sin el campo');
+  const v1110 = T.leerProgresoPuzzle({ v: 1, mejores: {}, derrotas: { 'C4-03': 7 } });
+  ok(v1110.fallidos['C4-03'] === 7 && !('derrotas' in v1110), 'las derrotas de la v11.10 se leen como fallidos');
   const viejo = T.leerProgresoPuzzle({ v: 1, mejores: { A: { estrellas: 3, turnos: 4 } } });
-  ok(viejo.mejores.A.estrellas === 3 && Object.keys(viejo.derrotas).length === 0, 'un progreso de antes de la v11.10 se lee, con cero derrotas');
+  ok(viejo.mejores.A.estrellas === 3 && Object.keys(viejo.fallidos).length === 0 && Object.keys(viejo.ganados).length === 0,
+     'un progreso de antes de la v11.10 se lee, sin intentos');
 
   // 4. La pista. El camino sale de jugar con el motor del juego (estadoBuscador), así
   // que también comprueba que el juego y la máquina hablan del mismo estado.

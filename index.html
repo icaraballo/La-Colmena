@@ -287,6 +287,33 @@ footer .sem.copiada{color:#9fd67a}
 #hoja-fondo{position:fixed;inset:0;background:rgba(18,16,12,.55);z-index:30;
   opacity:0;transition:opacity .25s ease-out}
 #hoja-fondo.abierta{opacity:1}
+/* La ficha de un nivel de Puzzle (v11.11, T-55): como la hoja, más baja y en rosa. */
+#pz-ficha-fondo{position:fixed;inset:0;background:rgba(18,16,12,.55);z-index:30;opacity:0;transition:opacity .25s ease-out}
+#pz-ficha-fondo.abierta{opacity:1}
+.pz-ficha{position:fixed;left:0;right:0;bottom:0;z-index:31;max-width:480px;margin:0 auto;
+  background:#1c1710;border-top:3px solid #F28FB1;border-radius:20px 20px 0 0;
+  padding:10px 18px calc(20px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px;
+  box-shadow:0 -12px 30px rgba(0,0,0,.55);transform:translateY(100%);transition:transform .25s ease-out}
+.pz-ficha.abierta{transform:none}
+.pz-ficha.arrastrando{transition:none}
+.pz-ficha-cab{display:flex;align-items:center;gap:12px}
+.pz-ficha-cab svg{display:block}
+.pz-ficha-cab small{font-size:12px;color:#9a8d77;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.pz-ficha-cab h2{font-size:20px;font-weight:700;color:#ede4d3;margin-top:1px}
+.pz-ficha-cab h2 .oro{color:#C8A14A}.pz-ficha-cab h2 .guiada{color:#F28FB1}.pz-ficha-cab h2 .vacia{color:#43372a}
+.pz-ficha-cab p{font-size:14px;color:#c9b99c;margin-top:2px}
+.pz-ficha-filas{display:grid;grid-template-columns:auto 1fr;gap:9px 14px;font-size:14px;color:#ede4d3;
+  border-top:1px solid #2a2218;border-bottom:1px solid #2a2218;padding:12px 0;margin:0}
+.pz-ficha-filas dt{color:#9a8d77}.pz-ficha-filas dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.pz-ficha-filas .int{font-size:16px;font-weight:700}.pz-ficha-filas i{font-style:normal;color:#9a8d77;font-size:13px}
+.pz-ficha-filas .rosa{color:#F28FB1}.pz-ficha-filas .estrellas{letter-spacing:1px}
+.pz-ficha-jugar{background:#F28FB1;color:#2a1d22;border:0;font-weight:700;font-size:17px;border-radius:14px;min-height:50px}
+.pz-ficha-jugar:hover{background:#f5a3c0}
+.pz-ficha button:focus-visible{outline:2px solid #ede4d3;outline-offset:2px}
+/* «Intento N» en la barra de un nivel (v11.11). */
+.pz-intento{flex:none;font-size:13px;font-weight:600;color:#c9b99c;background:#2a2218;border:1px solid #43372a;
+  border-radius:999px;padding:5px 11px;white-space:nowrap}
+.pz-intento b{color:#ede4d3}
 .hoja{
   --acento:#F79A1F;--resalte:#2a2218;
   position:fixed;left:0;right:0;bottom:0;top:clamp(24px,14dvh,120px);z-index:31;
@@ -856,6 +883,7 @@ footer .sem{font-variant-numeric:tabular-nums}
 <div id="barra">
   <button id="partida-menu"><svg width="7" height="11" viewBox="0 0 8 12" aria-hidden="true"><path d="M6 1L1 6l5 5" stroke="#ede4d3" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>Menú</button>
   <span id="barra-modo"></span>
+  <span class="pz-intento" id="pz-intento" hidden></span>
   <button id="semilla-btn" aria-label="Semilla">#</button>
 </div>
 
@@ -945,7 +973,7 @@ footer .sem{font-variant-numeric:tabular-nums}
         <button id="fin-menu" class="secundario">‹ Menú</button>
         <button id="fin-otra" class="primario">Otra vez</button>
       </div>
-      <!-- Puzzle (v11.10, T-54): al perder, con derrotas de sobra, la pista. -->
+      <!-- Puzzle (v11.10, T-54): al perder, con intentos fallidos de sobra, la pista. -->
       <p class="fin-atascado" id="fin-atascado" hidden></p>
       <button class="fin-ayuda" id="fin-ayuda" hidden><span class="punto" aria-hidden="true"></span>Ver una pista</button>
       <!-- Puzzle (v11): volver a los capítulos, además de los dos botones. -->
@@ -961,8 +989,8 @@ footer .sem{font-variant-numeric:tabular-nums}
 <div id="tut-pie" hidden><button id="tut-deshacer">↶ Deshacer</button><button id="tut-reiniciar">↻ Reiniciar</button><button id="tut-pista" hidden>Pista</button></div>
 
 <div id="puzle-pie" hidden>
-  <!-- La ayuda (v11.10, T-54, §5.98): «Pista» tras PUZZLE_PISTA_TRAS derrotas en el
-       nivel; la solución paso a paso tras PUZZLE_SOLUCION_TRAS. -->
+  <!-- La ayuda (v11.10, T-54, §5.98): «Pista» tras PUZZLE_PISTA_TRAS intentos fallidos
+       en el nivel (v11.11, §5.102); la solución paso a paso tras PUZZLE_SOLUCION_TRAS. -->
   <button class="pz-sol" id="pz-solucion" hidden>Ver la solución paso a paso (como mucho <span data-const="GUIADA_ESTRELLAS">★</span>)</button>
   <p class="pz-aviso" id="pz-aviso"></p>
   <div class="pz-botones"><button id="pz-deshacer">↶ Deshacer</button><button id="pz-reiniciar">↻ Reiniciar</button><button class="pz-pista" id="pz-pista" hidden><span class="punto" aria-hidden="true"></span>Pista</button></div>
@@ -978,6 +1006,16 @@ footer .sem{font-variant-numeric:tabular-nums}
      la partida, la misma tarjeta en modo consulta. Las pestañas son de la hoja;
      cada panel es una pestaña. Los números salen de las constantes (data-const,
      regla 8) y los iconos son los del boceto E, tal cual. -->
+<!-- La ficha de un nivel de Puzzle (v11.11, T-55): sale al tocar un nivel en el mapa.
+     La rellena abrirFicha (app.js). -->
+<div id="pz-ficha-fondo" hidden></div>
+<div id="pz-ficha" class="pz-ficha" role="dialog" aria-modal="true" aria-labelledby="pz-ficha-donde" hidden>
+  <div class="hoja-asa"><span></span></div>
+  <div class="pz-ficha-cab"><span id="pz-ficha-hex"></span>
+    <div><small id="pz-ficha-donde"></small><h2 id="pz-ficha-titulo"></h2><p id="pz-ficha-obj"></p></div></div>
+  <dl class="pz-ficha-filas" id="pz-ficha-filas"></dl>
+  <button class="pz-ficha-jugar" id="pz-ficha-jugar">Jugar</button>
+</div>
 <div id="hoja-fondo" hidden></div>
 <div id="hoja" class="hoja" role="dialog" aria-modal="true" aria-labelledby="hoja-titulo-basico" hidden>
   <div class="hoja-asa" id="hoja-asa"><span></span></div>

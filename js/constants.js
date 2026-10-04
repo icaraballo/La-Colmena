@@ -170,8 +170,9 @@ const CONFIG_MODO = {
 // Límite = mínimo + 2: ★★★ en el mínimo, ★★ con uno de más, ★ con dos (§5.48).
 const PUZZLE_MARGEN = 2;
 // La ayuda de Puzzle (v11.10, T-54, LC-Instrucciones §5.98): la pista sale tras
-// perder el nivel PUZZLE_PISTA_TRAS veces y la solución guiada tras
-// PUZZLE_SOLUCION_TRAS. «Se prueba con 5 y 10 y se ajusta jugando». Resolver con
+// PUZZLE_PISTA_TRAS intentos fallidos en el nivel y la solución guiada tras
+// PUZZLE_SOLUCION_TRAS (hasta la v11.10 eran derrotas; desde la v11.11, intentos
+// fallidos: perder, reiniciar o salir después de jugar, §5.102). «Se prueba con 5 y 10 y se ajusta jugando». Resolver con
 // la solución da como mucho PUZZLE_GUIADA_ESTRELLAS (lo aplica el motor).
 const PUZZLE_PISTA_TRAS = 5;
 const PUZZLE_SOLUCION_TRAS = 10;
@@ -421,7 +422,7 @@ function tieneDificultad(modo) {
 // jugando en el móvil no hay forma de saber si lo que tienes delante es lo
 // último que se subió.
 // Se mantiene a mano y tiene que coincidir con package.json (ver Recetas).
-const VERSION = 'v11.10';
+const VERSION = 'v11.11';
 
 const NOMBRE_MODO = {
   contrarreloj: 'Contrarreloj',

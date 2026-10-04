@@ -109,14 +109,16 @@ function jugadasValidas(jugadas, tiempos, celdas, turnos) {
 // ---------------------------------------------------------------------------
 // El progreso del modo Puzzle (v11): la mejor marca de cada nivel resuelto
 // ---------------------------------------------------------------------------
-// { v: 1, mejores: { id: { estrellas: 1-3, turnos, guiada? } }, derrotas: { id: n } }.
+// { v: 1, mejores: { id: { estrellas: 1-3, turnos, guiada? } }, fallidos: { id: n }, ganados: { id: n } }.
 // Lo guarda app.js en localStorage (colmena.puzzle.v1). Al leer no se fía: un nivel
 // con una marca que no tenga la forma esperada se olvida (sólo ése, no todo el
 // progreso). Desde la v11.10 (T-54): `guiada` si la mejor marca es de la solución
-// guiada, y las derrotas de cada nivel (para la pista y la solución). Un progreso
-// de antes no las tiene: se leen como cero, sin cambiar de versión.
+// guiada. Desde la v11.11 (T-55): los intentos de cada nivel, fallidos y ganados
+// (la ficha del nivel, la barra, la pista y la solución). La v11.10 guardaba
+// `derrotas`: se leen como fallidos. Un progreso de antes no los tiene: se leen
+// como cero, sin cambiar de versión.
 const PROGRESO_PUZZLE_VERSION = 1;
-function progresoPuzzleVacio() { return { v: PROGRESO_PUZZLE_VERSION, mejores: {}, derrotas: {} }; }
+function progresoPuzzleVacio() { return { v: PROGRESO_PUZZLE_VERSION, mejores: {}, fallidos: {}, ganados: {} }; }
 
 function leerProgresoPuzzle(g) {
   const p = progresoPuzzleVacio();
@@ -125,9 +127,12 @@ function leerProgresoPuzzle(g) {
     if (typeof id === 'string' && m && [1, 2, 3].includes(m.estrellas) && esEntero(m.turnos) && m.turnos > 0)
       p.mejores[id] = m.guiada === true ? { estrellas: m.estrellas, turnos: m.turnos, guiada: true }
         : { estrellas: m.estrellas, turnos: m.turnos };
-  if (g.derrotas && typeof g.derrotas === 'object')
-    for (const [id, n] of Object.entries(g.derrotas))
-      if (esEntero(n) && n > 0) p.derrotas[id] = n;
+  const cuentas = (de, a) => {
+    if (de && typeof de === 'object')
+      for (const [id, n] of Object.entries(de)) if (esEntero(n) && n > 0) a[id] = n;
+  };
+  cuentas(g.fallidos || g.derrotas, p.fallidos);
+  cuentas(g.ganados, p.ganados);
   return p;
 }
 
@@ -143,12 +148,24 @@ function apuntarPuzzle(p, id, resultado) {
     : { estrellas: resultado.estrellas, turnos: resultado.turnos };
   return true;
 }
-// Una derrota más en el nivel (v11.10, T-54): perderlo. Deshacer o reiniciar no
-// cuenta. Devuelve cuántas lleva.
-function apuntarDerrota(p, id) {
-  if (!p.derrotas) p.derrotas = {};
-  p.derrotas[id] = (p.derrotas[id] || 0) + 1;
-  return p.derrotas[id];
+// Un intento más en el nivel (v11.11, T-55): `que` es 'fallido' o 'ganado'.
+// Devuelve cuántos de ésos lleva. Qué es un intento lo decide app.js (§5.102).
+function apuntarIntento(p, id, que) {
+  const k = que === 'ganado' ? 'ganados' : 'fallidos';
+  if (!p[k]) p[k] = {};
+  p[k][id] = (p[k][id] || 0) + 1;
+  return p[k][id];
+}
+// El intento que se contó fallido al perder y acabó ganado (deshacer y seguir):
+// pasa de fallido a ganado.
+function fallidoAGanado(p, id) {
+  if (p.fallidos && p.fallidos[id] > 0 && --p.fallidos[id] === 0) delete p.fallidos[id];
+  return apuntarIntento(p, id, 'ganado');
+}
+// Los intentos de un nivel: { fallidos, ganados, total }.
+function intentosDe(p, id) {
+  const f = (p.fallidos && p.fallidos[id]) || 0, g = (p.ganados && p.ganados[id]) || 0;
+  return { fallidos: f, ganados: g, total: f + g };
 }
 
 

@@ -47,7 +47,7 @@ const FOOTER = `
      PUZZLE_MARGEN, PUZZLE_ABIERTOS, PUZZLE_ABRE_CAPITULO, OBJETIVO_INFO, NOMBRE_MODO, FRASE_MODO, COLOR_MODO,
      crearPuzle, seguimientoPuzle, avanzarPuzle, cumplidoPuzle, rompePuzle, estrellasPuzle,
      objetivoPuzle, progresoPuzle, abiertosPuzzle, PUZLES_VERSION, CAPITULOS, PUZLES,
-     PROGRESO_PUZZLE_VERSION, progresoPuzzleVacio, leerProgresoPuzzle, apuntarPuzzle, apuntarDerrota,
+     PROGRESO_PUZZLE_VERSION, progresoPuzzleVacio, leerProgresoPuzzle, apuntarPuzzle, apuntarIntento, fallidoAGanado, intentosDe,
      PUZZLE_PISTA_TRAS, PUZZLE_SOLUCION_TRAS, PUZZLE_GUIADA_ESTRELLAS,
      crearJuego, buscar, buscarPrimera, pistaPuzle, motorDelJuego, estadoBuscador,
      grupoMeseta, TUTORIAL, TUTORIAL_VERSION, PROGRESO_TUTORIAL_VERSION, leerProgresoTutorial, NOMBRE_NIVEL, LINEA_NIVEL,
