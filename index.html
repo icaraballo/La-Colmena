@@ -584,6 +584,11 @@ footer .sem{font-variant-numeric:tabular-nums}
 .fin-codigo .acc{font-size:13px;font-weight:600;color:#c9b99c}
 .fin-codigo.copiado{border-color:#9fd67a}
 .fin-codigo.copiado .cod,.fin-codigo.copiado .acc{color:#9fd67a}
+/* «Compartir» (v11.9, T-30): debajo del código, con el naranja de borde para que
+   se vea sin quitarle el sitio a «Otra vez». */
+.fin-compartir{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;max-width:320px;min-height:46px;
+  margin:-4px auto 14px;border-radius:10px;background:#2a2218;border:1px solid #F79A1F;color:#F79A1F;font-size:15px;font-weight:700}
+.fin-compartir:hover{background:#33291d}
 #fin-repetir{all:unset;cursor:pointer;display:block;margin:10px auto 0;font-size:14px;color:#9a8d77;padding:6px 10px}
 #fin-repetir:hover{color:#c9b99c}
 #fin-repetir:focus-visible{outline:2px solid #F79A1F;border-radius:6px}
@@ -640,6 +645,10 @@ footer .sem{font-variant-numeric:tabular-nums}
 .hist-cod span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hist-cod svg{flex:none;color:#8c7f6a}
 .hist-cod.copiado{color:#9fd67a;border-color:#4d6b38}
+.hist-comp{flex:none;display:grid;place-items:center;width:38px;min-height:36px;padding:0;border-radius:8px;
+  background:transparent;border:1px solid #43372a;color:#c9b99c}
+.hist-comp:hover{background:#17140f}
+.hist-record .hist-comp{min-height:40px;border-color:#33291d}
 .hist-jugar{flex:none;min-height:36px;padding:0 12px;border-radius:8px;font-size:13px;font-weight:600;white-space:nowrap}
 .hist-record .hist-cod{min-height:40px;font-size:13px;border-color:#33291d}
 .hist-jugar.verde{min-height:40px;padding:0 14px;background:#9fd67a;border:0;color:#173404;font-weight:700}
@@ -650,6 +659,17 @@ footer .sem{font-variant-numeric:tabular-nums}
 .hist-vacio span{font-size:13px;color:#9a8d77}
 .hist-vacio .primario{min-height:44px;padding:0 24px;font-size:14px}
 .hist-pie{margin:8px 4px 0;font-size:11.5px;line-height:1.45;color:#6d6150;text-align:center}
+.enlace-velo{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:16px;background:rgba(18,16,12,.72)}
+.enlace-velo[hidden]{display:none}
+.enlace-caja{width:100%;max-width:340px;background:#1c1710;border:1px solid #43372a;border-radius:16px;padding:20px 18px 16px;text-align:center}
+.enlace-titulo{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#9a8d77}
+.enlace-modo{font-size:22px;font-weight:700;margin:8px 0 2px}
+.enlace-cod{font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#8c7f6a}
+.enlace-caja p{font-size:14px;line-height:1.4;color:#c9b99c;margin:14px 0 16px}
+.enlace-caja p b{color:#ede4d3}
+.enlace-botones{display:flex;gap:10px}
+.enlace-botones .secundario{flex:1;min-height:48px}
+.enlace-botones .primario{flex:1.2;min-height:48px}
 .aviso-abajo{position:fixed;left:14px;right:14px;bottom:calc(20px + env(safe-area-inset-bottom));max-width:480px;margin:0 auto;z-index:25;
   background:#2a2218;border:1px solid #9fd67a;border-radius:12px;padding:10px 12px;font-size:13px;color:#ede4d3}
 </style>
@@ -764,6 +784,21 @@ footer .sem{font-variant-numeric:tabular-nums}
   <div class="hist-lista" id="hist-lista"></div>
 </section>
 <div class="aviso-abajo" id="aviso-abajo" role="status" hidden></div>
+
+<!-- Un enlace compartido con una partida guardada (v11.9, T-30): avisa de que
+     jugarlo la sustituye, como el «#». Sin partida guardada, se entra directo. -->
+<div class="enlace-velo" id="enlace" hidden>
+  <div class="enlace-caja" role="dialog" aria-modal="true" aria-labelledby="enlace-titulo">
+    <div class="enlace-titulo" id="enlace-titulo">Te han pasado una partida</div>
+    <div class="enlace-modo" id="enlace-modo"></div>
+    <div class="enlace-cod" id="enlace-cod"></div>
+    <p id="enlace-txt"></p>
+    <div class="enlace-botones">
+      <button class="secundario" id="enlace-mia">Seguir la mía</button>
+      <button class="primario" id="enlace-jugar">Jugar ésta</button>
+    </div>
+  </div>
+</div>
 
 <!-- Los capítulos de Puzzle (v11): todos en una pantalla que se desliza. Los pinta
      pintarCapitulos() desde CAPITULOS y PUZLES (js/puzles.js); qué está abierto lo
@@ -891,6 +926,8 @@ footer .sem{font-variant-numeric:tabular-nums}
       <div class="detalle" id="fin-detalle"></div>
       <!-- El código de la partida (v11.4): tocarlo lo copia. -->
       <button class="fin-codigo" id="fin-codigo" hidden><span class="lbl-sem">Semilla</span><span class="cod" id="fin-cod"></span><span class="acc" id="fin-cod-acc">Copiar</span></button>
+      <!-- Compartir (v11.9, T-30): el menú del móvil con el enlace; en el PC, lo copia. -->
+      <button class="fin-compartir" id="fin-compartir" hidden><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>Compartir</button>
       <div class="fin-botones">
         <button id="fin-menu" class="secundario">‹ Menú</button>
         <button id="fin-otra" class="primario">Otra vez</button>

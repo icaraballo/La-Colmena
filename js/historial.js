@@ -53,6 +53,30 @@ function leerCodigo(texto) {
   return dificultad ? { modo, dificultad, semilla } : null;
 }
 
+// Compartir (v11.9, T-30): el enlace es la dirección del juego más `?c=` y el
+// código. De la búsqueda de la dirección («?c=CR-N-123») al texto del código, sin
+// validarlo (eso es leerCodigo); null si no hay `c`.
+function codigoDeBusqueda(busqueda) {
+  const m = /[?&]c=([^&#]*)/.exec(typeof busqueda === 'string' ? busqueda : '');
+  if (!m) return null;
+  try { return decodeURIComponent(m[1].replace(/\+/g, ' ')); } catch { return null; }
+}
+// `base` es origen y ruta, sin búsqueda: la pone quien llama (sale de location).
+function enlacePartida(base, codigo) {
+  return `${base}?c=${encodeURIComponent(codigo)}`;
+}
+// Lo que acompaña al enlace, de una entrada: «La Colmena · Contrarreloj normal ·
+// 5230 puntos. ¿Lo superas?». Expansión completa reta a menos turnos.
+function textoCompartir(e) {
+  const modo = NOMBRE_MODO[e.modo] + (tieneDificultad(e.modo) ? ` ${NOMBRE_DIF[e.dificultad].toLowerCase()}` : '');
+  const miles = n => n.toLocaleString('es-ES');
+  let resultado = `${miles(e.puntos)} puntos`, reto = '¿Lo superas?';
+  if (e.expansion && e.expansion.completado) {
+    resultado = `panal completo en ${miles(e.turnos)} turnos`; reto = '¿Lo haces en menos?';
+  } else if (e.expansion) resultado = `${e.expansion.abiertas} de ${e.expansion.total} abiertas`;
+  return `La Colmena · ${modo} · ${resultado}. ${reto}`;
+}
+
 // ---------------------------------------------------------------------------
 // Una entrada
 // ---------------------------------------------------------------------------

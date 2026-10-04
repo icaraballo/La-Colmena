@@ -1392,6 +1392,31 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
     eq(T.leerCodigo(malo), null, `«${malo}» no es un código`);
   eq(T.leerCodigo(undefined), null, 'nada no es un código');
 
+  // Compartir (v11.9, T-30): el enlace ida y vuelta, y el texto.
+  eq(T.codigoDeBusqueda('?c=CR-N-4069568398'), 'CR-N-4069568398', '?c= da el código');
+  eq(T.codigoDeBusqueda('?x=1&c=ex-d-7&y=2'), 'ex-d-7', 'entre otros parámetros');
+  eq(T.codigoDeBusqueda('?c=CR%20N%20123'), 'CR N 123', 'decodificado');
+  eq(T.codigoDeBusqueda('?c=CR+N+123'), 'CR N 123', 'con + por espacio');
+  eq(T.codigoDeBusqueda('?cc=CR-N-1'), null, 'otro parámetro no es c');
+  eq(T.codigoDeBusqueda(''), null, 'sin búsqueda, nada');
+  eq(T.codigoDeBusqueda('?c=%E0'), null, 'mal codificado, nada');
+  eq(T.codigoDeBusqueda(undefined), null, 'sin nada, nada');
+  const enl = T.enlacePartida('https://icaraballo.github.io/La-Colmena/', 'CR-N-4069568398');
+  eq(enl, 'https://icaraballo.github.io/La-Colmena/?c=CR-N-4069568398', 'el enlace');
+  for (const [modo, dif] of [['contrarreloj', 'normal'], ['invierno', 'dificil'], ['contagio', 'normal'], ['expansion', 'dificil']]) {
+    const cod = T.codigoPartida(modo, dif, 4069568398);
+    const vuelta = T.leerCodigo(T.codigoDeBusqueda(T.enlacePartida('https://x/', cod).slice('https://x/'.length)));
+    ok(vuelta && vuelta.modo === modo && vuelta.dificultad === dif && vuelta.semilla === 4069568398, `el enlace de ${cod} vuelve a su partida`);
+  }
+  eq(T.textoCompartir({ modo: 'contrarreloj', dificultad: 'normal', puntos: 5230, turnos: 48 }),
+     'La Colmena · Contrarreloj normal · 5230 puntos. ¿Lo superas?', 'el texto con puntos');
+  eq(T.textoCompartir({ modo: 'invierno', dificultad: 'dificil', puntos: 120, turnos: 9 }),
+     'La Colmena · Invierno difícil · 120 puntos. ¿Lo superas?', 'difícil, en minúscula');
+  eq(T.textoCompartir({ modo: 'expansion', dificultad: 'normal', puntos: 0, turnos: 87, expansion: { completado: true, abiertas: 18, total: 18 } }),
+     'La Colmena · Expansión normal · panal completo en 87 turnos. ¿Lo haces en menos?', 'Expansión completa');
+  eq(T.textoCompartir({ modo: 'expansion', dificultad: 'normal', puntos: 0, turnos: 150, expansion: { completado: false, abiertas: 14, total: 18 } }),
+     'La Colmena · Expansión normal · 14 de 18 abiertas. ¿Lo superas?', 'Expansión sin completar');
+
   // Entradas hechas a mano para las listas (sólo lo que miran).
   let n = 0;
   const entrada = (modo, dif, extra = {}) => ({

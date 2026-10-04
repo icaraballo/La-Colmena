@@ -484,6 +484,9 @@ function pintarFin() {
   // El código y «Repetir este panal» (v11.4): sólo en los modos con código.
   document.getElementById('fin-codigo').hidden = !!cfg.puzle;
   document.getElementById('fin-repetir').hidden = !!cfg.puzle;
+  // Compartir (v11.9, T-30): las que tienen resultado que retar, las de Tus
+  // partidas. Ni Puzzle ni el tutorial (sin código) ni Panal libre (sin resultado).
+  document.getElementById('fin-compartir').hidden = !MODOS_HISTORIAL.includes(S.modo) || !!cfg.puzle;
   el.classList.toggle('puzle', !!cfg.puzle);
   if (tutorial) { pintarFinTutorial(); return; }
   if (cfg.puzle) { mostrar('puzle-pie', !abajo); pintarFinPuzle(); el.hidden = false; return; }
@@ -1978,6 +1981,41 @@ function apuntarPartida() {
   guardarHistorial();
 }
 
+// Compartir una partida acabada (v11.9, T-30, §5.100): el menú del móvil
+// (WhatsApp, correo…) con el texto y el enlace que entra en ella. Donde no hay
+// menú (el PC) o falla, se copian texto y enlace. Cancelar el menú no es fallo.
+async function compartirPartida(e) {
+  const url = enlacePartida(location.origin + location.pathname, codigoPartida(e.modo, e.dificultad, e.semilla));
+  const text = textoCompartir(e);
+  if (navigator.share) {
+    try { await navigator.share({ title: 'La Colmena', text, url }); return; }
+    catch (err) { if (err && err.name === 'AbortError') return; }
+  }
+  avisoAbajo(await copiarTexto(`${text} ${url}`) ? 'Enlace copiado: pégalo donde quieras.' : 'No se pudo copiar el enlace.');
+}
+
+// Al abrir el juego con `?c=` (v11.9, T-30): esa partida, directa. Si hay una
+// guardada, antes se avisa de que la sustituye (como el «#», §24); si el código no
+// vale, el inicio de siempre y un aviso. Un número solo (sin modo) no vale aquí.
+function abrirEnlace(texto) {
+  const c = leerCodigo(texto);
+  if (!c || c.sinModo) { avisoAbajo('Ese enlace no es de una partida.'); return; }
+  const g = leerPartida();
+  if (!g) { jugarCodigo(c); return; }
+  const modo = document.getElementById('enlace-modo');
+  modo.textContent = describirModoDif(c.modo, c.dificultad);
+  modo.style.color = COLOR_MODO[c.modo];
+  setText('enlace-cod', codigoPartida(c.modo, c.dificultad, c.semilla));
+  setHtml('enlace-txt', `Jugarla sustituye tu partida guardada de <b>${NOMBRE_MODO[g.s.modo]}</b> (turno ${g.s.turn}).`);
+  const el = document.getElementById('enlace');
+  el.hidden = false;
+  const cerrar = () => { el.hidden = true; };
+  document.getElementById('enlace-mia').onclick = cerrar;
+  document.getElementById('enlace-jugar').onclick = () => { cerrar(); jugarCodigo(c); };
+  el.onkeydown = ev => { if (ev.key === 'Escape') cerrar(); };
+  document.getElementById('enlace-jugar').focus({ preventScroll: true });
+}
+
 // Jugar un código (el «#» del inicio, «Jugar ésta»): como «Empezar» en una ficha,
 // ese modo, esa dificultad y esa semilla. No cambia la dificultad elegida del modo:
 // es una partida suelta.
@@ -2041,6 +2079,7 @@ function detallePartida(e, rachaLarga = false) {
   return txt + (e.version !== VERSION ? ` · ${e.version}` : '');
 }
 
+const ICO_COMPARTIR = '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>';
 const ICO_COPIAR = '<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>';
 const ICO_ESTRELLA = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.9z" stroke-width="1.8" stroke-linejoin="round"/></svg>';
 
@@ -2048,7 +2087,9 @@ const ICO_ESTRELLA = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidde
 function filaCodigo(e, clase = '') {
   const cod = codigoPartida(e.modo, e.dificultad, e.semilla);
   return `<div class="hist-f3"><button class="hist-cod" data-accion="copiar" data-cod="${cod}" aria-label="Copiar el código ${cod}">` +
-    `<span>${cod}</span>${ICO_COPIAR}</button><button class="hist-jugar${clase}" data-accion="jugar">Jugar ésta</button></div>`;
+    `<span>${cod}</span>${ICO_COPIAR}</button>` +
+    `<button class="hist-comp" data-accion="compartir" aria-label="Compartir esta partida">${ICO_COMPARTIR}</button>` +
+    `<button class="hist-jugar${clase}" data-accion="jugar">Jugar ésta</button></div>`;
 }
 
 function tarjetaPartida(e, conModo) {
@@ -2188,6 +2229,7 @@ async function accionHistorial(e) {
   const entrada = historial.partidas.find(x => x.id === id);
   if (!entrada) return;
   if (accion === 'jugar') jugarCodigo({ modo: entrada.modo, dificultad: entrada.dificultad, semilla: entrada.semilla });
+  else if (accion === 'compartir') compartirPartida(entrada);
   else if (accion === 'copiar') {
     const span = b.querySelector('span');
     const ok = await copiarTexto(b.dataset.cod);
@@ -2440,6 +2482,18 @@ window.addEventListener('DOMContentLoaded', () => {
     new ResizeObserver(() => resize()).observe(document.getElementById('wrap'));
     new ResizeObserver(() => { if (pantalla === 'inicio') medirFondo(); }).observe(document.getElementById('fondo-wrap'));
   }
+  document.getElementById('fin-compartir').addEventListener('click', () => {
+    const e = entradaDePartida(S, { id: '', fecha: '', duracion, version: VERSION });
+    if (e) compartirPartida(e);
+  });
+
+  // Un enlace compartido (v11.9, T-30): se lee y se quita de la dirección en el
+  // acto, para que recargar no vuelva a empezar la partida.
+  const enlazado = codigoDeBusqueda(location.search);
+  if (enlazado !== null) {
+    try { history.replaceState(null, '', location.pathname + location.hash); } catch { /* se queda; no pasa nada */ }
+  }
   mostrarPantalla('inicio');
+  if (enlazado !== null) abrirEnlace(enlazado);
   requestAnimationFrame(frame);
 });
