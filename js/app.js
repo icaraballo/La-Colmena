@@ -1758,6 +1758,11 @@ function pintarHoja() {
     if (!el.hidden) el.querySelector('.hoja-filas').scrollTop = 0;
   });
 
+  // Básico (v11.6, T-52): la fila de Puntos sólo donde se puntúa; la de la
+  // racha también en Expansión, que la enseña en el marcador.
+  const cfgModo = CONFIG_MODO[modo];
+  hoja.querySelectorAll('[data-si="puntua"]').forEach(el => { el.hidden = !cfgModo.puntua; });
+  hoja.querySelectorAll('[data-si="racha"]').forEach(el => { el.hidden = !(cfgModo.puntua || cfgModo.abre); });
   pintarDificultad(modo, ficha);
   if (CONFIG_MODO[modo].abre) pintarEscalaExpansion(ficha ? dificultadElegida(modo) : S.dificultad);
 
