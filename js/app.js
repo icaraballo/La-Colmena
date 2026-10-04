@@ -117,11 +117,15 @@ function cerrarPop() {
 function abrirPop(ancla, contenido) {
   const p = document.getElementById('pop');
   p.innerHTML = ''; p.appendChild(contenido); p.hidden = false;
-  const r = ancla.getBoundingClientRect();
+  popAncla = ancla;
+  recolocarPop();
+}
+function recolocarPop() {
+  const p = document.getElementById('pop');
+  const r = popAncla.getBoundingClientRect();
   const w = p.getBoundingClientRect().width;
   p.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
   p.style.top = (r.bottom + 5) + 'px';
-  popAncla = ancla;
 }
 
 // Hay partida que guardar: se ha jugado algún turno y no ha terminado. Es la
@@ -2390,8 +2394,14 @@ window.addEventListener('DOMContentLoaded', () => {
   fondo.ctx = fondo.canvas.getContext('2d');
   nuevoDemo((Date.now() ^ (Math.random() * 0x7fffffff)) >>> 0);
 
+  // El panel flotante se cierra si cambia el ancho (girar el móvil), no si sólo
+  // cambia el alto: es lo que hace el teclado al salir, y el panel de la semilla
+  // pone el foco en su casilla. Hasta la v11.4 se cerraba solo nada más abrirse.
+  let anchoVentana = window.innerWidth;
   window.addEventListener('resize', () => {
-    cerrarPop();
+    if (window.innerWidth !== anchoVentana) cerrarPop();
+    else if (popAncla) recolocarPop();
+    anchoVentana = window.innerWidth;
     if (pantalla === 'partida') resize(); else { medirFondo(); marcarBajado(); }
     // La consulta va pegada a la barra: si cambia la ventana, se recoloca.
     if (hojaAbierta && hojaAbierta.desde === 'partida')
