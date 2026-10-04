@@ -1526,7 +1526,8 @@ const ICO_PLAY = '<svg width="13" height="13" viewBox="0 0 14 14"><path d="M4 2l
 const ICO_HEX = '<svg width="14" height="14" viewBox="0 0 14 14"><polygon points="7,1 12.5,4 12.5,10 7,13 1.5,10 1.5,4" fill="#F79A1F"/></svg>';
 function quienLlega() {
   const g = leerPartida();
-  if (g) return { caso: 'continuar', titulo: 'Continuar partida', detalle: describirPartida(g.s) };
+  if (g) return { caso: 'continuar', titulo: 'Continuar partida', detalle: describirPartida(g.s),
+                  corto: `${NOMBRE_MODO[g.s.modo]} · turno ${g.s.turn}` };
   if (esNuevo()) return { caso: 'nuevo', titulo: 'Aprende a jugar', detalle: 'Empieza por aquí: unos niveles cortos.' };
   const modo = ultimoModo() || (tutorialAcabado() ? MODOS.PUZZLE : MODOS.CONTRARRELOJ);
   return { caso: 'jugar', titulo: 'Jugar', detalle: describirModo(modo), modo };
@@ -1536,6 +1537,12 @@ function pintarPrincipal() {
   setText('principal-titulo', q.titulo);
   setText('principal-detalle', q.detalle);
   setHtml('principal-ico', q.caso === 'nuevo' ? ICO_HEX : ICO_PLAY);
+  // La copia pequeña de la barra de los modos (v11.7, T-53).
+  document.getElementById('inicio').classList.toggle('hay-partida', q.caso === 'continuar');
+  if (q.caso === 'continuar') {
+    setText('cont-mini-detalle', q.corto);
+    document.querySelector('#cont-mini .play').innerHTML = ICO_PLAY;
+  }
 }
 function pulsarPrincipal() {
   const q = quienLlega();
@@ -1564,9 +1571,12 @@ function subirAlInicio() {
 
 // «‹ Menú» (de la barra o de la pantalla final): se guarda y se vuelve, sin
 // preguntar, porque ya no se pierde nada (v9.1). Volver al inicio no toca S.
-function volverAlInicio() {
+// Desde la v11.7 (T-53, §5.95) se vuelve a los modos, no a la portada: el que
+// sale de una partida suele querer otra. El tutorial sí acaba en la portada
+// (§5.84, su botón naranja lleva al capítulo 1 de Puzzle): `bajado: false`.
+function volverAlInicio({ bajado = true } = {}) {
   guardarPartida();
-  mostrarPantalla('inicio');
+  mostrarPantalla('inicio', { bajado });
   document.getElementById('inicio').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
 }
 
@@ -2266,6 +2276,15 @@ window.addEventListener('DOMContentLoaded', () => {
   // El inicio: el botón naranja y cada modo, que abre su ficha (también Puzzle,
   // desde la v11.1: antes iba directo a los capítulos).
   document.getElementById('principal').addEventListener('click', pulsarPrincipal);
+  document.getElementById('cont-mini').addEventListener('click', pulsarPrincipal);
+  // ¿Se ve el botón naranja grande? Si no, y hay partida, sale la copia pequeña
+  // de la barra (v11.7, T-53). Sin IntersectionObserver, la pequeña sale siempre
+  // que haya partida: mejor dos que ninguno.
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(([e]) =>
+      document.getElementById('inicio').classList.toggle('principal-visible', e.isIntersecting),
+      { root: document.getElementById('inicio'), threshold: 0.6 }).observe(document.getElementById('principal'));
+  }
   document.querySelectorAll('.modo-fila[data-modo]').forEach(b => b.addEventListener('click', () => abrirFicha(b.dataset.modo)));
 
   // El tutorial (v11.2): repetirlo (inicio y ficha Básico), la escalera, sus botones y el final.
@@ -2275,7 +2294,7 @@ window.addEventListener('DOMContentLoaded', () => {
     empezarTutorial(true);
   });
   document.getElementById('tut-empezar').addEventListener('click', () => jugarTutorial(0));
-  document.querySelectorAll('[data-tut-salir]').forEach(b => b.addEventListener('click', () => { clearTimeout(tut.alFinal); volverAlInicio(); }));
+  document.querySelectorAll('[data-tut-salir]').forEach(b => b.addEventListener('click', () => { clearTimeout(tut.alFinal); volverAlInicio({ bajado: false }); }));
   document.getElementById('tut-deshacer').addEventListener('click', deshacerPuzle);
   document.getElementById('tut-reiniciar').addEventListener('click', () => jugarTutorial(tut.k, false));
   document.getElementById('tut-pista').addEventListener('click', () => { tut.pistaEn = S.turn; redraw(); });
@@ -2286,8 +2305,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Puzzle (v11): los capítulos, el nivel y su final.
   leerProgresoGuardado();
+  // Puzzle está en la lista de modos: se vuelve a ella (v11.7, T-53).
   document.getElementById('pz-menu').addEventListener('click', () => {
-    mostrarPantalla('inicio');
+    mostrarPantalla('inicio', { bajado: true });
     document.getElementById('inicio').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
   });
   document.getElementById('pz-info').addEventListener('click', () =>
