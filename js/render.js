@@ -125,7 +125,11 @@ function draw(ctx, s, ui, now) {
     // ve que encoge.
     if (s.roto[i]) continue;
     // Celda cerrada (Expansión, v10): el hueco donde crecerá el panal, con un
-    // contorno tenue. Sin número y sin relleno: no es un nivel, es sitio.
+    // contorno discontinuo. Sin número y sin relleno: no es un nivel, es sitio.
+    // Desde la v11.8 (T-51) más marcado, porque con mucha luz se perdía: blanco al
+    // 50 % (era 16 %) y R·0,08, unos 2 px en pantalla (era 1,2 en unidades del
+    // lienzo, que dibuja al doble: 0,6 px). Proporcional a R, igual en cualquier
+    // móvil. La selección sigue siendo continua y gruesa, con halo: no se confunden.
     if (s.cerrada[i]) {
       if (ui.abriria && ui.abriria.includes(i)) {
         // La cosecha que estás arrastrando la abriría (leído del motor).
@@ -140,8 +144,8 @@ function draw(ctx, s, ui, now) {
         ctx.restore();
       } else {
         hexPath(ctx, layout.cx[i], layout.cy[i], R * 0.94);
-        ctx.strokeStyle = 'rgba(237,228,211,0.16)';
-        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = 'rgba(237,228,211,0.5)';
+        ctx.lineWidth = R * 0.08;
         ctx.setLineDash([R * 0.18, R * 0.14]);
         ctx.stroke();
         ctx.setLineDash([]);
