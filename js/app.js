@@ -236,7 +236,7 @@ function panelSemilla(desde) {
     const { r } = leido();
     if (!r) { actualizar(); input.focus(); return; }
     cerrarPop();
-    if (enInicio) { jugarCodigo(r); return; }
+    if (enInicio) { preguntarSustituir({ titulo: 'Jugar una semilla', ...r, si: 'Jugar ésta' }, () => jugarCodigo(r)); return; }
     // En la partida: un código juega su modo y su dificultad, aunque sean otros.
     if (!r.sinModo) {
       partida.modo = r.modo;
@@ -1700,7 +1700,7 @@ function mostrarPantalla(p, { bajado = false } = {}) {
     // con los modos bajados, donde estaba su icono (v11.4).
     const el = document.getElementById('inicio');
     pintarPrincipal(); medirFondo();
-    el.scrollTop = bajado ? el.scrollHeight : 0;
+    el.scrollTop = bajado ? alturaModos() : 0;
     marcarBajado();
   }
 }
@@ -1788,9 +1788,17 @@ function marcarBajado() {
   el.classList.toggle('bajado', el.scrollTop > 24);
 }
 const sinAnimar = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Hasta dónde se baja: al título de los modos, no al final. Con partida guardada
+// los modos dejan sitio debajo para «▶ Continuar» (v11.12) y, bajando del todo, el
+// título «Modos de juego» y sus iconos se quedarían fuera por arriba.
+function alturaModos() {
+  const el = document.getElementById('inicio');
+  const top = el.scrollTop + document.getElementById('modos').getBoundingClientRect().top - el.getBoundingClientRect().top;
+  return Math.min(Math.round(top), el.scrollHeight - el.clientHeight);
+}
 function verModos() {
   const el = document.getElementById('inicio');
-  el.scrollTo({ top: el.scrollHeight, behavior: sinAnimar() ? 'auto' : 'smooth' });
+  el.scrollTo({ top: alturaModos(), behavior: sinAnimar() ? 'auto' : 'smooth' });
 }
 // «⌃ Inicio» (v11.4): la gemela de verModos, para volver a la portada (donde está
 // «Continuar partida») sin recargar. Arrastrar hacia abajo también sube.
@@ -2108,15 +2116,21 @@ function cambiarModoFicha(dir) {
 function empezar() {
   if (!hojaAbierta) return;
   const modo = hojaAbierta.modo;
-  marcarBasicoVisto();
-  marcarYaJugado();
-  guardarUltimoModo(modo);
-  hojaOrigen = null;
-  if (modo === MODOS.PUZZLE) { irACapitulos(); return; }
-  partida.modo = modo;
-  partida.dificultad = tieneDificultad(modo) ? dificultadElegida(modo) : 'normal';
-  cerrarHoja();
-  entrarEnPartida(() => restart());
+  const elegir = () => {
+    marcarBasicoVisto();
+    marcarYaJugado();
+    guardarUltimoModo(modo);
+    hojaOrigen = null;
+  };
+  if (modo === MODOS.PUZZLE) { elegir(); irACapitulos(); return; }
+  const dificultad = tieneDificultad(modo) ? dificultadElegida(modo) : 'normal';
+  preguntarSustituir({ titulo: 'Empezar otra partida', modo, dificultad, si: 'Empezar' }, () => {
+    elegir();
+    partida.modo = modo;
+    partida.dificultad = dificultad;
+    cerrarHoja();
+    entrarEnPartida(() => restart());
+  });
 }
 
 // Los gestos de la hoja, con eventos pointer: arrastrar hacia abajo cierra
@@ -2222,24 +2236,39 @@ async function compartirPartida(e) {
 }
 
 // Al abrir el juego con `?c=` (v11.9, T-30): esa partida, directa. Si hay una
-// guardada, antes se avisa de que la sustituye (como el «#», §24); si el código no
-// vale, el inicio de siempre y un aviso. Un número solo (sin modo) no vale aquí.
+// guardada, antes se pregunta (preguntarSustituir); si el código no vale, el
+// inicio de siempre y un aviso. Un número solo (sin modo) no vale aquí.
 function abrirEnlace(texto) {
   const c = leerCodigo(texto);
   if (!c || c.sinModo) { avisoAbajo('Ese enlace no es de una partida.'); return; }
+  preguntarSustituir({ titulo: 'Te han pasado una partida', ...c, si: 'Jugar ésta' }, () => jugarCodigo(c));
+}
+
+// Empezar otra partida con una guardada a medias (v11.12, CR-13): antes se
+// pregunta, con «Seguir la mía» y «Empezar» (o «Jugar ésta»). Hasta la v11.11
+// sólo lo decía una línea gris encima del botón, y jugando no se veía; la
+// pregunta salía únicamente con un enlace compartido (v11.9). Sin partida
+// guardada, se juega directo. «Seguir la mía» sólo cierra: se queda donde
+// estaba (la ficha, Tus partidas o el inicio) y la guardada sigue ahí.
+function preguntarSustituir({ titulo, modo, dificultad, semilla, si }, jugar) {
   const g = leerPartida();
-  if (!g) { jugarCodigo(c); return; }
-  const modo = document.getElementById('enlace-modo');
-  modo.textContent = describirModoDif(c.modo, c.dificultad);
-  modo.style.color = COLOR_MODO[c.modo];
-  setText('enlace-cod', codigoPartida(c.modo, c.dificultad, c.semilla));
-  setHtml('enlace-txt', `Jugarla sustituye tu partida guardada de <b>${NOMBRE_MODO[g.s.modo]}</b> (turno ${g.s.turn}).`);
+  if (!g) { jugar(); return; }
   const el = document.getElementById('enlace');
+  setText('enlace-titulo', titulo);
+  const m = document.getElementById('enlace-modo');
+  m.textContent = describirModoDif(modo, dificultad);
+  m.style.color = COLOR_MODO[modo];
+  const cod = document.getElementById('enlace-cod');
+  cod.hidden = semilla === undefined;
+  if (semilla !== undefined) cod.textContent = codigoPartida(modo, dificultad, semilla);
+  setHtml('enlace-txt', `Se pierde tu partida a medias de <b>${NOMBRE_MODO[g.s.modo]}</b> (turno ${g.s.turn}).`);
+  setText('enlace-jugar', si);
   el.hidden = false;
   const cerrar = () => { el.hidden = true; };
   document.getElementById('enlace-mia').onclick = cerrar;
-  document.getElementById('enlace-jugar').onclick = () => { cerrar(); jugarCodigo(c); };
-  el.onkeydown = ev => { if (ev.key === 'Escape') cerrar(); };
+  document.getElementById('enlace-jugar').onclick = () => { cerrar(); jugar(); };
+  el.onclick = ev => { if (ev.target === el) cerrar(); };
+  el.onkeydown = ev => { if (ev.key === 'Escape') { ev.stopPropagation(); cerrar(); } };
   document.getElementById('enlace-jugar').focus({ preventScroll: true });
 }
 
@@ -2455,7 +2484,10 @@ async function accionHistorial(e) {
   const id = b.closest('[data-id]') && b.closest('[data-id]').dataset.id;
   const entrada = historial.partidas.find(x => x.id === id);
   if (!entrada) return;
-  if (accion === 'jugar') jugarCodigo({ modo: entrada.modo, dificultad: entrada.dificultad, semilla: entrada.semilla });
+  if (accion === 'jugar') {
+    const c = { modo: entrada.modo, dificultad: entrada.dificultad, semilla: entrada.semilla };
+    preguntarSustituir({ titulo: 'Jugar otra vez', ...c, si: 'Jugar ésta' }, () => jugarCodigo(c));
+  }
   else if (accion === 'compartir') compartirPartida(entrada);
   else if (accion === 'copiar') {
     const span = b.querySelector('span');
