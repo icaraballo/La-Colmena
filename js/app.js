@@ -1756,8 +1756,7 @@ const ICO_PLAY = '<svg width="13" height="13" viewBox="0 0 14 14"><path d="M4 2l
 const ICO_HEX = '<svg width="14" height="14" viewBox="0 0 14 14"><polygon points="7,1 12.5,4 12.5,10 7,13 1.5,10 1.5,4" fill="#F79A1F"/></svg>';
 function quienLlega() {
   const g = leerPartida();
-  if (g) return { caso: 'continuar', titulo: 'Continuar partida', detalle: describirPartida(g.s),
-                  corto: `${NOMBRE_MODO[g.s.modo]} · turno ${g.s.turn}` };
+  if (g) return { caso: 'continuar', titulo: 'Continuar partida', detalle: describirPartida(g.s) };
   if (esNuevo()) return { caso: 'nuevo', titulo: 'Aprende a jugar', detalle: 'Empieza por aquí: unos niveles cortos.' };
   const modo = ultimoModo() || (tutorialAcabado() ? MODOS.PUZZLE : MODOS.CONTRARRELOJ);
   return { caso: 'jugar', titulo: 'Jugar', detalle: describirModo(modo), modo };
@@ -1767,13 +1766,14 @@ function pintarPrincipal() {
   setText('principal-titulo', q.titulo);
   setText('principal-detalle', q.detalle);
   setHtml('principal-ico', q.caso === 'nuevo' ? ICO_HEX : ICO_PLAY);
-  // La copia pequeña de la barra de los modos (v11.7, T-53).
-  document.getElementById('inicio').classList.toggle('hay-partida', q.caso === 'continuar');
-  if (q.caso === 'continuar') {
-    setText('cont-mini-detalle', q.corto);
-    document.querySelector('#cont-mini .play').innerHTML = ICO_PLAY;
-  }
+  // El mismo botón, como primera tarjeta de los modos (v11.13, CR-14, §5.104), con
+  // un título pequeño según el caso. Sustituye al «▶ Continuar» flotante (v11.12).
+  setText('modos-principal-grupo', GRUPO_PRINCIPAL[q.caso]);
+  setText('modos-principal-titulo', q.titulo);
+  setText('modos-principal-detalle', q.detalle);
+  setHtml('modos-principal-ico', q.caso === 'nuevo' ? ICO_HEX : ICO_PLAY);
 }
+const GRUPO_PRINCIPAL = { continuar: 'Tu partida', jugar: 'Seguir jugando', nuevo: 'Para empezar' };
 function pulsarPrincipal() {
   const q = quienLlega();
   if (q.caso === 'continuar') continuarPartida();
@@ -1788,9 +1788,9 @@ function marcarBajado() {
   el.classList.toggle('bajado', el.scrollTop > 24);
 }
 const sinAnimar = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-// Hasta dónde se baja: al título de los modos, no al final. Con partida guardada
-// los modos dejan sitio debajo para «▶ Continuar» (v11.12) y, bajando del todo, el
-// título «Modos de juego» y sus iconos se quedarían fuera por arriba.
+// Hasta dónde se baja: al principio de los modos. Desde la v11.13 el tramo mide al
+// menos una pantalla (CR-14), así que es justo donde la portada deja de verse; el
+// Math.min sólo cubre un tramo más corto de la cuenta.
 function alturaModos() {
   const el = document.getElementById('inicio');
   const top = el.scrollTop + document.getElementById('modos').getBoundingClientRect().top - el.getBoundingClientRect().top;
@@ -2577,15 +2577,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // El inicio: el botón naranja y cada modo, que abre su ficha (también Puzzle,
   // desde la v11.1: antes iba directo a los capítulos).
   document.getElementById('principal').addEventListener('click', pulsarPrincipal);
-  document.getElementById('cont-mini').addEventListener('click', pulsarPrincipal);
-  // ¿Se ve el botón naranja grande? Si no, y hay partida, sale la copia pequeña
-  // de la barra (v11.7, T-53). Sin IntersectionObserver, la pequeña sale siempre
-  // que haya partida: mejor dos que ninguno.
-  if ('IntersectionObserver' in window) {
-    new IntersectionObserver(([e]) =>
-      document.getElementById('inicio').classList.toggle('principal-visible', e.isIntersecting),
-      { root: document.getElementById('inicio'), threshold: 0.6 }).observe(document.getElementById('principal'));
-  }
+  document.getElementById('modos-principal').addEventListener('click', pulsarPrincipal);
   document.querySelectorAll('.modo-fila[data-modo]').forEach(b => b.addEventListener('click', () => abrirFicha(b.dataset.modo)));
 
   // El tutorial (v11.2): repetirlo (inicio y ficha Básico), la escalera, sus botones y el final.
