@@ -1,0 +1,17 @@
+<!doctype html><meta charset="utf-8"><style>
+html,body{margin:0;width:1200px;height:630px;background:#12100C;overflow:hidden}
+body{font-family:system-ui,-apple-system,"Helvetica Neue",sans-serif;color:#ede4d3;position:relative}
+.txt{position:absolute;left:76px;top:0;bottom:0;display:flex;flex-direction:column;justify-content:center;width:580px}
+h1{margin:0;font-size:92px;line-height:1;font-weight:800;letter-spacing:-.03em}
+h1 b{color:#F79A1F;font-weight:800}
+p{margin:26px 0 0;font-size:36px;line-height:1.25;font-weight:600;color:#c9b99c}
+small{margin-top:40px;font-size:24px;font-weight:600;color:#8c7f6a;letter-spacing:.02em}
+svg{position:absolute;right:28px;top:0}
+</style>
+<div class="txt"><h1>La <b>Colmena</b></h1><p>Sube el panal.<br>Cosecha las abejas.</p><small>Puzzle de panal hexagonal.<br>Gratis, en el navegador.</small></div>
+<svg width="540" height="630" id="s"></svg>
+<!-- Fuente de img/og.png (v11.14): se abre a 1200×630 y se captura. -->
+<script src="panal.js"></script><script>
+document.getElementById('s').innerHTML = panal({ filas: [4,5,6,7,6,5,4], R: 42, cx: 270, cy: 305, numeros: true,
+  niveles: [1,2,2,3, 0,2,3,4,4, 1,2,3,5,4,3, 0,1,3,4,5,4,2, 2,3,4,4,3,1, 1,2,3,2,0, 0,1,2,1] });
+</script>

@@ -4,6 +4,22 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
 <title>La Colmena</title>
+<!-- La tarjeta del enlace (v11.14, T-56): lo que sale al pegarlo en LinkedIn o
+     WhatsApp. og:image va con la dirección absoluta (las redes no resuelven rutas). -->
+<meta name="description" content="Un puzzle de panal hexagonal: sube las celdas, cosecha las abejas y no te quedes sin sitio. Gratis, en el navegador.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="La Colmena">
+<meta property="og:description" content="Un puzzle de panal hexagonal: sube las celdas, cosecha las abejas y no te quedes sin sitio. Gratis, en el navegador.">
+<meta property="og:url" content="https://icaraballo.github.io/La-Colmena/">
+<meta property="og:image" content="https://icaraballo.github.io/La-Colmena/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="La Colmena: un panal hexagonal con la rampa de colores del juego, del agua azul a la abeja naranja.">
+<meta property="og:locale" content="es_ES">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#12100C">
+<link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 [hidden]{display:none!important}
@@ -633,6 +649,17 @@ footer .sem{font-variant-numeric:tabular-nums}
 #fin-repetir{all:unset;cursor:pointer;display:block;margin:10px auto 0;font-size:14px;color:#9a8d77;padding:6px 10px}
 #fin-repetir:hover{color:#c9b99c}
 #fin-repetir:focus-visible{outline:2px solid #F79A1F;border-radius:6px}
+/* Opinar (v11.14, T-56, §5.107): en el inicio, una fila pequeña con el bocadillo
+   naranja (B); en el final, una línea naranja bajo «Repetir este panal» (D). Son
+   enlaces (otra pestaña), con el aspecto de las filas y los botones de al lado. */
+a.modo-fila{text-decoration:none;color:inherit}
+.opinar-ico{flex:none;display:grid;place-items:center;width:24px;height:21px}
+.opinar-ico svg{fill:#F79A1F;stroke:#F79A1F}
+#opinar-inicio .frase{color:#9a8d77}
+.fin-opinar{display:flex;align-items:center;justify-content:center;gap:7px;margin:6px auto 0;padding:8px 10px;
+  font-size:14px;font-weight:600;color:#F79A1F;text-decoration:none}
+.fin-opinar:hover{color:#ffb24d}
+.fin-opinar:focus-visible,#opinar-inicio:focus-visible{outline:2px solid #F79A1F;border-radius:6px}
 /* Tus partidas: la barra, las pestañas (se desplazan sin barra si no caben),
    Normal / Difícil y la lista, que es lo único que se desplaza en vertical. */
 #historial{height:100%;display:flex;flex-direction:column;max-width:520px;margin:0 auto;
@@ -810,6 +837,16 @@ footer .sem{font-variant-numeric:tabular-nums}
       <svg width="8" height="13" viewBox="0 0 10 16" aria-hidden="true"><path d="M2 2l6 6-6 6" stroke="#6d6150" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
 
+    <!-- Opinar (v11.14, T-56, §5.107; opción B): un grupo propio al final, con texto
+         y no sólo el icono. Abre el formulario en otra pestaña; sin OPINION_FORM no
+         sale (lo decide app.js). -->
+    <h2 class="modos-grupo opinar-grupo" hidden>Tu opinión</h2>
+    <a class="modo-fila pequena" id="opinar-inicio" target="_blank" rel="noopener" hidden>
+      <span class="opinar-ico"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#231500" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.5V17.5H4A1.5 1.5 0 0 1 2.5 16V7A1.5 1.5 0 0 1 4 5.5z"/></svg></span>
+      <span class="txt"><span class="nom">¿Qué te parece el juego?</span><span class="frase">1 minuto</span></span>
+      <svg width="8" height="13" viewBox="0 0 10 16" aria-hidden="true"><path d="M2 2l6 6-6 6" stroke="#6d6150" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>
+
     <span id="inicio-version"></span>
   </div>
 </section>
@@ -986,6 +1023,10 @@ footer .sem{font-variant-numeric:tabular-nums}
       <button id="fin-volver" hidden>‹ Volver a los capítulos</button>
       <!-- v11.4: la misma semilla otra vez («Otra vez» es semilla nueva). -->
       <button id="fin-repetir" hidden>Repetir este panal</button>
+      <!-- Opinar (v11.14, §5.107; opción D): una línea, sin quitarle sitio a «Otra
+           vez». Lleva la versión, el modo y el código de esta partida (en Puzzle y el
+           tutorial, el nivel). -->
+      <a class="fin-opinar" id="fin-opinar" target="_blank" rel="noopener" hidden><svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.5V17.5H4A1.5 1.5 0 0 1 2.5 16V7A1.5 1.5 0 0 1 4 5.5z"/></svg>¿Qué te ha parecido? Cuéntamelo ›</a>
     </div>
   </div>
 </div>
@@ -1253,24 +1294,27 @@ footer .sem{font-variant-numeric:tabular-nums}
 <div id="pop-velo" hidden></div>
 <div id="pop" hidden></div>
 
-<script src="js/constants.js"></script>
-<script src="js/state.js"></script>
-<script src="js/bot-tonto.js"></script>
-<script src="js/guardado.js"></script>
+<!-- La versión en cada script (v11.14, T-56): justo después de un push, un móvil
+     podía quedarse con unos ficheros nuevos y otros viejos de la caché. Tiene que
+     coincidir con VERSION (lo comprueba npm test). -->
+<script src="js/constants.js?v=11.14"></script>
+<script src="js/state.js?v=11.14"></script>
+<script src="js/bot-tonto.js?v=11.14"></script>
+<script src="js/guardado.js?v=11.14"></script>
 <!-- El código de partida y el historial (v11.4): funciones puras. -->
-<script src="js/historial.js"></script>
-<script src="js/render.js"></script>
-<script src="js/input.js"></script>
+<script src="js/historial.js?v=11.14"></script>
+<script src="js/render.js?v=11.14"></script>
+<script src="js/input.js?v=11.14"></script>
 <!-- Los niveles del modo Puzzle (v11): sólo datos, los escribe `npm run puzles -- meter`. -->
-<script src="js/puzles.js"></script>
+<script src="js/puzles.js?v=11.14"></script>
 <!-- El tutorial (v11.2): sus ocho niveles, sólo datos, aparte de los de Puzzle. -->
-<script src="js/tutorial.js"></script>
+<script src="js/tutorial.js?v=11.14"></script>
 <!-- La pista de Puzzle (v11.10, T-54): el resolutor de la máquina, tal cual, y
      lo que lo usa. Se carga para todos; sólo busca al pedir una pista. -->
-<script src="puzles/objetivos.js"></script>
-<script src="puzles/buscador.js"></script>
-<script src="puzles/juego.js"></script>
-<script src="js/pista.js"></script>
-<script src="js/app.js"></script>
+<script src="puzles/objetivos.js?v=11.14"></script>
+<script src="puzles/buscador.js?v=11.14"></script>
+<script src="puzles/juego.js?v=11.14"></script>
+<script src="js/pista.js?v=11.14"></script>
+<script src="js/app.js?v=11.14"></script>
 </body>
 </html>

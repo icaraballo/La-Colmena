@@ -1700,5 +1700,33 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   ok(!/document|localStorage|window/.test(src), 'pista.js no toca DOM ni localStorage');
 }
 
+// --- opinar (v11.14, T-56, §5.107): el enlace al formulario -------------------------
+{
+  const F = 'https://docs.google.com/forms/d/e/X/viewform', C = { version: 'entry.1', modo: 'entry.2', codigo: 'entry.3' };
+  eq(T.enlaceOpinion({ version: 'v1' }, '', C), null, 'opinar: sin dirección no hay enlace (el botón no sale)');
+  eq(T.enlaceOpinion({ version: 'v1', modo: 'Contrarreloj normal' }, F, {}), F, 'opinar: sin entry, la dirección sola');
+  eq(T.enlaceOpinion({}, F, C), F, 'opinar: sin datos, la dirección sola');
+  eq(T.enlaceOpinion({ version: 'v11.14' }, F, C), `${F}?usp=pp_url&entry.1=v11.14`, 'opinar: desde el inicio, sólo la versión');
+  const url = T.enlaceOpinion({ version: 'v11.14', modo: 'Contagio difícil', codigo: 'CG-D-123&x=1' }, F, C);
+  ok(url.startsWith(`${F}?usp=pp_url&`), 'opinar: el enlace prerrellenado lleva usp=pp_url');
+  const q = url.slice(url.indexOf('?') + 1).split('&').map(p => p.split('=').map(decodeURIComponent));
+  eq(JSON.stringify(q), JSON.stringify([['usp', 'pp_url'], ['entry.1', 'v11.14'], ['entry.2', 'Contagio difícil'], ['entry.3', 'CG-D-123&x=1']]),
+     'opinar: los tres campos, y el código bien escapado');
+  ok(T.OPINION_FORM.startsWith('https://docs.google.com/forms/') && !T.OPINION_FORM.includes('?'), 'opinar: la dirección del formulario, sin búsqueda');
+  eq(Object.keys(T.OPINION_CAMPOS).join(), 'version,modo,codigo', 'opinar: los tres campos del formulario');
+}
+
+// --- la versión en cada <script src> (v11.14, T-56): que un push no mezcle ficheros --
+{
+  const html = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8');
+  const srcs = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map(m => m[1]).filter(u => !/^https?:/.test(u));
+  ok(srcs.length >= 10, `index.html carga sus scripts (${srcs.length})`);
+  const v = T.VERSION.replace(/^v/, '');
+  const malos = srcs.filter(u => !u.endsWith(`?v=${v}`));
+  ok(!malos.length, `todos los <script src> llevan ?v=${v}${malos.length ? ': falta en ' + malos.join(', ') : ''}`);
+  const pkg = require('../package.json');
+  eq(pkg.version, '0.' + v, 'package.json y VERSION dicen la misma versión');
+}
+
 console.log(`${total - fallos}/${total} comprobaciones correctas`);
 if (fallos) process.exit(1);

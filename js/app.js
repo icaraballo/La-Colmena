@@ -463,6 +463,20 @@ function formatoDuracion(seg) {
   const t = Math.floor(seg);
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 }
+// Opinar desde el final (v11.14, §5.107): la versión, el modo con su dificultad y
+// el código de esta partida; en Puzzle y el tutorial, el id del nivel. Es un enlace
+// a otra pestaña: la partida no se toca.
+function datosOpinion(tutorial) {
+  if (tutorial) return { version: VERSION, modo: 'Tutorial', codigo: S.puzle.id };
+  if (S.puzle) return { version: VERSION, modo: NOMBRE_MODO.puzzle, codigo: S.puzle.id };
+  const modo = NOMBRE_MODO[S.modo] + (tieneDificultad(S.modo) ? ' ' + NOMBRE_DIF[S.dificultad].toLowerCase() : '');
+  return { version: VERSION, modo, codigo: codigoActual() };
+}
+function pintarFinOpinar(tutorial) {
+  const a = document.getElementById('fin-opinar'), url = enlaceOpinion(datosOpinion(tutorial));
+  a.hidden = !url;
+  if (url) a.href = url;
+}
 function pintarFin() {
   const el = document.getElementById('fin');
   const tutorial = enTutorial();
@@ -491,6 +505,7 @@ function pintarFin() {
   // partidas. Ni Puzzle ni el tutorial (sin código) ni Panal libre (sin resultado).
   document.getElementById('fin-compartir').hidden = !MODOS_HISTORIAL.includes(S.modo) || !!cfg.puzle;
   el.classList.toggle('puzle', !!cfg.puzle);
+  pintarFinOpinar(tutorial);
   if (tutorial) { pintarFinTutorial(); return; }
   if (cfg.puzle) { mostrar('puzle-pie', !abajo); pintarFinPuzle(); el.hidden = false; return; }
   setText('fin-menu', '‹ Menú');
@@ -2525,6 +2540,11 @@ window.addEventListener('DOMContentLoaded', () => {
     if (el.classList.contains('frase')) el.style.color = COLOR_MODO[el.dataset.frase];
   });
   setText('inicio-version', VERSION);
+  // Opinar desde el inicio (v11.14, §5.107): sólo la versión. Sin formulario, no sale.
+  const opinar = enlaceOpinion({ version: VERSION });
+  document.getElementById('opinar-inicio').hidden = !opinar;
+  document.querySelector('.opinar-grupo').hidden = !opinar;
+  if (opinar) document.getElementById('opinar-inicio').href = opinar;
   pintarTarjeta();
   pintarEscalaExpansion('normal');
   pintarEscaleras();

@@ -422,7 +422,15 @@ function tieneDificultad(modo) {
 // jugando en el móvil no hay forma de saber si lo que tienes delante es lo
 // último que se subió.
 // Se mantiene a mano y tiene que coincidir con package.json (ver Recetas).
-const VERSION = 'v11.13';
+const VERSION = 'v11.14';
+
+// Opinar (v11.14, T-56, §5.107): un formulario de Google que abre el juego en otra
+// pestaña; el juego no envía nada. La dirección, sin búsqueda; los tres campos de
+// la sección final («No hace falta tocar esto»), los `entry` del enlace
+// prerrellenado. Sin dirección no sale el botón; sin campos, abre el formulario
+// vacío. En el formulario, el código se llama «Semilla».
+const OPINION_FORM = 'https://docs.google.com/forms/d/e/1FAIpQLSeq7eDcasyd6qsX_d7mvEKWhxhYTJgcY0CtZ74AYP_jakFNhg/viewform';
+const OPINION_CAMPOS = { version: 'entry.1031068515', modo: 'entry.1550420656', codigo: 'entry.1150654629' };
 
 const NOMBRE_MODO = {
   contrarreloj: 'Contrarreloj',

@@ -1,74 +1,83 @@
 # La Colmena
 
-**Jugar**: https://icaraballo.github.io/La-Colmena/
+**Jugar**: https://icaraballo.github.io/La-Colmena/ · gratis, en el navegador del móvil o del ordenador.
 
-Puzzle de panal hexagonal por niveles, en desarrollo. **Inspirado en la mecánica** de un
-puzzle móvil de 2012 (_Rocket Island_, handy-games.com GmbH, hoy THQ Nordic Mobile). Las
-reglas de un juego no son registrables; los assets y la ambientación sí, y aquí no hay ni
-uno: ni sprites, ni sonidos, ni fuentes, ni textos, ni el tema del original. La mecánica se
-ha reimplementado desde cero y el tema es propio.
+Puzzle de panal hexagonal. La mecánica está inspirada en un juego de móvil de 2012 que ya no
+funciona; todo lo demás (tema, nombre, arte, textos y código) es propio y está hecho desde cero.
+
+<p align="center"><img src="img/captura.png" width="300" alt="Una partida de Contrarreloj: el panal con celdas de cada nivel, el reloj, el paso y la fila de plagas"></p>
 
 ## Cómo se juega
 
 El panal es el ciclo de cría de una abeja, con el agua debajo:
 **agua → cera → huevo → larva → operculada → abeja**.
 
-1. **Homogeneidad**: arrastras sobre un grupo de celdas conectadas que estén *todas al
-   mismo nivel*, y suben un nivel. Puedes volver a pasar por una celda ya elegida para
-   llegar a otra rama.
-2. **Paso creciente**: cada turno hay que arrastrar **exactamente una celda más** que el
-   anterior.
+1. Arrastras sobre un grupo de celdas conectadas que estén **todas al mismo nivel**, y suben un
+   nivel.
+2. Cada turno hay que arrastrar **exactamente una celda más** que el anterior.
 
-Cuando las celdas llegan a abeja (nivel 5) se **cosechan**: la abeja sale volando y la
-celda se vacía, vuelve a agua. Si el siguiente paso no cabe en ningún sitio, fallas: el
-paso vuelve a 1 y se pierde la racha.
+Cuando las celdas llegan a abeja se **cosechan**: la abeja sale volando y la celda vuelve a
+agua. Si el siguiente paso no cabe en ningún sitio, fallas: el paso vuelve a 1. Por el panal
+salen **ítems** (jalea real, propóleo, danza, néctar, humo, la reina) que se recogen pasando la
+cadena por encima.
 
-El **agua** (azul) se juega como cualquier nivel y sube a cera, pero no da puntos. Las
-**celdas rotas** desaparecen del panal para siempre: sólo las crea la helada. El panal
-**empieza siempre entero**: lo que se pierde es consecuencia de haber fallado.
+## Modos
 
-### Modos
+- **Contrarreloj**: cosecha para ganar tiempo. Un reloj de 90 s que acelera; cada fallo trae una
+  plaga (varroa, polilla, seda, velutina) y sólo una cosecha grande te las quita.
+- **Invierno**: evita congelarte. Sin reloj; cada fallo, la helada rompe celdas del borde para
+  siempre.
+- **Contagio**: frena la plaga. Las mismas plagas, sin reloj y con turnos contados: dejan celdas
+  marcadas que se contagian, y cada una que quede al final resta puntos.
+- **Expansión**: abre el panal, celda a celda. Empiezas en el centro y las cosechas grandes abren
+  el anillo cerrado; gana quien lo completa en menos turnos.
+- **Puzzle**: encuentra el camino. 75 niveles en 5 capítulos, cada uno con un objetivo y un límite
+  de turnos, con estrellas, pista y solución guiada si te atascas.
+- **Panal libre**: para practicar, sin presión y sin puntos.
 
-- **Contrarreloj**: reloj de 90 s que acelera. Cosechar da tiempo. Cada fallo te sube un
-  peldaño de la escalera de desastres: varroa, polilla (un capullo), seda (el capullo
-  eclosiona) y velutina. Jugar bien no te baja: sólo una cosecha de 5 celdas o más te
-  devuelve al primer peldaño.
-- **Invierno**: sin reloj. En cada fallo la helada rompe celdas del borde, para siempre.
-  El humo, un ítem que sólo sale aquí, devuelve la última. Sin panal, se acabó.
-- **Panal libre**: sin presión y sin puntos, para probar.
+Y un **tutorial** de 8 niveles cortos para aprender las reglas jugando. Los cuatro primeros modos
+tienen normal y difícil, récords y un historial de partidas; cada partida tiene un código
+(`CR-N-4069568398`) para repetirla o retar a alguien con el mismo panal.
 
-Los dos primeros tienen **normal** y **difícil**. Cada uno escala su propia presión: en
-Invierno, cuántas celdas se lleva la helada por fallo (1 o 2); en contrarreloj, cuánto
-acelera el reloj (+10 % o +20 % cada 10 turnos).
+## Cómo está hecho
 
-Los **ítems** aparecen como gotas cuando hay muchas celdas al mismo nivel, y se recogen
-pasando la cadena por encima. **Se evaporan a los dos turnos**, así que hay que decidir si
-merece la pena romper la meseta para llegar.
+- **Vanilla JS, sin dependencias** ni framework ni bundler: el navegador carga `js/*.js` como
+  scripts clásicos. GitHub Pages sirve la rama `main` tal cual.
+- **El motor es puro**: el estado de la partida es un objeto plano y serializable, sin canvas ni
+  DOM, y todo el azar sale de una semilla. Por eso una partida se puede guardar, compartir con su
+  código y rejugar exacta.
+- **Bots que juegan miles de partidas**: cinco niveles de jugador, del que sólo cosecha cuando puede al que
+  planifica. Cada cambio de reglas se mide con ellos antes de decidirlo.
+- **Una máquina que fabrica los puzles** (`puzles/`, fuera del juego): juega una partida guía y
+  convierte lo jugado en el objetivo, así que cada nivel tiene solución por construcción; un
+  buscador demuestra el mínimo de turnos, un comprobador rejuega la solución con su propio código
+  y un evaluador mide cómo de difícil es para quien no la conoce.
+- **Tests** de las reglas, del guardado, del historial y de los niveles: `npm test` y
+  `npm run test:puzles`.
+- **Desarrollado con Claude**: el diseño, conversado en Claude.ai; el código, escrito con
+  Claude Code.
 
 ## Estructura
 
-Vanilla JS, sin framework ni bundler: el navegador carga `js/*.js` como scripts clásicos.
-Basta con abrir `index.html`, o jugar en el enlace de arriba (GitHub Pages sirve la rama `main`).
-
 ```
-index.html      HTML + CSS
-js/constants.js panal, niveles, modos, tablas
-js/state.js     estado y reglas: funciones puras, sin DOM y con azar con semilla
-js/render.js    canvas: el panal en falso 2.5D
-js/input.js     el arrastre: tránsito, quitar volviendo atrás, cancelar fuera
-js/historial.js el código de cada partida (CR-N-4069568398) y Tus partidas: funciones puras
-js/app.js       arranque, HUD, reloj y bucle de dibujo
-tests/smoke.js  pruebas de las reglas             · npm test
-tests/bot.js    simulador de partidas             · npm run bot [n] [semilla] [modo] [dificultad] [s/turno]
-puzles/         la máquina de puzles (fuera del juego) · npm run puzles -- generar · npm run test:puzles
+index.html        HTML + CSS
+js/constants.js   panal, niveles, modos, tablas y textos que llevan números
+js/state.js       estado y reglas: funciones puras, sin DOM y con azar con semilla
+js/bot-tonto.js   el jugador más sencillo (también mueve el panal de la portada)
+js/guardado.js    la partida a medias: convertir y validar, sin tocar localStorage
+js/historial.js   el código de cada partida y Tus partidas: funciones puras
+js/puzles.js      los niveles del modo Puzzle (sólo datos)
+js/tutorial.js    los niveles del tutorial (sólo datos)
+js/pista.js       la pista de Puzzle, con el buscador de la máquina
+js/render.js      canvas: el panal en falso 2.5D
+js/input.js       el arrastre: tránsito, quitar volviendo atrás, cancelar fuera
+js/app.js         arranque, pantallas, HUD, reloj y bucle de dibujo
+img/              la tarjeta del enlace, los iconos y la captura (img/fuente, cómo se hacen)
+tests/smoke.js    pruebas                                  · npm test
+tests/bot.js      simulador de partidas                    · npm run bot [n] [semilla] [modo] [dificultad]
+puzles/           la máquina de puzles                     · npm run puzles -- generar · npm run test:puzles
 ```
 
-`puzles/` fabrica los niveles del futuro modo Puzzle con garantías: juega una partida guía
-con el motor y convierte lo jugado en el objetivo (así el puzle tiene solución por
-construcción), un buscador por capas **demuestra** el mínimo de turnos, un comprobador
-rejuega la solución con su propio código y un evaluador mide cómo de difícil es para
-alguien que no la conoce. El juego nunca genera puzles: sólo leerá los elegidos.
+## Licencia
 
-El estado del juego es un objeto plano y serializable sin ninguna referencia a canvas o
-DOM, y tiene que seguir así: es lo que permite testear las reglas y simular miles de
-partidas para ajustar la dificultad con datos.
+Todos los derechos reservados: ver [LICENSE](LICENSE).

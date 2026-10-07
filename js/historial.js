@@ -65,6 +65,18 @@ function codigoDeBusqueda(busqueda) {
 function enlacePartida(base, codigo) {
   return `${base}?c=${encodeURIComponent(codigo)}`;
 }
+// Opinar (v11.14, §5.107): el enlace al formulario con lo que el juego sabe
+// (`version`, `modo`, `codigo`) en los campos prerrellenados. Sin dirección, null
+// (el botón no sale); sin `entry` o sin datos, la dirección sola. Se escapa con
+// encodeURIComponent como enlacePartida: los tests cargan esto en un `vm`, donde
+// no hay URLSearchParams.
+function enlaceOpinion(datos = {}, form = OPINION_FORM, campos = OPINION_CAMPOS) {
+  if (!form) return null;
+  const pares = Object.keys(campos || {})
+    .filter(k => campos[k] && datos[k] != null && datos[k] !== '')
+    .map(k => `${encodeURIComponent(campos[k])}=${encodeURIComponent(datos[k])}`);
+  return pares.length ? `${form}?usp=pp_url&${pares.join('&')}` : form;
+}
 // Lo que acompaña al enlace, de una entrada: «La Colmena · Contrarreloj normal ·
 // 5230 puntos. ¿Lo superas?». Expansión completa reta a menos turnos.
 function textoCompartir(e) {

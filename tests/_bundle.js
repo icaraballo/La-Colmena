@@ -53,7 +53,8 @@ const FOOTER = `
      grupoMeseta, TUTORIAL, TUTORIAL_VERSION, PROGRESO_TUTORIAL_VERSION, leerProgresoTutorial, NOMBRE_NIVEL, LINEA_NIVEL,
      PREFIJO_MODO, LETRA_DIF, MODOS_HISTORIAL, HISTORIAL_POR_LISTA, HISTORIAL_VERSION, historialVacio,
      jugadasValidas, codigoPartida, leerCodigo, codigoDeBusqueda, enlacePartida, textoCompartir, entradaDePartida, listaDe, todas, recordDe, apuntarEnHistorial,
-     marcarEstrella, leerHistorial, rejugarPartida, EXTRAS_GUARDADO, NOMBRE_DIF, VERSION })
+     marcarEstrella, leerHistorial, rejugarPartida, EXTRAS_GUARDADO, NOMBRE_DIF, VERSION,
+     OPINION_FORM, OPINION_CAMPOS, enlaceOpinion })
 `;
 
 module.exports = vm.runInNewContext(src + FOOTER, {});
