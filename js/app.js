@@ -338,8 +338,11 @@ function celdaPlaga(tipo) {
   c.className = 'plaga';
   c.dataset.des = tipo;
   c.dataset.nom = `${info.peldano}. ${info.nombre}`;
-  c.dataset.que = info.que;
-  c.setAttribute('aria-label', `${info.nombre}: ${info.que}`);
+  // Desde la v11.15 dice lo mismo que su tarjeta de primera vez en este modo.
+  const t = tarjetaPlaga(S.modo, tipo, S.dificultad);
+  const que = t ? sinMarcas(`${t.pasa} ${t.quita}`) : info.que;
+  c.dataset.que = que;
+  c.setAttribute('aria-label', `${info.nombre}: ${que}`);
   c.innerHTML = `<svg viewBox="0 0 46 40" aria-hidden="true"><polygon points="${HEX}"/><text x="23" y="20"></text></svg><span class="et"></span>`;
   c.querySelector('text').textContent = info.simbolo;
   conPanel(c);
@@ -789,6 +792,78 @@ let falloEn = -1, falloT0 = 0, falloPaso = 0;
 let plagaNueva = null, cascada = null;
 const CASCADA_MS = 400;
 
+// Las tarjetas de primera vez (v11.15, T-46d, §5.108): la primera varroa, polilla,
+// seda y velutina de Contrarreloj y de Contagio (cada modo, la suya) y la primera
+// helada de Invierno. Una vez en la vida cada una: se apuntan al abrirse en
+// `colmena.tarjetas.v1`; si localStorage falla, sólo en memoria (sale una vez por
+// sesión). Salen después del destello del panal, para que se vea qué ha pasado.
+const TARJETAS_KEY = 'colmena.tarjetas.v1';
+const DESTELLO_MS = 900;               // lo que dura un destello del panal (frame)
+const tarjetasMem = {};
+let tarjetaAbierta = null, tarjetaEspera = 0, tarjetaCierre = 0;
+function tarjetaVista(clave) {
+  if (tarjetasMem[clave]) return true;
+  try { return !!(JSON.parse(localStorage.getItem(TARJETAS_KEY)) || {})[clave]; } catch { return false; }
+}
+function marcarTarjeta(clave) {
+  tarjetasMem[clave] = 1;
+  try {
+    const v = JSON.parse(localStorage.getItem(TARJETAS_KEY)) || {};
+    v[clave] = 1;
+    localStorage.setItem(TARJETAS_KEY, JSON.stringify(v));
+  } catch { /* sin localStorage, se queda en memoria */ }
+}
+const conMarcas = t => t.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/_(.+?)_/g, '<em>$1</em>');
+// Se programa en el fallo; si al llegar la hora la partida ya no es la misma, se
+// ha acabado o hay otra cosa encima, no sale (ni se apunta: saldrá la próxima vez).
+function programarTarjeta(clave, tipo, espera) {
+  if (tarjetaAbierta || tarjetaEspera || tarjetaVista(clave)) return;
+  const s = S;
+  tarjetaEspera = setTimeout(() => {
+    tarjetaEspera = 0;
+    if (S !== s || S.gameOver || pantalla !== 'partida' || hojaAbierta || fichaNivel || tarjetaVista(clave)) return;
+    abrirTarjeta(clave, tipo);
+  }, espera);
+}
+const HEX_HELADA = `<svg viewBox="0 0 46 40" aria-hidden="true"><polygon points="${HEX}" fill="#7fd4ff"/><g stroke="#1c1710" stroke-width="2.6" stroke-linecap="round" fill="none"><path d="M23 10v21M14 15.5l18 10M14 25.5l18-10"/></g></svg>`;
+function abrirTarjeta(clave, tipo) {
+  const t = tipo === 'helada' ? tarjetaHelada(S.dificultad) : tarjetaPlaga(S.modo, tipo, S.dificultad);
+  if (!t) return;
+  cerrarPop();
+  clearTimeout(tarjetaCierre);
+  tarjetaAbierta = clave;
+  marcarTarjeta(clave);
+  const el = document.getElementById('tarjeta'), fondo = document.getElementById('tarjeta-fondo');
+  el.classList.toggle('helada', tipo === 'helada');
+  document.getElementById('tarjeta-hex').innerHTML = tipo === 'helada' ? HEX_HELADA : hexMini(tipo, 'pisada');
+  setText('tarjeta-etiqueta', t.etiqueta);
+  setText('tarjeta-nombre', t.nombre);
+  document.getElementById('tarjeta-pasa').innerHTML = conMarcas(t.pasa);
+  document.getElementById('tarjeta-quita').classList.toggle('alerta', t.alerta);
+  setText('tarjeta-ico', t.alerta ? '⚠' : '✓');
+  document.getElementById('tarjeta-quita-txt').innerHTML = conMarcas(t.quita);
+  document.getElementById('tarjeta-tabla').hidden = !t.tabla;
+  if (t.tabla) {
+    setText('tarjeta-tabla-tit', t.tabla);
+    document.getElementById('tarjeta-casillas').innerHTML =
+      tablaCosecha().map(f => `<div><b>${f.tam}</b><span>${f.baja}</span></div>`).join('');
+  }
+  document.getElementById('tarjeta-todas').hidden = tipo === 'helada';
+  document.getElementById('tarjeta-reloj').hidden = !t.reloj;
+  el.hidden = false; fondo.hidden = false;
+  el.getBoundingClientRect();                // para que haya transición
+  el.classList.add('abierta'); fondo.classList.add('abierta');
+  document.getElementById('tarjeta-ok').focus({ preventScroll: true });
+}
+function cerrarTarjeta() {
+  clearTimeout(tarjetaEspera); tarjetaEspera = 0;
+  if (!tarjetaAbierta) return;
+  tarjetaAbierta = null;
+  const el = document.getElementById('tarjeta'), fondo = document.getElementById('tarjeta-fondo');
+  el.classList.remove('abierta'); fondo.classList.remove('abierta');
+  tarjetaCierre = setTimeout(() => { el.hidden = true; fondo.hidden = true; }, 250);
+}
+
 // Lo que viene tras la flecha en la frase del fallo (v8). Los números de regla
 // salen de su constante y los de la jugada, del evento.
 function trasElFallo(e) {
@@ -863,7 +938,11 @@ function contar(eventos, cells) {
         avisar(d.tipo, d.tiles);
         // Si en el mismo turno se espantaron, primero la cascada y luego ésta.
         plagaNueva = { tipo: d.tipo, t0: now + (hayCascada ? CASCADA_MS : 0) };
+        // Su tarjeta, la primera vez en este modo (v11.15), tras el destello.
+        if (MODOS_TARJETA.includes(S.modo))
+          programarTarjeta(`${S.modo}.${d.tipo}`, d.tipo, (hayCascada ? CASCADA_MS : 0) + DESTELLO_MS);
       }
+      if (e.eaten !== undefined && S.modo === MODOS.INVIERNO) programarTarjeta('invierno.helada', 'helada', DESTELLO_MS);
     }
   }
   logItems = items.join(' · '); logItemsEn = S.turn;
@@ -924,7 +1003,7 @@ function frame(now) {
   // El reloj se para con la pestaña oculta, fuera de la partida y con la hoja
   // abierta (v9): la hoja tapa el panal entero, así que no se puede pensar la
   // jugada con el tiempo parado.
-  const enPausa = document.hidden || pantalla !== 'partida' || !!hojaAbierta;
+  const enPausa = document.hidden || pantalla !== 'partida' || !!hojaAbierta || !!tarjetaAbierta;
   if (!enPausa) {
     if (S.arrancado && !S.gameOver) duracion += dt;
     tick(S, dt);
@@ -966,6 +1045,7 @@ function restart(semilla) {
 
 // Pone en juego un estado, nuevo o recuperado, con la interfaz limpia.
 function prepararPartida(estado, dur) {
+  cerrarTarjeta();
   S = estado;
   finPintado = false;
   duracion = dur;
@@ -2651,6 +2731,14 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('hoja-modo-sig').addEventListener('click', () => cambiarModoFicha(1));
 
   // Las (i) de la partida abren la hoja en consulta, en su pestaña.
+  // Las tarjetas de primera vez (v11.15): «Entendido» o tocar fuera cierran; «Ver
+  // todas las plagas» abre la pestaña Plagas de la hoja del modo.
+  document.getElementById('tarjeta-ok').addEventListener('click', cerrarTarjeta);
+  document.getElementById('tarjeta-fondo').addEventListener('click', cerrarTarjeta);
+  document.getElementById('tarjeta-todas').addEventListener('click', () => {
+    cerrarTarjeta();
+    abrirHoja({ desde: 'partida', modo: S.modo, pestana: 'plagas' });
+  });
   document.querySelectorAll('#partida [data-hoja]').forEach(b => b.addEventListener('click', () => {
     abrirHoja({ desde: 'partida', modo: S.modo, pestana: b.dataset.hoja });
   }));
@@ -2699,7 +2787,8 @@ window.addEventListener('DOMContentLoaded', () => {
   // Escape cierra lo que esté encima; en la ficha, las flechas cambian de modo.
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      if (hojaAbierta) cerrarHoja();
+      if (tarjetaAbierta) cerrarTarjeta();
+      else if (hojaAbierta) cerrarHoja();
       else if (fichaNivel) cerrarFichaNivel();
       else if (popAncla) cerrarPop();
       else if (pantalla === 'historial') document.getElementById('hist-menu').click();

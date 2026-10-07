@@ -1716,6 +1716,47 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   eq(Object.keys(T.OPINION_CAMPOS).join(), 'version,modo,codigo', 'opinar: los tres campos del formulario');
 }
 
+// --- las tarjetas de primera vez (v11.15, T-46d, §5.108) ----------------------------
+{
+  const V = T.VELUTINA_CELDAS.join('-'), G = String(T.COSECHA_GRANDE);
+  const tiene = (t, x, msg) => ok(t.toLowerCase().includes(x.toLowerCase()), `${msg} (busca «${x}» en «${t}»)`);
+  eq(T.MODOS_TARJETA.join(), 'contrarreloj,contagio', 'tarjetas: en los dos modos con plagas');
+  for (const modo of T.MODOS_TARJETA) for (const dif of ['normal', 'dificil']) for (const tipo of T.DESASTRES_VISIBLES) {
+    const t = T.tarjetaPlaga(modo, tipo, dif), q = `${modo} ${dif}, ${tipo}`;
+    ok(!!t && t.pasa.length > 20 && t.quita.length > 20 && !!t.tabla, `${q}: tiene tarjeta, recuadro y tabla`);
+    eq(t.etiqueta, `Nueva plaga · ${T.DESASTRE_INFO[tipo].peldano} de 4`, `${q}: la etiqueta`);
+    eq(t.nombre, T.DESASTRE_INFO[tipo].nombre, `${q}: el nombre`);
+    eq(t.reloj, modo === 'contrarreloj', `${q}: «El reloj está parado» sólo en Contrarreloj`);
+    eq(t.alerta, tipo === 'seda', `${q}: ⚠ sólo en la seda`);
+    const todo = T.sinMarcas(t.pasa + ' ' + t.quita);
+    ok(!/contagio|contrarreloj|reloj/i.test(todo), `${q}: no menciona el otro modo ni el reloj`);
+    ok(!/[*_]/.test(todo), `${q}: sinMarcas quita las marcas`);
+    if (tipo === 'seda') tiene(todo, `bloqueadas ${T.SEDA_TURNOS} turnos`, `${q}: los turnos de seda`);
+    if (tipo === 'velutina') { tiene(todo, `${V} celdas`, `${q}: las celdas de la velutina`); tiene(todo, `${T.CALMA_TRAS_VELUTINA} turnos de calma`, `${q}: la calma`); }
+    if (modo === 'contrarreloj' || tipo === 'seda' || tipo === 'velutina') tiene(todo, G, `${q}: la cosecha grande`);
+    if (modo === 'contagio' && (tipo === 'varroa' || tipo === 'velutina')) tiene(todo, `cada ${T.CONTAGIO_CADA[dif]} turnos`, `${q}: cada cuánto se contagia`);
+    if (modo === 'contagio' && tipo === 'varroa') tiene(todo, `resta ${T.milesES(T.HUELLA_RESTA)} puntos`, `${q}: lo que resta cada marca`);
+    ok((modo === 'contagio') === /_.+_/.test(t.pasa) || tipo === 'seda', `${q}: las marcas en morado, sólo en Contagio`);
+  }
+  eq(T.tarjetaPlaga('invierno', 'varroa'), null, 'tarjetas: Invierno no tiene tarjetas de plaga');
+  eq(T.tarjetaPlaga('puzzle', 'varroa'), null, 'tarjetas: Puzzle tampoco (ni el tutorial)');
+  eq(T.milesES(1000), '1.000', 'milesES: 1.000 con punto');
+  // La helada: el número, de HELADA_MUERDE; sin tabla ni reloj.
+  for (const dif of ['normal', 'dificil']) {
+    const t = T.tarjetaHelada(dif), n = T.HELADA_MUERDE[dif];
+    tiene(T.sinMarcas(t.pasa), n === 1 ? 'rompe 1 celda del borde' : `rompe ${n} celdas del borde`, `helada ${dif}: las celdas que rompe`);
+    ok(t.tabla === null && !t.reloj, `helada ${dif}: sin tabla y sin reloj`);
+    tiene(t.quita, 'humo', `helada ${dif}: el humo`);
+  }
+  // La tabla de la cosecha grande, de peldanosQueBaja: 5-6 baja 1 · 7 baja 2 · 8 baja 3 · 9+ todas.
+  const tabla = T.tablaCosecha();
+  eq(tabla.map(f => `${f.tam} ${f.baja}`).join(' · '), '5-6 baja 1 · 7 baja 2 · 8 baja 3 · 9+ todas', 'la tabla de la cosecha grande');
+  for (const f of tabla) {
+    const L = parseInt(f.tam, 10), n = Math.min(T.peldanosQueBaja(L), T.ESCALERA_TOPE);
+    eq(f.baja, n >= T.ESCALERA_TOPE ? 'todas' : `baja ${n}`, `la tabla dice lo que hace peldanosQueBaja(${L})`);
+  }
+}
+
 // --- la versión en cada <script src> (v11.14, T-56): que un push no mezcle ficheros --
 {
   const html = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8');

@@ -660,6 +660,40 @@ a.modo-fila{text-decoration:none;color:inherit}
   font-size:14px;font-weight:600;color:#F79A1F;text-decoration:none}
 .fin-opinar:hover{color:#ffb24d}
 .fin-opinar:focus-visible,#opinar-inicio:focus-visible{outline:2px solid #F79A1F;border-radius:6px}
+/* Las tarjetas de primera vez (v11.15, T-46d, §5.108): la hoja A, desde abajo, como
+   la ficha de un nivel de Puzzle; con el naranja de las plagas arriba. */
+#tarjeta-fondo{position:fixed;inset:0;background:rgba(18,16,12,.55);z-index:32;opacity:0;transition:opacity .25s ease-out}
+#tarjeta-fondo.abierta{opacity:1}
+#tarjeta{position:fixed;left:0;right:0;bottom:0;z-index:33;max-width:480px;margin:0 auto;
+  background:#1c1710;border-top:3px solid #ff7a45;border-radius:20px 20px 0 0;
+  padding:16px 18px calc(16px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px;
+  box-shadow:0 -12px 30px rgba(0,0,0,.55);transform:translateY(100%);transition:transform .25s ease-out}
+#tarjeta.abierta{transform:none}
+#tarjeta.helada{border-top-color:#7fd4ff}
+.tj-cab{display:flex;align-items:center;gap:12px}
+.tj-cab svg{display:block;width:44px;height:38px}
+.tj-cab small{display:block;font-size:11.5px;color:#ff7a45;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+#tarjeta.helada .tj-cab small{color:#7fd4ff}
+.tj-cab h2{font-size:22px;font-weight:700;color:#ede4d3;margin-top:1px}
+.tj-pasa{font-size:15px;line-height:1.45;color:#ede4d3}
+#tarjeta b{color:#fff}
+#tarjeta em{font-style:normal;font-weight:700;color:#C79BD9}
+.tj-quita{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid #6f8f4e;border-radius:12px;background:#1a2014}
+.tj-quita.alerta{border-color:#b8742a;background:#241a0f}
+.tj-ico{flex:none;font-size:16px;font-weight:800;line-height:1.35;color:#9fd67a}
+.tj-quita.alerta .tj-ico{color:#F79A1F}
+.tj-quita p{font-size:14px;line-height:1.45;color:#ede4d3}
+.tj-tabla p{font-size:13px;color:#c9b99c;margin-bottom:6px}
+.tj-casillas{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.tj-casillas div{display:flex;flex-direction:column;align-items:center;padding:6px 2px;border:1px solid #43372a;border-radius:10px;background:#15110c}
+.tj-casillas b{font-size:17px;font-variant-numeric:tabular-nums}
+.tj-casillas span{font-size:12px;font-weight:600;color:#9fd67a}
+.tj-todas{all:unset;cursor:pointer;align-self:flex-start;font-size:13.5px;font-weight:600;color:#c9b99c;padding:2px 0}
+.tj-todas:hover{color:#ede4d3}
+.tj-todas:focus-visible{outline:2px solid #F79A1F;border-radius:4px}
+.tj-pie{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.tj-pie span{font-size:13px;color:#9a8d77}
+.tj-pie .primario{min-width:150px;margin-left:auto}
 /* Tus partidas: la barra, las pestañas (se desplazan sin barra si no caben),
    Normal / Difícil y la lista, que es lo único que se desplaza en vertical. */
 #historial{height:100%;display:flex;flex-direction:column;max-width:520px;margin:0 auto;
@@ -1291,30 +1325,43 @@ a.modo-fila{text-decoration:none;color:inherit}
   </div>
 </div>
 
+<!-- Las tarjetas de primera vez (v11.15, T-46d, §5.108; forma A): una hoja desde
+     abajo la primera vez que sale cada plaga (Contrarreloj y Contagio) y la primera
+     helada (Invierno). Oscurece el panal sin taparlo; no se juega con ella abierta y
+     el reloj se para. La rellena abrirTarjeta() con tarjetaPlaga/tarjetaHelada. -->
+<div id="tarjeta-fondo" hidden></div>
+<section id="tarjeta" role="dialog" aria-modal="true" aria-labelledby="tarjeta-nombre" hidden>
+  <div class="tj-cab"><span id="tarjeta-hex" aria-hidden="true"></span><div><small id="tarjeta-etiqueta"></small><h2 id="tarjeta-nombre"></h2></div></div>
+  <p class="tj-pasa" id="tarjeta-pasa"></p>
+  <div class="tj-quita" id="tarjeta-quita"><span class="tj-ico" id="tarjeta-ico" aria-hidden="true"></span><p id="tarjeta-quita-txt"></p></div>
+  <div class="tj-tabla" id="tarjeta-tabla"><p id="tarjeta-tabla-tit"></p><div class="tj-casillas" id="tarjeta-casillas"></div></div>
+  <button class="tj-todas" id="tarjeta-todas">Ver todas las plagas ›</button>
+  <div class="tj-pie"><span id="tarjeta-reloj">El reloj está parado.</span><button class="primario" id="tarjeta-ok">Entendido</button></div>
+</section>
 <div id="pop-velo" hidden></div>
 <div id="pop" hidden></div>
 
 <!-- La versión en cada script (v11.14, T-56): justo después de un push, un móvil
      podía quedarse con unos ficheros nuevos y otros viejos de la caché. Tiene que
      coincidir con VERSION (lo comprueba npm test). -->
-<script src="js/constants.js?v=11.14"></script>
-<script src="js/state.js?v=11.14"></script>
-<script src="js/bot-tonto.js?v=11.14"></script>
-<script src="js/guardado.js?v=11.14"></script>
+<script src="js/constants.js?v=11.15"></script>
+<script src="js/state.js?v=11.15"></script>
+<script src="js/bot-tonto.js?v=11.15"></script>
+<script src="js/guardado.js?v=11.15"></script>
 <!-- El código de partida y el historial (v11.4): funciones puras. -->
-<script src="js/historial.js?v=11.14"></script>
-<script src="js/render.js?v=11.14"></script>
-<script src="js/input.js?v=11.14"></script>
+<script src="js/historial.js?v=11.15"></script>
+<script src="js/render.js?v=11.15"></script>
+<script src="js/input.js?v=11.15"></script>
 <!-- Los niveles del modo Puzzle (v11): sólo datos, los escribe `npm run puzles -- meter`. -->
-<script src="js/puzles.js?v=11.14"></script>
+<script src="js/puzles.js?v=11.15"></script>
 <!-- El tutorial (v11.2): sus ocho niveles, sólo datos, aparte de los de Puzzle. -->
-<script src="js/tutorial.js?v=11.14"></script>
+<script src="js/tutorial.js?v=11.15"></script>
 <!-- La pista de Puzzle (v11.10, T-54): el resolutor de la máquina, tal cual, y
      lo que lo usa. Se carga para todos; sólo busca al pedir una pista. -->
-<script src="puzles/objetivos.js?v=11.14"></script>
-<script src="puzles/buscador.js?v=11.14"></script>
-<script src="puzles/juego.js?v=11.14"></script>
-<script src="js/pista.js?v=11.14"></script>
-<script src="js/app.js?v=11.14"></script>
+<script src="puzles/objetivos.js?v=11.15"></script>
+<script src="puzles/buscador.js?v=11.15"></script>
+<script src="puzles/juego.js?v=11.15"></script>
+<script src="js/pista.js?v=11.15"></script>
+<script src="js/app.js?v=11.15"></script>
 </body>
 </html>

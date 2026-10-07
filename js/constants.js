@@ -405,6 +405,73 @@ const DESASTRE_INFO = {
 };
 const DESASTRES_VISIBLES = ['varroa', 'polilla', 'seda', 'velutina'];
 
+// Las tarjetas de primera vez (v11.15, T-46d, §5.108): la primera vez que sale cada
+// plaga en Contrarreloj y en Contagio, y la primera helada de Invierno, una hoja que
+// dice qué ha pasado y cómo se quita. Un texto por modo, sin mencionar el otro.
+// Textos aprobados por Iñigo (07-10); los números, de las constantes, nunca a mano.
+// Marcas: **negrita** y _morado_ (las marcas de Contagio). Las pinta app.js; el
+// panel de la fila de plagas usa el mismo texto sin marcas.
+const MODOS_TARJETA = ['contrarreloj', 'contagio'];
+const milesES = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');   // toLocaleString('es-ES') no pone el punto en 1000
+function tarjetaPlaga(modo, tipo, dificultad = 'normal') {
+  const info = DESASTRE_INFO[tipo];
+  if (!info || !MODOS_TARJETA.includes(modo)) return null;
+  const G = COSECHA_GRANDE, V = VELUTINA_CELDAS.join('-'), cada = CONTAGIO_CADA[dificultad] || CONTAGIO_CADA.normal;
+  const seda = {
+    pasa: `El capullo ha eclosionado: sus celdas vecinas quedan **bloqueadas ${SEDA_TURNOS} turnos**.`,
+    quita: `La seda **no se quita**: juega por otro lado hasta que se suelte. Una cosecha de **${G}** o más sí te baja de la escalera.`,
+    alerta: true,
+  };
+  const textos = modo === 'contrarreloj' ? {
+    varroa:   { pasa: 'Al fallar llegan los ácaros: tu celda **más alta** baja a cera.',
+                quita: `Cada fallo sube un peldaño de la **escalera de plagas**. Una cosecha de **${G}** o más te baja.` },
+    polilla:  { pasa: 'Ha dejado un **capullo** en el panal. Si vuelves a fallar, **eclosiona** y llega la seda.',
+                quita: `Una **cosecha de ${G} o más** quita el capullo y te baja de la escalera.` },
+    seda,
+    velutina: { pasa: `La avispa asiática: **${V} celdas** bajan a cera. Después tienes **${CALMA_TRAS_VELUTINA} turnos de calma**.`,
+                quita: `Usa la calma para preparar una **cosecha de ${G}**: mientras no la bajes, vuelve en cada fallo.` },
+  } : {
+    varroa:   { pasa: `Al fallar llegan los ácaros: tu celda más alta baja a cera y _queda marcada_. Cada **${cada}** turnos, la marca salta a una celda de cría vecina y la baja a cera.`,
+                quita: `**Cosecha las celdas marcadas** para limpiarlas: al final, cada una que quede resta **${milesES(HUELLA_RESTA)}** puntos.` },
+    polilla:  { pasa: 'Ha dejado un **capullo**, y su celda _queda marcada_. Si vuelves a fallar, eclosiona y llega la seda.',
+                quita: '**Cualquier cosecha** que toque el capullo o una celda de al lado lo quita.' },
+    seda,
+    velutina: { pasa: `La avispa asiática: **${V} celdas** bajan a cera y _quedan marcadas_; la marca crece cada **${cada}** turnos. Después tienes **${CALMA_TRAS_VELUTINA} turnos de calma**.`,
+                quita: `Usa la calma para una **cosecha de ${G}**: baja la escalera, y si cae sobre las marcadas, también las limpia.` },
+  };
+  return {
+    etiqueta: `Nueva plaga · ${info.peldano} de ${DESASTRES_VISIBLES.length}`, nombre: info.nombre,
+    alerta: false, ...textos[tipo],
+    tabla: modo === 'contagio' ? 'Para bajar la escalera, cuanto más grande la cosecha, más bajas:'
+                               : 'Cuanto más grande la cosecha, más bajas:',
+    reloj: !!CONFIG_MODO[modo].reloj,
+  };
+}
+// La primera helada de Invierno: la misma hoja, sin tabla (no hay escalera) y sin
+// reloj. Las celdas, de HELADA_MUERDE de la dificultad en juego.
+function tarjetaHelada(dificultad = 'normal') {
+  const n = HELADA_MUERDE[dificultad] || HELADA_MUERDE.normal;
+  return {
+    etiqueta: 'Primera helada', nombre: 'Helada', alerta: false, tabla: null, reloj: false,
+    pasa: `Al fallar, la helada rompe **${n === 1 ? '1 celda' : `${n} celdas`}** del borde, **para siempre**. Cada fallo, ${n === 1 ? 'otra' : `otras ${n}`}; sin panal, se acaba.`,
+    quita: 'Si sale el **humo** (la gota H), recógelo con la cadena: te devuelve como agua la última celda rota.',
+  };
+}
+// La tabla de la cosecha grande de las tarjetas: 5-6 baja 1 · 7 baja 2 · 8 baja 3 ·
+// 9+ todas, de peldanosQueBaja. Agrupa los tamaños que bajan lo mismo.
+function tablaCosecha() {
+  const filas = [];
+  for (let L = COSECHA_GRANDE; L <= COSECHA_LIMPIA; L++) {
+    const n = Math.min(peldanosQueBaja(L), ESCALERA_TOPE), ult = filas[filas.length - 1];
+    if (ult && ult.n === n) ult.hasta = L; else filas.push({ desde: L, hasta: L, n });
+  }
+  return filas.map(f => f.n >= ESCALERA_TOPE
+    ? { tam: `${f.desde}+`, baja: 'todas' }
+    : { tam: f.hasta > f.desde ? `${f.desde}-${f.hasta}` : `${f.desde}`, baja: `baja ${f.n}` });
+}
+// Sin marcas, para el panel de la fila de plagas y los aria-label.
+const sinMarcas = t => t.replace(/\*\*|_/g, '');
+
 // El nombre del modo en pantalla. Hasta la v5 el identificador era «pecoreo» y
 // sólo el botón decía «Contrarreloj» (T-24): el nombre temático no se intuía
 // como lo que el modo es. Desde la v6 el código dice lo mismo que la pantalla,
@@ -422,7 +489,7 @@ function tieneDificultad(modo) {
 // jugando en el móvil no hay forma de saber si lo que tienes delante es lo
 // último que se subió.
 // Se mantiene a mano y tiene que coincidir con package.json (ver Recetas).
-const VERSION = 'v11.14';
+const VERSION = 'v11.15';
 
 // Opinar (v11.14, T-56, §5.107): un formulario de Google que abre el juego en otra
 // pestaña; el juego no envía nada. La dirección, sin búsqueda; los tres campos de
