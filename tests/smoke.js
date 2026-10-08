@@ -1700,20 +1700,24 @@ eq(T.bonusMultiplier(24), 14, 'bonus del tablero entero');
   ok(!/document|localStorage|window/.test(src), 'pista.js no toca DOM ni localStorage');
 }
 
-// --- opinar (v11.14, T-56, §5.107): el enlace al formulario -------------------------
+// --- opinar (v11.16, §5.109): la hoja manda las respuestas al formulario ----------
 {
-  const F = 'https://docs.google.com/forms/d/e/X/viewform', C = { version: 'entry.1', modo: 'entry.2', codigo: 'entry.3' };
-  eq(T.enlaceOpinion({ version: 'v1' }, '', C), null, 'opinar: sin dirección no hay enlace (el botón no sale)');
-  eq(T.enlaceOpinion({ version: 'v1', modo: 'Contrarreloj normal' }, F, {}), F, 'opinar: sin entry, la dirección sola');
-  eq(T.enlaceOpinion({}, F, C), F, 'opinar: sin datos, la dirección sola');
-  eq(T.enlaceOpinion({ version: 'v11.14' }, F, C), `${F}?usp=pp_url&entry.1=v11.14`, 'opinar: desde el inicio, sólo la versión');
-  const url = T.enlaceOpinion({ version: 'v11.14', modo: 'Contagio difícil', codigo: 'CG-D-123&x=1' }, F, C);
-  ok(url.startsWith(`${F}?usp=pp_url&`), 'opinar: el enlace prerrellenado lleva usp=pp_url');
-  const q = url.slice(url.indexOf('?') + 1).split('&').map(p => p.split('=').map(decodeURIComponent));
-  eq(JSON.stringify(q), JSON.stringify([['usp', 'pp_url'], ['entry.1', 'v11.14'], ['entry.2', 'Contagio difícil'], ['entry.3', 'CG-D-123&x=1']]),
-     'opinar: los tres campos, y el código bien escapado');
-  ok(T.OPINION_FORM.startsWith('https://docs.google.com/forms/') && !T.OPINION_FORM.includes('?'), 'opinar: la dirección del formulario, sin búsqueda');
-  eq(Object.keys(T.OPINION_CAMPOS).join(), 'version,modo,codigo', 'opinar: los tres campos del formulario');
+  const C = { version: 'entry.1', modo: 'entry.2', codigo: 'entry.3' };
+  const de = cuerpo => cuerpo.split('&').map(p => p.split('=').map(decodeURIComponent));
+  eq(T.destinoOpinion('https://docs.google.com/forms/d/e/X/viewform'), 'https://docs.google.com/forms/d/e/X/formResponse', 'opinar: se envía a formResponse');
+  eq(T.destinoOpinion(''), null, 'opinar: sin dirección no hay envío (el botón no sale)');
+  eq(T.cuerpoOpinion({}, { version: 'v1' }, C), null, 'opinar: sin respuestas no se envía nada');
+  eq(T.cuerpoOpinion({ 'entry.9': '   ' }, { version: 'v1' }, C), null, 'opinar: sólo espacios cuenta como vacío');
+  eq(JSON.stringify(de(T.cuerpoOpinion({ 'entry.9': ' Me gusta & mucho ', 'entry.8': '' }, { version: 'v11.16', modo: 'Contagio difícil', codigo: 'CG-D-123&x=1' }, C))),
+     JSON.stringify([['entry.9', 'Me gusta & mucho'], ['entry.1', 'v11.16'], ['entry.2', 'Contagio difícil'], ['entry.3', 'CG-D-123&x=1'], ['pageHistory', '0,1']]),
+     'opinar: lo escrito (recortado), los tres campos del juego bien escapados y las dos secciones');
+  eq(JSON.stringify(de(T.cuerpoOpinion({ 'entry.9': 'hola' }, { version: 'v11.16' }, C))),
+     JSON.stringify([['entry.9', 'hola'], ['entry.1', 'v11.16'], ['pageHistory', '0,1']]), 'opinar: desde el inicio, sólo la versión');
+  ok(T.OPINION_FORM.startsWith('https://docs.google.com/forms/') && T.OPINION_FORM.endsWith('/viewform'), 'opinar: la dirección del formulario, sin búsqueda');
+  eq(Object.keys(T.OPINION_CAMPOS).join(), 'version,modo,codigo', 'opinar: los tres campos del juego');
+  eq(T.OPINION_PREGUNTAS.length, 6, 'opinar: las seis preguntas del formulario');
+  const entries = [...T.OPINION_PREGUNTAS.map(p => p.entry), ...Object.values(T.OPINION_CAMPOS)];
+  ok(entries.every(e => /^entry\.\d+$/.test(e)) && new Set(entries).size === entries.length, 'opinar: cada pregunta, su entry, sin repetir');
 }
 
 // --- las tarjetas de primera vez (v11.15, T-46d, §5.108) ----------------------------

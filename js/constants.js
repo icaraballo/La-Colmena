@@ -489,14 +489,25 @@ function tieneDificultad(modo) {
 // jugando en el móvil no hay forma de saber si lo que tienes delante es lo
 // último que se subió.
 // Se mantiene a mano y tiene que coincidir con package.json (ver Recetas).
-const VERSION = 'v11.15';
+const VERSION = 'v11.16';
 
-// Opinar (v11.14, T-56, §5.107): un formulario de Google que abre el juego en otra
-// pestaña; el juego no envía nada. La dirección, sin búsqueda; los tres campos de
-// la sección final («No hace falta tocar esto»), los `entry` del enlace
-// prerrellenado. Sin dirección no sale el botón; sin campos, abre el formulario
-// vacío. En el formulario, el código se llama «Semilla».
+// Opinar (v11.14, T-56, §5.107; dentro del juego desde la v11.16, §5.109): una hoja
+// del juego con las preguntas del formulario de Google; al enviar, el juego manda
+// las respuestas a su `formResponse` por detrás y no sale de la partida. La
+// dirección, sin búsqueda; `OPINION_PREGUNTAS`, las que ve el jugador (el `entry` de
+// cada una, del enlace prerrellenado); `OPINION_CAMPOS`, los tres que rellena el
+// juego y no se ven (la sección final del formulario). Sin dirección no sale el
+// botón. Si se cambia una pregunta en Google, hay que cambiarla aquí. En el
+// formulario, el código se llama «Semilla».
 const OPINION_FORM = 'https://docs.google.com/forms/d/e/1FAIpQLSeq7eDcasyd6qsX_d7mvEKWhxhYTJgcY0CtZ74AYP_jakFNhg/viewform';
+const OPINION_PREGUNTAS = [
+  { entry: 'entry.932365581',  texto: '¿Qué te ha gustado?', largo: true },
+  { entry: 'entry.1764929900', texto: '¿Qué te ha confundido o te ha sobrado?', largo: true },
+  { entry: 'entry.332127336',  texto: '¿Has encontrado algo raro o «roto»?', largo: true },
+  { entry: 'entry.1198938977', texto: 'Cuéntame lo que quieras', ayuda: 'Ideas, quejas, lo que se te ocurra', largo: true },
+  { entry: 'entry.1083438825', texto: 'Tu nombre', ayuda: 'Opcional, si quieres que te responda' },
+  { entry: 'entry.1276655054', texto: 'Correo u otro contacto', ayuda: 'Opcional' },
+];
 const OPINION_CAMPOS = { version: 'entry.1031068515', modo: 'entry.1550420656', codigo: 'entry.1150654629' };
 
 const NOMBRE_MODO = {

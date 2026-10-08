@@ -65,17 +65,23 @@ function codigoDeBusqueda(busqueda) {
 function enlacePartida(base, codigo) {
   return `${base}?c=${encodeURIComponent(codigo)}`;
 }
-// Opinar (v11.14, §5.107): el enlace al formulario con lo que el juego sabe
-// (`version`, `modo`, `codigo`) en los campos prerrellenados. Sin dirección, null
-// (el botón no sale); sin `entry` o sin datos, la dirección sola. Se escapa con
-// encodeURIComponent como enlacePartida: los tests cargan esto en un `vm`, donde
-// no hay URLSearchParams.
-function enlaceOpinion(datos = {}, form = OPINION_FORM, campos = OPINION_CAMPOS) {
-  if (!form) return null;
-  const pares = Object.keys(campos || {})
-    .filter(k => campos[k] && datos[k] != null && datos[k] !== '')
-    .map(k => `${encodeURIComponent(campos[k])}=${encodeURIComponent(datos[k])}`);
-  return pares.length ? `${form}?usp=pp_url&${pares.join('&')}` : form;
+// Opinar (v11.16, §5.109): adónde y qué manda la hoja de opinar. El formulario
+// tiene dos secciones (la segunda, la de los campos del juego): sin `pageHistory`
+// Google tira lo de la segunda. Sin respuestas escritas, null (no se envía nada
+// vacío); los datos del juego van siempre que haya. Se escapa con
+// encodeURIComponent: los tests cargan esto en un `vm`, donde no hay URLSearchParams.
+function destinoOpinion(form = OPINION_FORM) {
+  return form ? form.replace(/\/viewform$/, '/formResponse') : null;
+}
+function cuerpoOpinion(respuestas = {}, datos = {}, campos = OPINION_CAMPOS) {
+  const escritas = Object.keys(respuestas).filter(k => String(respuestas[k] || '').trim());
+  if (!escritas.length) return null;
+  const par = (k, v) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`;
+  const pares = escritas.map(k => par(k, String(respuestas[k]).trim()));
+  for (const k of Object.keys(campos || {}))
+    if (campos[k] && datos[k] != null && datos[k] !== '') pares.push(par(campos[k], datos[k]));
+  pares.push(par('pageHistory', '0,1'));
+  return pares.join('&');
 }
 // Lo que acompaña al enlace, de una entrada: «La Colmena · Contrarreloj normal ·
 // 5230 puntos. ¿Lo superas?». Expansión completa reta a menos turnos.

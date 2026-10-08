@@ -476,9 +476,79 @@ function datosOpinion(tutorial) {
   return { version: VERSION, modo, codigo: codigoActual() };
 }
 function pintarFinOpinar(tutorial) {
-  const a = document.getElementById('fin-opinar'), url = enlaceOpinion(datosOpinion(tutorial));
-  a.hidden = !url;
-  if (url) a.href = url;
+  const b = document.getElementById('fin-opinar');
+  b.hidden = !destinoOpinion();
+  b.onclick = () => abrirOpinion(datosOpinion(tutorial));
+}
+
+// ---------------------------------------------------------------------------
+// Opinar (v11.16, §5.109): la hoja con el formulario. Hasta la v11.15 abría
+// Google Forms en otra pestaña, y desde WhatsApp o la app instalada no se podía
+// volver; y la sección de los campos del juego se veía y la gente la rellenaba.
+// Ahora las preguntas salen aquí y el juego manda las respuestas al formulario por
+// detrás (no-cors: Google no contesta nada legible; sólo se sabe si no hubo red).
+// Lo escrito se conserva al cerrar sin enviar.
+// ---------------------------------------------------------------------------
+let opinionDatos = null;     // { version, modo, codigo } de quien la abrió; null = cerrada
+let opinionOrigen = null;
+let opinionCierre = 0;
+function abrirOpinion(datos) {
+  if (!destinoOpinion()) return;
+  cerrarPop();
+  clearTimeout(opinionCierre);
+  opinionDatos = datos;
+  opinionOrigen = document.activeElement;
+  const caja = document.getElementById('opinion-preguntas');
+  if (!caja.children.length) {
+    caja.innerHTML = OPINION_PREGUNTAS.map((p, i) => {
+      const ph = p.ayuda ? ` placeholder="${p.ayuda}"` : '';
+      const campo = p.largo ? `<textarea name="${p.entry}" rows="2"${ph}></textarea>`
+        : `<input name="${p.entry}" type="text" autocomplete="${i === OPINION_PREGUNTAS.length - 1 ? 'email' : 'name'}"${ph}>`;
+      return `<label>${p.texto}${campo}</label>`;
+    }).join('');
+  }
+  document.getElementById('opinion-form').hidden = false;
+  document.getElementById('opinion-gracias').hidden = true;
+  setText('opinion-aviso', '');
+  document.getElementById('opinion-enviar').disabled = false;
+  setText('opinion-enviar', 'Enviar');
+  const h = document.getElementById('opinion'), velo = document.getElementById('opinion-fondo');
+  h.hidden = false; velo.hidden = false;
+  h.getBoundingClientRect();                 // fuerza el estilo de partida para que haya transición
+  h.classList.add('abierta'); velo.classList.add('abierta');
+  caja.scrollTop = 0;
+}
+function cerrarOpinion() {
+  if (!opinionDatos) return;
+  opinionDatos = null;
+  const h = document.getElementById('opinion'), velo = document.getElementById('opinion-fondo');
+  document.activeElement && h.contains(document.activeElement) && document.activeElement.blur();
+  h.classList.remove('abierta'); velo.classList.remove('abierta');
+  opinionCierre = setTimeout(() => { h.hidden = true; velo.hidden = true; }, 250);
+  if (opinionOrigen && document.contains(opinionOrigen) && opinionOrigen.offsetParent) opinionOrigen.focus({ preventScroll: true });
+  opinionOrigen = null;
+}
+async function enviarOpinion(e) {
+  e.preventDefault();
+  const form = document.getElementById('opinion-form'), boton = document.getElementById('opinion-enviar');
+  const respuestas = {};
+  for (const p of OPINION_PREGUNTAS) respuestas[p.entry] = form.elements[p.entry].value;
+  const cuerpo = cuerpoOpinion(respuestas, opinionDatos || { version: VERSION });
+  if (!cuerpo) { setText('opinion-aviso', 'Escribe algo en alguna pregunta antes de enviar.'); return; }
+  setText('opinion-aviso', '');
+  boton.disabled = true; setText('opinion-enviar', 'Enviando…');
+  try {
+    await fetch(destinoOpinion(), { method: 'POST', mode: 'no-cors',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: cuerpo });
+  } catch {
+    boton.disabled = false; setText('opinion-enviar', 'Enviar');
+    setText('opinion-aviso', 'No se ha podido enviar: parece que no hay conexión. Lo escrito sigue aquí; inténtalo en un rato.');
+    return;
+  }
+  form.reset();
+  form.hidden = true;
+  document.getElementById('opinion-gracias').hidden = false;
+  document.getElementById('opinion-volver').focus({ preventScroll: true });
 }
 function pintarFin() {
   const el = document.getElementById('fin');
@@ -2620,11 +2690,14 @@ window.addEventListener('DOMContentLoaded', () => {
     if (el.classList.contains('frase')) el.style.color = COLOR_MODO[el.dataset.frase];
   });
   setText('inicio-version', VERSION);
-  // Opinar desde el inicio (v11.14, §5.107): sólo la versión. Sin formulario, no sale.
-  const opinar = enlaceOpinion({ version: VERSION });
-  document.getElementById('opinar-inicio').hidden = !opinar;
-  document.querySelector('.opinar-grupo').hidden = !opinar;
-  if (opinar) document.getElementById('opinar-inicio').href = opinar;
+  // Opinar desde los modos (v11.14, §5.107; en la barra fija y en una hoja desde la
+  // v11.16, §5.109): sólo la versión. Sin formulario, no sale.
+  document.getElementById('opinar-inicio').hidden = !destinoOpinion();
+  document.getElementById('opinar-inicio').addEventListener('click', () => abrirOpinion({ version: VERSION }));
+  document.getElementById('opinion-form').addEventListener('submit', enviarOpinion);
+  document.getElementById('opinion-cerrar').addEventListener('click', cerrarOpinion);
+  document.getElementById('opinion-volver').addEventListener('click', cerrarOpinion);
+  document.getElementById('opinion-fondo').addEventListener('click', cerrarOpinion);
   pintarTarjeta();
   pintarEscalaExpansion('normal');
   pintarEscaleras();
@@ -2787,7 +2860,8 @@ window.addEventListener('DOMContentLoaded', () => {
   // Escape cierra lo que esté encima; en la ficha, las flechas cambian de modo.
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      if (tarjetaAbierta) cerrarTarjeta();
+      if (opinionDatos) cerrarOpinion();
+      else if (tarjetaAbierta) cerrarTarjeta();
       else if (hojaAbierta) cerrarHoja();
       else if (fichaNivel) cerrarFichaNivel();
       else if (popAncla) cerrarPop();
